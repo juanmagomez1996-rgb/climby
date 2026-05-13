@@ -269,7 +269,9 @@ class _MenuScreenState extends State<MenuScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    _TitleStack(size: 64),
+                    Image.asset('assets/ui/logo_climby.png',
+                        width: 280, fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => _TitleStack(size: 64)),
                     const SizedBox(height: 6),
                     const Text('— escalada de plastilina —',
                         style: TextStyle(fontSize: 14,
@@ -820,10 +822,15 @@ class _CountdownScreenState extends State<CountdownScreen> {
               scale: Tween<double>(begin: 0.5, end: 1.2).animate(anim),
               child: FadeTransition(opacity: anim, child: child)),
           child: Text(showText ?? '', key: ValueKey(showText),
+            textAlign: TextAlign.center,
             style: const TextStyle(
-              fontSize: 180, fontWeight: FontWeight.w900,
+              fontSize: 120, fontWeight: FontWeight.w900,
               color: Color(0xFFE85D3C),
-              shadows: [Shadow(color: Color(0xFF3A2E1F), offset: Offset(6, 6))],
+              letterSpacing: -3,
+              shadows: [
+                Shadow(color: Color(0xFF3A2E1F), offset: Offset(4, 4), blurRadius: 0),
+                Shadow(color: Color(0xFF3A2E1F), offset: Offset(-1, -1), blurRadius: 0),
+              ],
             ),
           ),
         ),
