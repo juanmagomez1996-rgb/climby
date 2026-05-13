@@ -400,9 +400,9 @@ class GameRenderer {
 
     // Get customization colors
     final cust = Prefs.customization;
-    final skinTint = cust.skinColor;
-    final shirtTint = cust.shirtColor;
-    final shortsTint = cust.shortsColor;
+    final skinTint = cust.skin;
+    final shirtTint = cust.shirt;
+    final shortsTint = cust.shorts;
 
     // Burn tint — darkens everything progressively
     Color? burnTint;
@@ -527,6 +527,60 @@ class GameRenderer {
       case FaceState.dead: return GameAssets.char('head_dead');
       default: return GameAssets.char('head_neutral');
     }
+  }
+
+  // =========================================================
+  //  drawCharacterAt — for menus/previews (static poses)
+  // =========================================================
+  static void drawCharacterAt(Canvas canvas, {
+    required Offset headPos,
+    required Offset chestPos,
+    required Offset lsPos, required Offset rsPos,
+    required Offset lpPos, required Offset rpPos,
+    required Offset lhPos, required Offset rhPos,
+    required Offset lePos, required Offset rePos,
+    required Offset lfPos, required Offset rfPos,
+    required Offset lkPos, required Offset rkPos,
+    required dynamic cust,
+    required double headR,
+    FaceState faceState = FaceState.neutral,
+    Map<String, double>? stamina,
+    Map<String, dynamic>? grips,
+    double tNow = 0,
+    double scale = 1.0,
+    bool blinking = false,
+  }) {
+    final sc = scale * 1.0;
+    final skinTint = (cust is Customization) ? cust.skin : null;
+    final shirtTint = (cust is Customization) ? cust.shirt : null;
+    final shortsTint = (cust is Customization) ? cust.shorts : null;
+
+    // Back arm + leg
+    _drawSvgBone(canvas, GameAssets.char('arm_upper'), rsPos, rePos, 38 * sc, 145 * sc, tint: skinTint);
+    _drawSvgBone(canvas, GameAssets.char('arm_lower'), rePos, rhPos, 34 * sc, 144 * sc, tint: skinTint);
+    final pelvis = Offset((lpPos.dx + rpPos.dx) / 2, (lpPos.dy + rpPos.dy) / 2);
+    _drawSvgBone(canvas, GameAssets.char('leg_upper'), rpPos, rkPos, 42 * sc, 150 * sc, tint: shortsTint);
+    _drawSvgBone(canvas, GameAssets.char('leg_lower'), rkPos, rfPos, 36 * sc, 150 * sc, tint: skinTint);
+
+    // Torso + shorts
+    _drawSvgBone(canvas, GameAssets.char('torso'), chestPos, pelvis, 65 * sc, 155 * sc, pivotY: 0.10, tint: shirtTint);
+    final shortsEnd = Offset(pelvis.dx, pelvis.dy + 18 * sc);
+    _drawSvgBone(canvas, GameAssets.char('shorts'), pelvis, shortsEnd, 65 * sc, 115 * sc, pivotY: 0.05, tint: shortsTint);
+
+    // Front leg + arm
+    _drawSvgBone(canvas, GameAssets.char('leg_upper'), lpPos, lkPos, 42 * sc, 150 * sc, tint: shortsTint);
+    _drawSvgBone(canvas, GameAssets.char('leg_lower'), lkPos, lfPos, 36 * sc, 150 * sc, tint: skinTint);
+    _drawSvgBone(canvas, GameAssets.char('arm_upper'), lsPos, lePos, 38 * sc, 145 * sc, tint: skinTint);
+    _drawSvgBone(canvas, GameAssets.char('arm_lower'), lePos, lhPos, 34 * sc, 144 * sc, tint: skinTint);
+
+    // Hands + feet (no rotation for static preview)
+    _drawSvgAt(canvas, GameAssets.char('hand_left'), lhPos, 42 * sc, aspect: 102.0 / 122, tint: skinTint);
+    _drawSvgAt(canvas, GameAssets.char('hand_right'), rhPos, 42 * sc, aspect: 98.0 / 122, tint: skinTint);
+    _drawSvgAt(canvas, GameAssets.char('foot_left'), lfPos, 52 * sc, aspect: 146.0 / 130);
+    _drawSvgAt(canvas, GameAssets.char('foot_right'), rfPos, 52 * sc, aspect: 145.0 / 130);
+
+    // Head on top
+    _drawSvgAt(canvas, _getHeadInfo(faceState), headPos, 65 * sc, aspect: 153.0 / 148, tint: skinTint);
   }
 
   // =========================================================
