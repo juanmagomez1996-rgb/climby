@@ -193,7 +193,7 @@ class GameRenderer {
         canvas.drawRRect(RRect.fromRectAndRadius(
             Rect.fromCenter(center: Offset(g.size.x / 2, fy - 18), width: 124, height: 20),
             const Radius.circular(5)), Paint()..color = const Color(0xFFF2B134));
-        _text(canvas, 'META', g.size.x / 2, fy - 26, c: const Color(0xFF3A2E1F), s: 13, w: FontWeight.w900, a: TextAlign.center);
+        _text(canvas, 'META', g.size.x / 2, fy - 26, cc: const Color(0xFF3A2E1F), s: 13, w: FontWeight.w900, a: TextAlign.center);
       }
     }
   }
