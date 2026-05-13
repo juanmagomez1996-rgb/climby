@@ -95,7 +95,7 @@ class GameRenderer {
     if (img == null) return;
     final src = Rect.fromLTWH(0, 0, img.width.toDouble(), img.height.toDouble());
     final p = Paint();
-    if (tint != null) p.colorFilter = ColorFilter.mode(tint, BlendMode.modulate);
+    if (tint != null) p.colorFilter = ColorFilter.mode(tint, BlendMode.color);
     c.drawImageRect(img, src, dst, p);
   }
 
@@ -339,52 +339,55 @@ class GameRenderer {
     final sc = z;
 
     // DRAW ORDER: back limbs → torso/shorts → front limbs → hands/feet → head
+    // Issue #1: Adjusted proportions — wider torso, thicker arms/legs
 
     // 1. BACK ARM (right): shoulder → elbow, elbow → hand position
-    _bone(canvas, GameAssets.char('arm_upper'), rs, re, 40 * sc, 145 * sc, tint: skinT);
-    _bone(canvas, GameAssets.char('arm_lower'), re, rh, 36 * sc, 144 * sc, tint: skinT);
+    _bone(canvas, GameAssets.char('arm_upper'), rs, re, 48 * sc, 145 * sc, tint: skinT);
+    _bone(canvas, GameAssets.char('arm_lower'), re, rh, 44 * sc, 144 * sc, tint: skinT);
 
     // 2. BACK LEG (right): hip → knee, knee → foot position
-    _bone(canvas, GameAssets.char('leg_upper'), rp, rk, 44 * sc, 150 * sc, tint: shortsT);
-    _bone(canvas, GameAssets.char('leg_lower'), rk, rf, 38 * sc, 150 * sc, tint: skinT);
+    _bone(canvas, GameAssets.char('leg_upper'), rp, rk, 52 * sc, 150 * sc, tint: shortsT);
+    _bone(canvas, GameAssets.char('leg_lower'), rk, rf, 46 * sc, 150 * sc, tint: skinT);
 
-    // 3. TORSO
+    // 3. TORSO — wider (80 vs 68)
     final pelvis = Offset((lp.dx + rp.dx) / 2, (lp.dy + rp.dy) / 2);
-    _bone(canvas, GameAssets.char('torso'), chest, pelvis, 68 * sc, 155 * sc, pivotY: 0.10, tint: shirtT);
+    _bone(canvas, GameAssets.char('torso'), chest, pelvis, 80 * sc, 155 * sc, pivotY: 0.10, tint: shirtT);
 
     // 4. SHORTS (overlaps torso bottom)
     final sEnd = Offset(pelvis.dx, pelvis.dy + 15 * sc);
-    _bone(canvas, GameAssets.char('shorts'), pelvis, sEnd, 68 * sc, 115 * sc, pivotY: 0.02, tint: shortsT);
+    _bone(canvas, GameAssets.char('shorts'), pelvis, sEnd, 80 * sc, 115 * sc, pivotY: 0.02, tint: shortsT);
 
     // 5. FRONT LEG (left)
-    _bone(canvas, GameAssets.char('leg_upper'), lp, lk, 44 * sc, 150 * sc, tint: shortsT);
-    _bone(canvas, GameAssets.char('leg_lower'), lk, lf, 38 * sc, 150 * sc, tint: skinT);
+    _bone(canvas, GameAssets.char('leg_upper'), lp, lk, 52 * sc, 150 * sc, tint: shortsT);
+    _bone(canvas, GameAssets.char('leg_lower'), lk, lf, 46 * sc, 150 * sc, tint: skinT);
 
     // 6. FRONT ARM (left)
-    _bone(canvas, GameAssets.char('arm_upper'), ls, le, 40 * sc, 145 * sc, tint: skinT);
-    _bone(canvas, GameAssets.char('arm_lower'), le, lh, 36 * sc, 144 * sc, tint: skinT);
+    _bone(canvas, GameAssets.char('arm_upper'), ls, le, 48 * sc, 145 * sc, tint: skinT);
+    _bone(canvas, GameAssets.char('arm_lower'), le, lh, 44 * sc, 144 * sc, tint: skinT);
 
-    // 7. HANDS — at the END of the forearm, constrained rotation
-    final lhAng = math.atan2(lh.dy - le.dy, lh.dx - le.dx) - math.pi / 2;
-    final rhAng = math.atan2(rh.dy - re.dy, rh.dx - re.dx) - math.pi / 2;
-    final lhRot = _clampAng(lhAng, 0, math.pi * 0.35);
-    final rhRot = _clampAng(rhAng, 0, math.pi * 0.35);
-    _at(canvas, GameAssets.char('hand_left'), lh, 44 * sc, aspect: 102.0 / 122, rotation: lhRot, tint: skinT);
-    // hand_right: flip horizontally by using negative aspect
-    _at(canvas, GameAssets.char('hand_right'), rh, 44 * sc, aspect: -98.0 / 122, rotation: rhRot, tint: skinT);
+    // 7. HANDS — rotation follows forearm angle so wristband points toward elbow
+    // Issue #2: base angle = forearm angle (elbow→hand), NOT 0
+    final lhForearm = math.atan2(lh.dy - le.dy, lh.dx - le.dx) - math.pi / 2;
+    final rhForearm = math.atan2(rh.dy - re.dy, rh.dx - re.dx) - math.pi / 2;
+    final lhRot = lhForearm; // Hand follows forearm directly
+    final rhRot = rhForearm;
+    _at(canvas, GameAssets.char('hand_left'), lh, 48 * sc, aspect: 102.0 / 122, rotation: lhRot, tint: skinT);
+    // Issue #4: hand_right flip horizontally by using negative aspect
+    _at(canvas, GameAssets.char('hand_right'), rh, 48 * sc, aspect: -98.0 / 122, rotation: rhRot, tint: skinT);
 
-    // 8. FEET — constrained: always point roughly downward, max ±20° tilt
+    // 8. FEET — Issue #5: positioned at end of leg_lower bone, follow shin angle
     final lfAng = math.atan2(lf.dy - lk.dy, lf.dx - lk.dx) - math.pi / 2;
     final rfAng = math.atan2(rf.dy - rk.dy, rf.dx - rk.dx) - math.pi / 2;
-    final lfRot = _clampAng(lfAng, 0, math.pi * 0.2);
-    final rfRot = _clampAng(rfAng, 0, math.pi * 0.2);
+    // Feet follow shin with limited deviation (max ±25°)
+    final lfRot = _clampAng(lfAng, lfAng, math.pi * 0.14);
+    final rfRot = _clampAng(rfAng, rfAng, math.pi * 0.14);
     _at(canvas, GameAssets.char('foot_left'), lf, 55 * sc, aspect: 146.0 / 130, rotation: lfRot, tint: shoeT);
-    _at(canvas, GameAssets.char('foot_right'), rf, 55 * sc, aspect: 145.0 / 130, rotation: rfRot, tint: shoeT);
+    _at(canvas, GameAssets.char('foot_right'), rf, 55 * sc, aspect: -145.0 / 130, rotation: rfRot, tint: shoeT);
 
-    // 9. HEAD — NO TINT (preserves white of eyes/teeth), only burn darkens
+    // 9. HEAD — Issue #3: apply skin tint (BlendMode.color preserves whites/eyes/teeth)
     final headImg = _headImg(g.faceState);
-    _at(canvas, headImg, head, 68 * sc, aspect: 153.0 / 148,
-        tint: burnC);
+    _at(canvas, headImg, head, 55 * sc, aspect: 153.0 / 148,
+        tint: burnC ?? skinT);
 
     // Grip indicators
     for (final k in ['LH', 'RH', 'LF', 'RF']) {
@@ -437,35 +440,41 @@ class GameRenderer {
     double tNow = 0, double scale = 1.0, bool blinking = false,
   }) {
     final sc = scale;
-    Color? skinT, shirtT, shortsT;
+    Color? skinT, shirtT, shortsT, shoeT;
     if (cust is Customization) {
       final d = Customization();
       if (cust.skin != d.skin) skinT = cust.skin;
       if (cust.shirt != d.shirt) shirtT = cust.shirt;
       if (cust.shorts != d.shorts) shortsT = cust.shorts;
+      if (cust.shoes != d.shoes) shoeT = cust.shoes;
     }
-    // Back arm+leg
-    _bone(canvas, GameAssets.char('arm_upper'), rsPos, rePos, 40 * sc, 145 * sc, tint: skinT);
-    _bone(canvas, GameAssets.char('arm_lower'), rePos, rhPos, 36 * sc, 144 * sc, tint: skinT);
-    _bone(canvas, GameAssets.char('leg_upper'), rpPos, rkPos, 44 * sc, 150 * sc, tint: shortsT);
-    _bone(canvas, GameAssets.char('leg_lower'), rkPos, rfPos, 38 * sc, 150 * sc, tint: skinT);
-    // Torso+shorts
+    // Back arm+leg (wider proportions)
+    _bone(canvas, GameAssets.char('arm_upper'), rsPos, rePos, 48 * sc, 145 * sc, tint: skinT);
+    _bone(canvas, GameAssets.char('arm_lower'), rePos, rhPos, 44 * sc, 144 * sc, tint: skinT);
+    _bone(canvas, GameAssets.char('leg_upper'), rpPos, rkPos, 52 * sc, 150 * sc, tint: shortsT);
+    _bone(canvas, GameAssets.char('leg_lower'), rkPos, rfPos, 46 * sc, 150 * sc, tint: skinT);
+    // Torso+shorts (wider)
     final pelvis = Offset((lpPos.dx + rpPos.dx) / 2, (lpPos.dy + rpPos.dy) / 2);
-    _bone(canvas, GameAssets.char('torso'), chestPos, pelvis, 68 * sc, 155 * sc, pivotY: 0.10, tint: shirtT);
+    _bone(canvas, GameAssets.char('torso'), chestPos, pelvis, 80 * sc, 155 * sc, pivotY: 0.10, tint: shirtT);
     final sEnd = Offset(pelvis.dx, pelvis.dy + 15 * sc);
-    _bone(canvas, GameAssets.char('shorts'), pelvis, sEnd, 68 * sc, 115 * sc, pivotY: 0.02, tint: shortsT);
+    _bone(canvas, GameAssets.char('shorts'), pelvis, sEnd, 80 * sc, 115 * sc, pivotY: 0.02, tint: shortsT);
     // Front leg+arm
-    _bone(canvas, GameAssets.char('leg_upper'), lpPos, lkPos, 44 * sc, 150 * sc, tint: shortsT);
-    _bone(canvas, GameAssets.char('leg_lower'), lkPos, lfPos, 38 * sc, 150 * sc, tint: skinT);
-    _bone(canvas, GameAssets.char('arm_upper'), lsPos, lePos, 40 * sc, 145 * sc, tint: skinT);
-    _bone(canvas, GameAssets.char('arm_lower'), lePos, lhPos, 36 * sc, 144 * sc, tint: skinT);
-    // Hands+feet (no rotation in preview)
-    _at(canvas, GameAssets.char('hand_left'), lhPos, 44 * sc, aspect: 102.0 / 122, tint: skinT);
-    _at(canvas, GameAssets.char('hand_right'), rhPos, 44 * sc, aspect: -98.0 / 122, tint: skinT);
-    _at(canvas, GameAssets.char('foot_left'), lfPos, 55 * sc, aspect: 146.0 / 130);
-    _at(canvas, GameAssets.char('foot_right'), rfPos, 55 * sc, aspect: 145.0 / 130);
-    // Head — no tint (preserve eye whites)
-    _at(canvas, _headImg(faceState), headPos, 68 * sc, aspect: 153.0 / 148);
+    _bone(canvas, GameAssets.char('leg_upper'), lpPos, lkPos, 52 * sc, 150 * sc, tint: shortsT);
+    _bone(canvas, GameAssets.char('leg_lower'), lkPos, lfPos, 46 * sc, 150 * sc, tint: skinT);
+    _bone(canvas, GameAssets.char('arm_upper'), lsPos, lePos, 48 * sc, 145 * sc, tint: skinT);
+    _bone(canvas, GameAssets.char('arm_lower'), lePos, lhPos, 44 * sc, 144 * sc, tint: skinT);
+    // Hands — follow forearm rotation
+    final lhForearm = math.atan2(lhPos.dy - lePos.dy, lhPos.dx - lePos.dx) - math.pi / 2;
+    final rhForearm = math.atan2(rhPos.dy - rePos.dy, rhPos.dx - rePos.dx) - math.pi / 2;
+    _at(canvas, GameAssets.char('hand_left'), lhPos, 48 * sc, aspect: 102.0 / 122, rotation: lhForearm, tint: skinT);
+    _at(canvas, GameAssets.char('hand_right'), rhPos, 48 * sc, aspect: -98.0 / 122, rotation: rhForearm, tint: skinT);
+    // Feet — follow shin, flip right
+    final lfAng = math.atan2(lfPos.dy - lkPos.dy, lfPos.dx - lkPos.dx) - math.pi / 2;
+    final rfAng = math.atan2(rfPos.dy - rkPos.dy, rfPos.dx - rkPos.dx) - math.pi / 2;
+    _at(canvas, GameAssets.char('foot_left'), lfPos, 55 * sc, aspect: 146.0 / 130, rotation: lfAng, tint: shoeT);
+    _at(canvas, GameAssets.char('foot_right'), rfPos, 55 * sc, aspect: -145.0 / 130, rotation: rfAng, tint: shoeT);
+    // Head — skin tint preserves whites via BlendMode.color
+    _at(canvas, _headImg(faceState), headPos, 55 * sc, aspect: 153.0 / 148, tint: skinT);
   }
 
   // ---- PARTICLES ----
