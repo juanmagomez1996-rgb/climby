@@ -126,18 +126,18 @@ class Character {
 
     ls = Point(startX - 24 * w, startY + 26, 'LS');
     rs = Point(startX + 24 * w, startY + 26, 'RS');
-    lp = Point(startX - 20 * w, startY - 32, 'LP');
-    rp = Point(startX + 20 * w, startY - 32, 'RP');
+    lp = Point(startX - 12 * w, startY - 32, 'LP');
+    rp = Point(startX + 12 * w, startY - 32, 'RP');
 
     lh = Point(startX - 75, startY + 100, 'LH');
     rh = Point(startX + 75, startY + 100, 'RH');
     le = Point(startX - 55, startY + 62, 'LE');
     re = Point(startX + 55, startY + 62, 'RE');
 
-    lf = Point(startX - 60, startY - 110, 'LF');
-    rf = Point(startX + 60, startY - 110, 'RF');
-    lk = Point(startX - 42, startY - 68, 'LK');
-    rk = Point(startX + 42, startY - 68, 'RK');
+    lf = Point(startX - 40, startY - 110, 'LF');
+    rf = Point(startX + 40, startY - 110, 'RF');
+    lk = Point(startX - 28, startY - 68, 'LK');
+    rk = Point(startX + 28, startY - 68, 'RK');
 
     points = [
       head, neck, chest, pelvis,
@@ -155,9 +155,9 @@ class Character {
       Stick(ls, rs, length: 48 * w), // wider shoulders
       Stick(neck, ls, length: 28),
       Stick(neck, rs, length: 28),
-      Stick(pelvis, lp, length: 20 * w),
-      Stick(pelvis, rp, length: 20 * w),
-      Stick(lp, rp, length: 40 * w), // wider hips
+      Stick(pelvis, lp, length: 12 * w),
+      Stick(pelvis, rp, length: 12 * w),
+      Stick(lp, rp, length: 24 * w), // narrower hips — legs closer to body
       Stick(ls, rp, length: 78, stiffness: 0.8),
       Stick(rs, lp, length: 78, stiffness: 0.8),
       Stick(ls, lp, length: 58, stiffness: 0.8),
