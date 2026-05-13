@@ -3,8 +3,8 @@ import 'dart:math' as math;
 const double kGravity = 1200;
 const double kDamping = 0.985;
 const int kIterations = 16;
-const double kArmReachBase = 150;
-const double kLegReachBase = 210;
+const double kArmReachBase = 168;
+const double kLegReachBase = 230;
 const double kHoldSnap = 40;
 final math.Random kRand = math.Random();
 
@@ -119,25 +119,25 @@ class Character {
   Character(double startX, double startY, BodyType bodyType) {
     final bm = bodyMultipliers(bodyType);
     final w = bm.width;
-    head = Point(startX, startY + 60, 'head');
-    neck = Point(startX, startY + 35, 'neck');
-    chest = Point(startX, startY + 18, 'chest');
-    pelvis = Point(startX, startY - 28, 'pelvis');
+    head = Point(startX, startY + 68, 'head');
+    neck = Point(startX, startY + 42, 'neck');
+    chest = Point(startX, startY + 22, 'chest');
+    pelvis = Point(startX, startY - 32, 'pelvis');
 
-    ls = Point(startX - 22 * w, startY + 22, 'LS');
-    rs = Point(startX + 22 * w, startY + 22, 'RS');
-    lp = Point(startX - 18 * w, startY - 28, 'LP');
-    rp = Point(startX + 18 * w, startY - 28, 'RP');
+    ls = Point(startX - 24 * w, startY + 26, 'LS');
+    rs = Point(startX + 24 * w, startY + 26, 'RS');
+    lp = Point(startX - 20 * w, startY - 32, 'LP');
+    rp = Point(startX + 20 * w, startY - 32, 'RP');
 
-    lh = Point(startX - 70, startY + 90, 'LH');
-    rh = Point(startX + 70, startY + 90, 'RH');
-    le = Point(startX - 50, startY + 55, 'LE');
-    re = Point(startX + 50, startY + 55, 'RE');
+    lh = Point(startX - 75, startY + 100, 'LH');
+    rh = Point(startX + 75, startY + 100, 'RH');
+    le = Point(startX - 55, startY + 62, 'LE');
+    re = Point(startX + 55, startY + 62, 'RE');
 
-    lf = Point(startX - 55, startY - 95, 'LF');
-    rf = Point(startX + 55, startY - 95, 'RF');
-    lk = Point(startX - 38, startY - 60, 'LK');
-    rk = Point(startX + 38, startY - 60, 'RK');
+    lf = Point(startX - 60, startY - 110, 'LF');
+    rf = Point(startX + 60, startY - 110, 'RF');
+    lk = Point(startX - 42, startY - 68, 'LK');
+    rk = Point(startX + 42, startY - 68, 'RK');
 
     points = [
       head, neck, chest, pelvis,
@@ -148,28 +148,28 @@ class Character {
 
     sticks = [
       Stick(head, neck, length: 25),
-      Stick(neck, chest, length: 17),
-      Stick(chest, pelvis, length: 46),
-      Stick(chest, ls, length: 22 * w),
-      Stick(chest, rs, length: 22 * w),
-      Stick(ls, rs, length: 44 * w),
-      Stick(neck, ls, length: 26),
-      Stick(neck, rs, length: 26),
-      Stick(pelvis, lp, length: 18 * w),
-      Stick(pelvis, rp, length: 18 * w),
-      Stick(lp, rp, length: 36 * w),
-      Stick(ls, rp, length: 70, stiffness: 0.8),
-      Stick(rs, lp, length: 70, stiffness: 0.8),
-      Stick(ls, lp, length: 50, stiffness: 0.8),
-      Stick(rs, rp, length: 50, stiffness: 0.8),
-      Stick(ls, le, length: 38),
-      Stick(le, lh, minLength: 32, maxLength: 44, stiffness: 0.95),
-      Stick(rs, re, length: 38),
-      Stick(re, rh, minLength: 32, maxLength: 44, stiffness: 0.95),
-      Stick(lp, lk, length: 38),
-      Stick(lk, lf, minLength: 34, maxLength: 46, stiffness: 0.95),
-      Stick(rp, rk, length: 38),
-      Stick(rk, rf, minLength: 34, maxLength: 46, stiffness: 0.95),
+      Stick(neck, chest, length: 20),
+      Stick(chest, pelvis, length: 54), // longer torso
+      Stick(chest, ls, length: 24 * w),
+      Stick(chest, rs, length: 24 * w),
+      Stick(ls, rs, length: 48 * w), // wider shoulders
+      Stick(neck, ls, length: 28),
+      Stick(neck, rs, length: 28),
+      Stick(pelvis, lp, length: 20 * w),
+      Stick(pelvis, rp, length: 20 * w),
+      Stick(lp, rp, length: 40 * w), // wider hips
+      Stick(ls, rp, length: 78, stiffness: 0.8),
+      Stick(rs, lp, length: 78, stiffness: 0.8),
+      Stick(ls, lp, length: 58, stiffness: 0.8),
+      Stick(rs, rp, length: 58, stiffness: 0.8),
+      Stick(ls, le, length: 42), // longer upper arm
+      Stick(le, lh, minLength: 36, maxLength: 48, stiffness: 0.95), // longer forearm
+      Stick(rs, re, length: 42),
+      Stick(re, rh, minLength: 36, maxLength: 48, stiffness: 0.95),
+      Stick(lp, lk, length: 42), // longer thigh
+      Stick(lk, lf, minLength: 38, maxLength: 50, stiffness: 0.95), // longer shin
+      Stick(rp, rk, length: 42),
+      Stick(rk, rf, minLength: 38, maxLength: 50, stiffness: 0.95),
     ];
   }
 
