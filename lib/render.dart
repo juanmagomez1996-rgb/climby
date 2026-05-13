@@ -123,13 +123,17 @@ class GameRenderer {
     c.restore();
   }
 
-  /// Draw sprite centered at point with optional rotation
+  /// Draw sprite centered at point with optional rotation. Negative aspect = horizontal flip.
   static void _at(Canvas c, ui.Image? img, Offset pos, double size,
       {double aspect = 1.0, double rotation = 0, Color? tint}) {
     if (img == null) return;
     c.save();
     c.translate(pos.dx, pos.dy);
     if (rotation != 0) c.rotate(rotation);
+    if (aspect < 0) {
+      c.scale(-1, 1); // horizontal flip
+      aspect = -aspect;
+    }
     _img(c, img, Rect.fromCenter(center: Offset.zero, width: size * aspect, height: size), tint: tint);
     c.restore();
   }
@@ -189,7 +193,7 @@ class GameRenderer {
         canvas.drawRRect(RRect.fromRectAndRadius(
             Rect.fromCenter(center: Offset(g.size.x / 2, fy - 18), width: 124, height: 20),
             const Radius.circular(5)), Paint()..color = const Color(0xFFF2B134));
-        _text(canvas, 'META', g.size.x / 2, fy - 26, cc: const Color(0xFF3A2E1F), s: 13, w: FontWeight.w900, a: TextAlign.center);
+        _text(canvas, 'META', g.size.x / 2, fy - 26, c: const Color(0xFF3A2E1F), s: 13, w: FontWeight.w900, a: TextAlign.center);
       }
     }
   }
@@ -336,11 +340,11 @@ class GameRenderer {
 
     // DRAW ORDER: back limbs → torso/shorts → front limbs → hands/feet → head
 
-    // 1. BACK ARM (right)
+    // 1. BACK ARM (right): shoulder → elbow, elbow → hand position
     _bone(canvas, GameAssets.char('arm_upper'), rs, re, 40 * sc, 145 * sc, tint: skinT);
     _bone(canvas, GameAssets.char('arm_lower'), re, rh, 36 * sc, 144 * sc, tint: skinT);
 
-    // 2. BACK LEG (right)
+    // 2. BACK LEG (right): hip → knee, knee → foot position
     _bone(canvas, GameAssets.char('leg_upper'), rp, rk, 44 * sc, 150 * sc, tint: shortsT);
     _bone(canvas, GameAssets.char('leg_lower'), rk, rf, 38 * sc, 150 * sc, tint: skinT);
 
@@ -360,15 +364,16 @@ class GameRenderer {
     _bone(canvas, GameAssets.char('arm_upper'), ls, le, 40 * sc, 145 * sc, tint: skinT);
     _bone(canvas, GameAssets.char('arm_lower'), le, lh, 36 * sc, 144 * sc, tint: skinT);
 
-    // 7. HANDS — constrained rotation: follow forearm angle but max ±35°
+    // 7. HANDS — at the END of the forearm, constrained rotation
     final lhAng = math.atan2(lh.dy - le.dy, lh.dx - le.dx) - math.pi / 2;
     final rhAng = math.atan2(rh.dy - re.dy, rh.dx - re.dx) - math.pi / 2;
     final lhRot = _clampAng(lhAng, 0, math.pi * 0.35);
     final rhRot = _clampAng(rhAng, 0, math.pi * 0.35);
     _at(canvas, GameAssets.char('hand_left'), lh, 44 * sc, aspect: 102.0 / 122, rotation: lhRot, tint: skinT);
-    _at(canvas, GameAssets.char('hand_right'), rh, 44 * sc, aspect: 98.0 / 122, rotation: rhRot, tint: skinT);
+    // hand_right: flip horizontally by using negative aspect
+    _at(canvas, GameAssets.char('hand_right'), rh, 44 * sc, aspect: -98.0 / 122, rotation: rhRot, tint: skinT);
 
-    // 8. FEET — constrained: always point roughly downward, max ±25° tilt
+    // 8. FEET — constrained: always point roughly downward, max ±20° tilt
     final lfAng = math.atan2(lf.dy - lk.dy, lf.dx - lk.dx) - math.pi / 2;
     final rfAng = math.atan2(rf.dy - rk.dy, rf.dx - rk.dx) - math.pi / 2;
     final lfRot = _clampAng(lfAng, 0, math.pi * 0.2);
@@ -376,10 +381,10 @@ class GameRenderer {
     _at(canvas, GameAssets.char('foot_left'), lf, 55 * sc, aspect: 146.0 / 130, rotation: lfRot, tint: shoeT);
     _at(canvas, GameAssets.char('foot_right'), rf, 55 * sc, aspect: 145.0 / 130, rotation: rfRot, tint: shoeT);
 
-    // 9. HEAD — no rotation, always readable
+    // 9. HEAD — NO TINT (preserves white of eyes/teeth), only burn darkens
     final headImg = _headImg(g.faceState);
     _at(canvas, headImg, head, 68 * sc, aspect: 153.0 / 148,
-        tint: (burnC != null) ? burnC : skinT);
+        tint: burnC);
 
     // Grip indicators
     for (final k in ['LH', 'RH', 'LF', 'RF']) {
@@ -456,11 +461,11 @@ class GameRenderer {
     _bone(canvas, GameAssets.char('arm_lower'), lePos, lhPos, 36 * sc, 144 * sc, tint: skinT);
     // Hands+feet (no rotation in preview)
     _at(canvas, GameAssets.char('hand_left'), lhPos, 44 * sc, aspect: 102.0 / 122, tint: skinT);
-    _at(canvas, GameAssets.char('hand_right'), rhPos, 44 * sc, aspect: 98.0 / 122, tint: skinT);
+    _at(canvas, GameAssets.char('hand_right'), rhPos, 44 * sc, aspect: -98.0 / 122, tint: skinT);
     _at(canvas, GameAssets.char('foot_left'), lfPos, 55 * sc, aspect: 146.0 / 130);
     _at(canvas, GameAssets.char('foot_right'), rfPos, 55 * sc, aspect: 145.0 / 130);
-    // Head
-    _at(canvas, _headImg(faceState), headPos, 68 * sc, aspect: 153.0 / 148, tint: skinT);
+    // Head — no tint (preserve eye whites)
+    _at(canvas, _headImg(faceState), headPos, 68 * sc, aspect: 153.0 / 148);
   }
 
   // ---- PARTICLES ----
