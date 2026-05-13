@@ -431,6 +431,12 @@ class ClimbyGame extends FlameGame {
     deathMode = DeathMode.lava;
     faceState = FaceState.burning;
     burnTime = 0;
+    // Release all grips so character falls into lava
+    for (final k in ['LH', 'RH', 'LF', 'RF']) {
+      grips[k] = null;
+      final p = char.limbByKey(k);
+      p.locked = false;
+    }
     audio.fall();
     shake(15, 0.6);
     audio.stopMusic();
@@ -438,22 +444,43 @@ class ClimbyGame extends FlameGame {
 
   void _updateLavaBurn(double dt) {
     burnTime += dt;
-    if (burnTime < 2.5) {
-      for (int i = 0; i < 3; i++) {
-        _spawnFlame(char.chest.x + rnd(-15, 15), char.chest.y + rnd(-30, 30));
+
+    // Apply gravity so character sinks into lava
+    final bm = bodyMultipliers(Prefs.customization.bodyType);
+    for (final p in char.points) {
+      if (p.locked) continue;
+      p.applyForce(0, -kGravity * bm.weight * 0.5); // slower sinking
+    }
+    for (final p in char.points) {
+      p.integrate(dt);
+    }
+    for (int i = 0; i < kIterations; i++) {
+      for (final s in char.sticks) {
+        s.solve();
       }
-      if (kRand.nextDouble() < 0.3) {
+    }
+
+    if (burnTime < 2.5) {
+      // Spawn flames on all body parts
+      for (int i = 0; i < 4; i++) {
+        final pt = char.points[kRand.nextInt(char.points.length)];
+        _spawnFlame(pt.x + rnd(-10, 10), pt.y + rnd(-10, 10));
+      }
+      if (kRand.nextDouble() < 0.4) {
         _spawnAsh(char.chest.x + rnd(-20, 20), char.chest.y + rnd(-30, 30));
       }
-      if (kRand.nextDouble() < 0.3) {
+      // Shake character
+      if (kRand.nextDouble() < 0.4) {
         for (final p in char.points) {
-          p.x += rnd(-2, 2);
-          p.y += rnd(-2, 2);
+          p.x += rnd(-3, 3);
+          p.y += rnd(-3, 3);
         }
       }
     }
+
     final torsoY = (char.chest.y + char.pelvis.y) / 2;
     camY += (torsoY - camY) * 0.05;
+
     if (burnTime > 2.5 && faceState == FaceState.burning) {
       faceState = FaceState.dead;
     }
@@ -849,11 +876,17 @@ class ClimbyGame extends FlameGame {
       final start = level!.holds.first;
       if (char.pelvis.y < start.y - 80) {
         fallen = true;
-        deathMode = DeathMode.fall;
         faceState = FaceState.scared;
         audio.fall();
         shake(10, 0.4);
-        _activateBallPit('¡Te caíste!');
+        if (bossMode) {
+          // In boss mode: burn in lava, no ball pit
+          _activateLavaBurn();
+        } else {
+          // Normal mode: fall into ball pit
+          deathMode = DeathMode.fall;
+          _activateBallPit('¡Te caíste!');
+        }
       }
     }
 
@@ -867,14 +900,17 @@ class ClimbyGame extends FlameGame {
     }
 
     final minStam = stamina.values.reduce(math.min);
-    if (_gripCount() == 0) {
-      faceState = FaceState.scared;
-    } else if (minStam < 30) {
-      faceState = FaceState.focused;
-    } else if (h2 > recordHeight - 1 && recordHeight > 2) {
-      faceState = FaceState.focused;
-    } else {
-      faceState = FaceState.neutral;
+    // Don't override burning/dead face
+    if (faceState != FaceState.burning && faceState != FaceState.dead) {
+      if (_gripCount() == 0) {
+        faceState = FaceState.scared;
+      } else if (minStam < 30) {
+        faceState = FaceState.focused;
+      } else if (h2 > recordHeight - 1 && recordHeight > 2) {
+        faceState = FaceState.focused;
+      } else {
+        faceState = FaceState.neutral;
+      }
     }
 
     final torsoY = (char.chest.y + char.pelvis.y) / 2;
