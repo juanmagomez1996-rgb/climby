@@ -263,6 +263,20 @@ class _MenuScreenState extends State<MenuScreen> {
       body: SafeArea(
         child: Stack(
           children: [
+            // Issue #10: Menu background image (1080x1920)
+            Positioned.fill(
+              child: Image.asset('assets/ui/menu_bg.png',
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Container(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                      colors: [Color(0xFFD6E4EC), Color(0xFFF4EAD5), Color(0xFFD8C89A)],
+                    ),
+                  ),
+                ),
+              ),
+            ),
             Center(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(20),
