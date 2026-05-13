@@ -3,73 +3,84 @@ import 'dart:ui' as ui;
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'physics.dart';
 import 'holds.dart';
 import 'climby_game.dart';
 import 'storage.dart';
 
-/// Preloaded images for the game
+// =========================================================
+//  GameAssets — preload all SVGs as PictureInfo at startup
+// =========================================================
 class GameAssets {
-  static final Map<String, ui.Image> _cache = {};
+  static final Map<String, PictureInfo> _svgCache = {};
+  static final Map<String, ui.Size> _sizes = {};
   static bool loaded = false;
+
+  static final List<String> _allAssets = [
+    'assets/character/head_neutral.svg',
+    'assets/character/head_happy.svg',
+    'assets/character/head_scared.svg',
+    'assets/character/head_focused.svg',
+    'assets/character/head_burning.svg',
+    'assets/character/head_dead.svg',
+    'assets/character/torso.svg',
+    'assets/character/shorts.svg',
+    'assets/character/arm_upper.svg',
+    'assets/character/arm_lower.svg',
+    'assets/character/hand_left.svg',
+    'assets/character/hand_right.svg',
+    'assets/character/leg_upper.svg',
+    'assets/character/leg_lower.svg',
+    'assets/character/foot_left.svg',
+    'assets/character/foot_right.svg',
+    'assets/holds/hold_normal.svg',
+    'assets/holds/hold_fragile.svg',
+    'assets/holds/hold_bouncy.svg',
+    'assets/holds/hold_magnet.svg',
+    'assets/holds/hold_sticky.svg',
+    'assets/holds/hold_slippery.svg',
+    'assets/holds/hold_moving.svg',
+    'assets/ui/logo_climby.svg',
+    'assets/ui/trophy.svg',
+    'assets/ui/skull.svg',
+  ];
 
   static Future<void> loadAll() async {
     if (loaded) return;
-    final assets = [
-      'assets/character/head_neutral.png',
-      'assets/character/head_happy.png',
-      'assets/character/head_scared.png',
-      'assets/character/head_focused.png',
-      'assets/character/head_burning.png',
-      'assets/character/head_dead.png',
-      'assets/character/torso.png',
-      'assets/character/shorts.png',
-      'assets/character/arm_upper.png',
-      'assets/character/arm_lower.png',
-      'assets/character/hand_left.png',
-      'assets/character/hand_right.png',
-      'assets/character/leg_upper.png',
-      'assets/character/leg_lower.png',
-      'assets/character/foot_left.png',
-      'assets/character/foot_right.png',
-      'assets/holds/hold_normal.png',
-      'assets/holds/hold_fragile.png',
-      'assets/holds/hold_bouncy.png',
-      'assets/holds/hold_magnet.png',
-      'assets/holds/hold_sticky.png',
-      'assets/holds/hold_slippery.png',
-      'assets/holds/hold_moving.png',
-      'assets/ui/logo_climby.png',
-      'assets/ui/trophy.png',
-      'assets/ui/skull.png',
-    ];
-    for (final path in assets) {
+    for (final path in _allAssets) {
       try {
-        final data = await rootBundle.load(path);
-        final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
-        final frame = await codec.getNextFrame();
-        _cache[path] = frame.image;
+        final raw = await rootBundle.loadString(path);
+        final info = await vg.loadPicture(SvgStringLoader(raw), null);
+        _svgCache[path] = info;
+        _sizes[path] = info.size;
       } catch (e) {
-        // Asset not found — will use fallback drawing
+        // Skip missing assets — fallback drawing used
       }
     }
     loaded = true;
   }
 
-  static ui.Image? get(String path) => _cache[path];
-  static ui.Image? char(String name) => _cache['assets/character/$name.png'];
-  static ui.Image? hold(String name) => _cache['assets/holds/$name.png'];
-  static ui.Image? ui2(String name) => _cache['assets/ui/$name.png'];
+  static PictureInfo? _get(String path) => _svgCache[path];
+  static ui.Size? _size(String path) => _sizes[path];
+
+  static PictureInfo? char(String name) => _get('assets/character/$name.svg');
+  static ui.Size? charSize(String name) => _size('assets/character/$name.svg');
+  static PictureInfo? hold(String name) => _get('assets/holds/$name.svg');
+  static ui.Size? holdSize(String name) => _size('assets/holds/$name.svg');
+  static PictureInfo? ui2(String name) => _get('assets/ui/$name.svg');
+  static ui.Size? uiSize(String name) => _size('assets/ui/$name.svg');
 }
 
+// =========================================================
+//  GameRenderer
+// =========================================================
 class GameRenderer {
   static void render(Canvas canvas, ClimbyGame g) {
     if (g.shakeTime > 0) {
       final s = g.shakeIntensity * (g.shakeTime / 0.3);
-      final dx = rnd(-s, s);
-      final dy = rnd(-s, s);
       canvas.save();
-      canvas.translate(dx, dy);
+      canvas.translate(rnd(-s, s), rnd(-s, s));
     }
 
     _drawBackground(canvas, g);
@@ -97,67 +108,86 @@ class GameRenderer {
     if (g.deathMode == DeathMode.lava) _drawBurnEffect(canvas, g);
   }
 
-  // =========== SPRITE DRAWING HELPERS ===========
+  // =========================================================
+  //  SVG DRAWING HELPERS
+  // =========================================================
 
-  /// Draw a sprite rotated between two physics points (like a bone)
-  static void _drawSpriteBone(Canvas canvas, ui.Image? img,
-      Offset from, Offset to, double drawWidth, double drawHeight,
-      {double pivotY = 0.08, Color? tint}) {
-    if (img == null) {
-      // Fallback: draw colored line
-      final p = Paint()..color = (tint ?? const Color(0xFFC69365))
-        ..strokeWidth = drawWidth * 0.6..strokeCap = StrokeCap.round;
-      canvas.drawLine(from, to, Paint()..color = const Color(0xFF3A2E1F)
-        ..strokeWidth = drawWidth * 0.6 + 4..strokeCap = StrokeCap.round);
-      canvas.drawLine(from, to, p);
-      return;
-    }
-    final ang = math.atan2(to.dy - from.dy, to.dx - from.dx) - math.pi / 2;
-    final len = (to - from).distance;
-    final scale = len / (drawHeight * (1 - pivotY));
-
+  /// Paint an SVG Picture to canvas at a given rect with optional color tint
+  static void _paintSvg(Canvas canvas, PictureInfo? info, Rect dst, {Color? tint}) {
+    if (info == null) return;
     canvas.save();
-    canvas.translate(from.dx, from.dy);
-    canvas.rotate(ang);
-    // Pivot is at pivotY fraction from top
-    final w = drawWidth * scale;
-    final h = drawHeight * scale;
-    final rect = Rect.fromLTWH(-w / 2, -h * pivotY, w, h);
+    canvas.translate(dst.left, dst.top);
+    canvas.scale(dst.width / info.size.width, dst.height / info.size.height);
     if (tint != null) {
-      canvas.drawImageRect(img,
-          Rect.fromLTWH(0, 0, img.width.toDouble(), img.height.toDouble()),
-          rect, Paint()..colorFilter = ColorFilter.mode(tint, BlendMode.modulate));
+      canvas.saveLayer(Rect.fromLTWH(0, 0, info.size.width, info.size.height), Paint());
+      canvas.drawPicture(info.picture);
+      canvas.drawRect(
+        Rect.fromLTWH(0, 0, info.size.width, info.size.height),
+        Paint()..colorFilter = ColorFilter.mode(tint, BlendMode.modulate),
+      );
+      canvas.restore(); // saveLayer
     } else {
-      canvas.drawImageRect(img,
-          Rect.fromLTWH(0, 0, img.width.toDouble(), img.height.toDouble()),
-          rect, Paint());
+      canvas.drawPicture(info.picture);
     }
     canvas.restore();
   }
 
-  /// Draw a sprite centered at a point
-  static void _drawSpriteAt(Canvas canvas, ui.Image? img,
-      Offset pos, double size, {double aspect = 1.0, double rotation = 0, Color? tint}) {
-    if (img == null) return;
+  /// Draw SVG as a bone between two physics points
+  /// pivotY = fraction from top where rotation anchor is (0=top, 1=bottom)
+  static void _drawSvgBone(Canvas canvas, PictureInfo? info,
+      Offset from, Offset to, double drawWidth, double drawHeight,
+      {double pivotY = 0.08, Color? tint}) {
+    if (info == null) {
+      // Fallback: colored capsule
+      final p = Paint()..color = (tint ?? const Color(0xFFC69365))
+        ..strokeWidth = drawWidth * 0.7..strokeCap = StrokeCap.round;
+      canvas.drawLine(from, to, Paint()..color = const Color(0xFF3A2E1F)
+        ..strokeWidth = drawWidth * 0.7 + 4..strokeCap = StrokeCap.round);
+      canvas.drawLine(from, to, p);
+      return;
+    }
+    final angle = math.atan2(to.dy - from.dy, to.dx - from.dx) - math.pi / 2;
+    final dist = (to - from).distance;
+    final scale = dist / (drawHeight * (1.0 - pivotY));
+
+    canvas.save();
+    canvas.translate(from.dx, from.dy);
+    canvas.rotate(angle);
+    final w = drawWidth * scale;
+    final h = drawHeight * scale;
+    final rect = Rect.fromLTWH(-w / 2, -h * pivotY, w, h);
+    _paintSvg(canvas, info, rect, tint: tint);
+    canvas.restore();
+  }
+
+  /// Draw SVG centered at a point with constrained rotation
+  static void _drawSvgAt(Canvas canvas, PictureInfo? info,
+      Offset pos, double size,
+      {double aspect = 1.0, double rotation = 0, Color? tint}) {
+    if (info == null) return;
     final w = size * aspect;
     final h = size;
     canvas.save();
     canvas.translate(pos.dx, pos.dy);
     if (rotation != 0) canvas.rotate(rotation);
     final rect = Rect.fromCenter(center: Offset.zero, width: w, height: h);
-    if (tint != null) {
-      canvas.drawImageRect(img,
-          Rect.fromLTWH(0, 0, img.width.toDouble(), img.height.toDouble()),
-          rect, Paint()..colorFilter = ColorFilter.mode(tint, BlendMode.modulate));
-    } else {
-      canvas.drawImageRect(img,
-          Rect.fromLTWH(0, 0, img.width.toDouble(), img.height.toDouble()),
-          rect, Paint());
-    }
+    _paintSvg(canvas, info, rect, tint: tint);
     canvas.restore();
   }
 
-  // =========== BACKGROUND ===========
+  /// Clamp an angle to a range around a base angle
+  static double _clampAngle(double angle, double base, double maxDev) {
+    double diff = angle - base;
+    // Normalize to [-pi, pi]
+    while (diff > math.pi) diff -= 2 * math.pi;
+    while (diff < -math.pi) diff += 2 * math.pi;
+    diff = diff.clamp(-maxDev, maxDev);
+    return base + diff;
+  }
+
+  // =========================================================
+  //  BACKGROUND
+  // =========================================================
   static void _drawBackground(Canvas canvas, ClimbyGame g) {
     final rect = Rect.fromLTWH(0, 0, g.size.x, g.size.y);
     Paint paint;
@@ -201,10 +231,10 @@ class GameRenderer {
         canvas.drawLine(Offset(rx, ry), Offset(rx + 4, ry + 16), rp);
       }
     }
-    // Flash
     if (g.weather == WeatherType.storm && g.flashTime > 0) {
       canvas.drawRect(rect, Paint()..color = Color.fromRGBO(255, 255, 255, g.flashTime * 0.6));
     }
+
     // Finish line
     if (g.level != null) {
       final fy = g.size.y / 2 - (g.level!.finishY - g.camY) * g.cameraZoom;
@@ -248,7 +278,9 @@ class GameRenderer {
     tp.paint(canvas, Offset(dx, y));
   }
 
-  // =========== HOLDS (sprite-based) ===========
+  // =========================================================
+  //  HOLDS (SVG-based)
+  // =========================================================
   static void _drawHolds(Canvas canvas, ClimbyGame g) {
     for (final hold in g.level!.holds) {
       if (hold.broken) continue;
@@ -280,19 +312,22 @@ class GameRenderer {
 
   static void _drawHold(Canvas canvas, Hold hold, double sx, double sy, double zoom) {
     final r = hold.r * zoom;
-    final img = GameAssets.hold(_holdAssetName(hold.type));
-    if (img != null) {
-      final size = r * 2.8;
-      final aspect = img.width / img.height;
-      _drawSpriteAt(canvas, img, Offset(sx, sy), size, aspect: aspect);
+    final assetName = _holdAssetName(hold.type);
+    final info = GameAssets.hold(assetName);
+    if (info != null) {
+      final svgSize = GameAssets.holdSize(assetName)!;
+      final aspect = svgSize.width / svgSize.height;
+      final drawH = r * 2.6;
+      final drawW = drawH * aspect;
+      _paintSvg(canvas, info,
+          Rect.fromCenter(center: Offset(sx, sy), width: drawW, height: drawH));
       // Crack overlay for damaged fragile
       if (hold.type == HoldType.fragile && hold.hp < 2) {
         final p = Paint()..color = const Color(0xFF3A2E1F)..strokeWidth = 2..strokeCap = StrokeCap.round;
         canvas.drawLine(Offset(sx - r * 0.5, sy - r * 0.3), Offset(sx + r * 0.4, sy + r * 0.5), p);
-        canvas.drawLine(Offset(sx + r * 0.1, sy - r * 0.4), Offset(sx - r * 0.2, sy + r * 0.3), p);
       }
     } else {
-      // Fallback: draw colored circle
+      // Fallback circle
       final color = holdColor(hold.type);
       canvas.drawCircle(Offset(sx + 2, sy + 3), r, Paint()..color = const Color(0x553A2E1F));
       canvas.drawCircle(Offset(sx, sy), r, Paint()..color = color);
@@ -301,7 +336,9 @@ class GameRenderer {
     }
   }
 
-  // =========== LAVA ===========
+  // =========================================================
+  //  LAVA
+  // =========================================================
   static void _drawLava(Canvas canvas, ClimbyGame g) {
     if (!g.bossMode) return;
     if (g.lavaY < -150) return;
@@ -337,13 +374,15 @@ class GameRenderer {
           Rect.fromLTWH(0, 0, g.size.x, g.size.y)));
   }
 
-  // =========== CHARACTER (sprite-based) ===========
+  // =========================================================
+  //  CHARACTER (SVG sprite-based with physics)
+  // =========================================================
   static void _drawCharacter(Canvas canvas, ClimbyGame g) {
     final c = g.char;
     final br = (g.gripCountPublic() == 4 && g.dragLimb == null) ? g.breatheOffset : 0.0;
     final z = g.cameraZoom;
 
-    // Screen positions for all points
+    // Screen positions for all physics points
     final head = _ws(g, c.head.x, c.head.y + br);
     final chest = _ws(g, c.chest.x, c.chest.y + br * 0.5);
     final ls = _ws(g, c.ls.x, c.ls.y + br * 0.5);
@@ -359,72 +398,105 @@ class GameRenderer {
     final lk = _ws(g, c.lk.x, c.lk.y);
     final rk = _ws(g, c.rk.x, c.rk.y);
 
-    // Burn tint
-    Color? tint;
+    // Get customization colors
+    final cust = Prefs.customization;
+    final skinTint = cust.skinColor;
+    final shirtTint = cust.shirtColor;
+    final shortsTint = cust.shortsColor;
+
+    // Burn tint — darkens everything progressively
+    Color? burnTint;
     if (g.faceState == FaceState.burning || g.faceState == FaceState.dead) {
       final t = (g.burnTime / 2.5).clamp(0.0, 1.0);
       final grey = (255 * (1 - t * 0.8)).round();
-      tint = Color.fromARGB(255, grey, grey, grey);
+      burnTint = Color.fromARGB(255, grey, grey, grey);
     }
 
-    // Scale factor for sprites based on zoom
-    final sc = z * 0.8;
+    // Apply burn on top of customization tints
+    Color? skinFinal = burnTint ?? skinTint;
+    Color? shirtFinal = burnTint ?? shirtTint;
+    Color? shortsFinal = burnTint ?? shortsTint;
+    Color? shoeFinal = burnTint;
 
-    // ===== DRAW ORDER: back → body → front → head =====
+    // Scale factor
+    final sc = z * 1.0;
 
-    // 1. Back arm (right): shoulder → elbow → hand
-    _drawSpriteBone(canvas, GameAssets.char('arm_upper'), rs, re, 30 * sc, 145 * sc, tint: tint);
-    _drawSpriteBone(canvas, GameAssets.char('arm_lower'), re, rh, 25 * sc, 145 * sc, tint: tint);
+    // ===== DRAW ORDER: back limbs → torso → front limbs → hands/feet → head =====
 
-    // 2. Back leg (right): hip → knee → foot
-    _drawSpriteBone(canvas, GameAssets.char('leg_upper'), rp, rk, 35 * sc, 150 * sc, tint: tint);
-    _drawSpriteBone(canvas, GameAssets.char('leg_lower'), rk, rf, 30 * sc, 150 * sc, tint: tint);
+    // 1. BACK ARM (right): shoulder → elbow → hand
+    _drawSvgBone(canvas, GameAssets.char('arm_upper'), rs, re,
+        38 * sc, 145 * sc, tint: skinFinal);
+    _drawSvgBone(canvas, GameAssets.char('arm_lower'), re, rh,
+        34 * sc, 144 * sc, tint: skinFinal);
 
-    // 3. Torso (chest → pelvis center)
-    final pelvisCenter = Offset((lp.dx + rp.dx) / 2, (lp.dy + rp.dy) / 2);
-    _drawSpriteBone(canvas, GameAssets.char('torso'), chest, pelvisCenter, 55 * sc, 155 * sc, pivotY: 0.12, tint: tint);
+    // 2. BACK LEG (right): hip → knee → foot
+    _drawSvgBone(canvas, GameAssets.char('leg_upper'), rp, rk,
+        42 * sc, 150 * sc, tint: shortsFinal);
+    _drawSvgBone(canvas, GameAssets.char('leg_lower'), rk, rf,
+        36 * sc, 150 * sc, tint: skinFinal);
 
-    // 4. Shorts (pelvis → slightly below)
-    final shortsEnd = Offset(pelvisCenter.dx, pelvisCenter.dy + 20 * sc);
-    _drawSpriteBone(canvas, GameAssets.char('shorts'), pelvisCenter, shortsEnd, 55 * sc, 115 * sc, pivotY: 0.1, tint: tint);
+    // 3. TORSO: chest → pelvis center
+    final pelvis = Offset((lp.dx + rp.dx) / 2, (lp.dy + rp.dy) / 2);
+    _drawSvgBone(canvas, GameAssets.char('torso'), chest, pelvis,
+        65 * sc, 155 * sc, pivotY: 0.10, tint: shirtFinal);
 
-    // 5. Front leg (left)
-    _drawSpriteBone(canvas, GameAssets.char('leg_upper'), lp, lk, 35 * sc, 150 * sc, tint: tint);
-    _drawSpriteBone(canvas, GameAssets.char('leg_lower'), lk, lf, 30 * sc, 150 * sc, tint: tint);
+    // 4. SHORTS: pelvis → just below
+    final shortsEnd = Offset(pelvis.dx, pelvis.dy + 18 * sc);
+    _drawSvgBone(canvas, GameAssets.char('shorts'), pelvis, shortsEnd,
+        65 * sc, 115 * sc, pivotY: 0.05, tint: shortsFinal);
 
-    // 6. Front arm (left)
-    _drawSpriteBone(canvas, GameAssets.char('arm_upper'), ls, le, 30 * sc, 145 * sc, tint: tint);
-    _drawSpriteBone(canvas, GameAssets.char('arm_lower'), le, lh, 25 * sc, 145 * sc, tint: tint);
+    // 5. FRONT LEG (left)
+    _drawSvgBone(canvas, GameAssets.char('leg_upper'), lp, lk,
+        42 * sc, 150 * sc, tint: shortsFinal);
+    _drawSvgBone(canvas, GameAssets.char('leg_lower'), lk, lf,
+        36 * sc, 150 * sc, tint: skinFinal);
 
-    // 7. Hands
-    final handSize = 40 * sc;
-    _drawSpriteAt(canvas, GameAssets.char('hand_left'), lh, handSize,
-        aspect: 306.0 / 365, tint: tint);
-    _drawSpriteAt(canvas, GameAssets.char('hand_right'), rh, handSize,
-        aspect: 294.0 / 367, tint: tint);
+    // 6. FRONT ARM (left)
+    _drawSvgBone(canvas, GameAssets.char('arm_upper'), ls, le,
+        38 * sc, 145 * sc, tint: skinFinal);
+    _drawSvgBone(canvas, GameAssets.char('arm_lower'), le, lh,
+        34 * sc, 144 * sc, tint: skinFinal);
 
-    // 8. Feet
-    final footSize = 48 * sc;
-    final lfAng = math.atan2(lf.dy - lk.dy, lf.dx - lk.dx);
-    final rfAng = math.atan2(rf.dy - rk.dy, rf.dx - rk.dx);
-    _drawSpriteAt(canvas, GameAssets.char('foot_left'), lf, footSize,
-        aspect: 439.0 / 391, rotation: lfAng + math.pi / 2, tint: tint);
-    _drawSpriteAt(canvas, GameAssets.char('foot_right'), rf, footSize,
-        aspect: 435.0 / 391, rotation: rfAng + math.pi / 2, tint: tint);
+    // 7. HANDS — constrained rotation (max ±40° from vertical down)
+    final handSize = 42 * sc;
+    final lhAng = math.atan2(lh.dy - le.dy, lh.dx - le.dx);
+    final rhAng = math.atan2(rh.dy - re.dy, rh.dx - re.dx);
+    // Clamp hands: mostly hang down (pi/2 = straight down in screen coords)
+    // Allow ±60° deviation from the forearm angle but never flip upside down
+    final lhRot = _clampAngle(lhAng - math.pi / 2, 0, math.pi * 0.35);
+    final rhRot = _clampAngle(rhAng - math.pi / 2, 0, math.pi * 0.35);
 
-    // 9. HEAD — always on top
-    final headImg = _getHeadImage(g.faceState);
-    final headSize = 60 * sc;
-    _drawSpriteAt(canvas, headImg, head, headSize,
-        aspect: 459.0 / 444, tint: tint);
+    _drawSvgAt(canvas, GameAssets.char('hand_left'), lh, handSize,
+        aspect: 102.0 / 122, rotation: lhRot, tint: skinFinal);
+    _drawSvgAt(canvas, GameAssets.char('hand_right'), rh, handSize,
+        aspect: 98.0 / 122, rotation: rhRot, tint: skinFinal);
 
-    // Grip indicators
+    // 8. FEET — constrained rotation (always pointing roughly down/forward)
+    final footSize = 52 * sc;
+    final lfRawAng = math.atan2(lf.dy - lk.dy, lf.dx - lk.dx);
+    final rfRawAng = math.atan2(rf.dy - rk.dy, rf.dx - rk.dx);
+    // Feet should point ~down with max ±30° tilt
+    // In screen coords, "straight down" for the foot sprite is ~0 rotation
+    final lfRot = _clampAngle(lfRawAng - math.pi / 2, 0, math.pi * 0.25);
+    final rfRot = _clampAngle(rfRawAng - math.pi / 2, 0, math.pi * 0.25);
+
+    _drawSvgAt(canvas, GameAssets.char('foot_left'), lf, footSize,
+        aspect: 146.0 / 130, rotation: lfRot, tint: shoeFinal);
+    _drawSvgAt(canvas, GameAssets.char('foot_right'), rf, footSize,
+        aspect: 145.0 / 130, rotation: rfRot, tint: shoeFinal);
+
+    // 9. HEAD — always on top, no rotation (face always readable)
+    final headInfo = _getHeadInfo(g.faceState);
+    final headSize = 65 * sc;
+    _drawSvgAt(canvas, headInfo, head, headSize,
+        aspect: 153.0 / 148, tint: (g.faceState == FaceState.burning || g.faceState == FaceState.dead) ? burnTint : skinFinal);
+
+    // Grip indicators (green circles around gripped limbs)
     for (final k in ['LH', 'RH', 'LF', 'RF']) {
       if (g.grips[k] != null) {
         final p = c.limbByKey(k);
         final s = g.worldToScreen(p.x, p.y);
-        final isFoot = k.contains('F');
-        canvas.drawCircle(Offset(s.x, s.y), isFoot ? 26 : 18,
+        canvas.drawCircle(Offset(s.x, s.y), k.contains('F') ? 28 : 20,
             Paint()..color = const Color(0x445A8A3A)..style = PaintingStyle.stroke..strokeWidth = 2.5);
       }
     }
@@ -439,8 +511,6 @@ class GameRenderer {
       canvas.drawCircle(Offset(s.x, s.y), reach * z,
           Paint()..color = const Color(0x333A2E1F)..style = PaintingStyle.stroke..strokeWidth = 2);
     }
-
-    // Stamina rings on HUD
   }
 
   static Offset _ws(ClimbyGame g, double wx, double wy) {
@@ -448,7 +518,7 @@ class GameRenderer {
     return Offset(v.x, v.y);
   }
 
-  static ui.Image? _getHeadImage(FaceState state) {
+  static PictureInfo? _getHeadInfo(FaceState state) {
     switch (state) {
       case FaceState.happy: return GameAssets.char('head_happy');
       case FaceState.scared: return GameAssets.char('head_scared');
@@ -459,56 +529,9 @@ class GameRenderer {
     }
   }
 
-  // Also expose drawCharacterAt for tutorial/preview (static poses)
-  static void drawCharacterAt(Canvas canvas, {
-    required Offset headPos,
-    required Offset chestPos,
-    required Offset lsPos, required Offset rsPos,
-    required Offset lpPos, required Offset rpPos,
-    required Offset lhPos, required Offset rhPos,
-    required Offset lePos, required Offset rePos,
-    required Offset lfPos, required Offset rfPos,
-    required Offset lkPos, required Offset rkPos,
-    required dynamic cust,
-    required double headR,
-    FaceState faceState = FaceState.neutral,
-    Map<String, double>? stamina,
-    Map<String, dynamic>? grips,
-    double tNow = 0,
-    double scale = 1.0,
-    bool blinking = false,
-  }) {
-    final sc = scale * 0.8;
-
-    // Back arm + leg
-    _drawSpriteBone(canvas, GameAssets.char('arm_upper'), rsPos, rePos, 30 * sc, 145 * sc);
-    _drawSpriteBone(canvas, GameAssets.char('arm_lower'), rePos, rhPos, 25 * sc, 145 * sc);
-    _drawSpriteBone(canvas, GameAssets.char('leg_upper'), rpPos, rkPos, 35 * sc, 150 * sc);
-    _drawSpriteBone(canvas, GameAssets.char('leg_lower'), rkPos, rfPos, 30 * sc, 150 * sc);
-
-    // Torso + shorts
-    final pelvis = Offset((lpPos.dx + rpPos.dx) / 2, (lpPos.dy + rpPos.dy) / 2);
-    _drawSpriteBone(canvas, GameAssets.char('torso'), chestPos, pelvis, 55 * sc, 155 * sc, pivotY: 0.12);
-    final shortsEnd = Offset(pelvis.dx, pelvis.dy + 20 * sc);
-    _drawSpriteBone(canvas, GameAssets.char('shorts'), pelvis, shortsEnd, 55 * sc, 115 * sc, pivotY: 0.1);
-
-    // Front leg + arm
-    _drawSpriteBone(canvas, GameAssets.char('leg_upper'), lpPos, lkPos, 35 * sc, 150 * sc);
-    _drawSpriteBone(canvas, GameAssets.char('leg_lower'), lkPos, lfPos, 30 * sc, 150 * sc);
-    _drawSpriteBone(canvas, GameAssets.char('arm_upper'), lsPos, lePos, 30 * sc, 145 * sc);
-    _drawSpriteBone(canvas, GameAssets.char('arm_lower'), lePos, lhPos, 25 * sc, 145 * sc);
-
-    // Hands + feet
-    _drawSpriteAt(canvas, GameAssets.char('hand_left'), lhPos, 40 * sc, aspect: 306.0 / 365);
-    _drawSpriteAt(canvas, GameAssets.char('hand_right'), rhPos, 40 * sc, aspect: 294.0 / 367);
-    _drawSpriteAt(canvas, GameAssets.char('foot_left'), lfPos, 48 * sc, aspect: 439.0 / 391);
-    _drawSpriteAt(canvas, GameAssets.char('foot_right'), rfPos, 48 * sc, aspect: 435.0 / 391);
-
-    // Head on top
-    _drawSpriteAt(canvas, _getHeadImage(faceState), headPos, 60 * sc, aspect: 459.0 / 444);
-  }
-
-  // =========== PARTICLES ===========
+  // =========================================================
+  //  PARTICLES
+  // =========================================================
   static void _drawParticles(Canvas canvas, ClimbyGame g) {
     for (final p in g.particles) {
       final s = g.worldToScreen(p.x, p.y);
@@ -524,17 +547,16 @@ class GameRenderer {
         canvas.drawCircle(Offset(s.x, s.y), p.r,
             Paint()..color = p.color.withAlpha((alpha * 220).round())
               ..maskFilter = MaskFilter.blur(BlurStyle.normal, p.r * 0.3));
-      } else if (p.type == 'dust' || p.type == 'ash') {
-        canvas.drawCircle(Offset(s.x, s.y), p.r,
-            Paint()..color = p.color.withAlpha((alpha * 150).round()));
       } else {
         canvas.drawCircle(Offset(s.x, s.y), p.r,
-            Paint()..color = p.color.withAlpha((alpha * 255).round()));
+            Paint()..color = p.color.withAlpha((alpha * 150).round()));
       }
     }
   }
 
-  // =========== BALL PIT ===========
+  // =========================================================
+  //  BALL PIT
+  // =========================================================
   static void _drawBallPitBackground(Canvas canvas, ClimbyGame g) {
     final bp = g.ballPit!;
     final ptTop = g.worldToScreen(0, bp.pitTop).y;
@@ -542,7 +564,6 @@ class GameRenderer {
     final pl = g.worldToScreen(bp.pitLeft, 0).x;
     final pr = g.worldToScreen(bp.pitRight, 0).x;
     final pitH = ptBot - ptTop + 60;
-
     canvas.drawOval(Rect.fromCenter(center: Offset((pl + pr) / 2, ptBot + 35),
         width: (pr - pl) + 60, height: 28), Paint()..color = const Color(0x403A2E1F));
     final outer = Rect.fromLTWH(pl - 24, ptTop - 10, pr - pl + 48, pitH);
@@ -561,7 +582,6 @@ class GameRenderer {
     final bp = g.ballPit!;
     final balls = bp.balls.where((b) => behindPlayer ? b.depth < 0 : b.depth >= 0).toList();
     balls.sort((a, b) => b.y.compareTo(a.y));
-
     for (final ball in balls) {
       final s = g.worldToScreen(ball.x, ball.y);
       canvas.drawCircle(Offset(s.x + 2, s.y + 3), ball.r, Paint()..color = const Color(0x593A2E1F));
@@ -573,8 +593,17 @@ class GameRenderer {
     }
   }
 
-  // =========== HUD ===========
+  // =========================================================
+  //  HUD
+  // =========================================================
   static void _drawHUD(Canvas canvas, ClimbyGame g) {
+    // Logo in top-right corner (small)
+    final logoInfo = GameAssets.ui2('logo_climby');
+    if (logoInfo != null) {
+      _paintSvg(canvas, logoInfo,
+          Rect.fromLTWH(g.size.x - 115, 8, 105, 32));
+    }
+
     // Height box
     _drawHudBox(canvas, Rect.fromLTWH(12, 12, 110, 50));
     _drawText(canvas, 'ALTURA', 20, 18, color: const Color(0xFF3A2E1F), size: 10, weight: FontWeight.w700);
@@ -594,8 +623,7 @@ class GameRenderer {
       final start = g.level!.holds.first;
       final playerWorldY = start.y + g.maxHeight * 30;
       final lavaDistM = ((playerWorldY - g.lavaY) / 30).clamp(0.0, 999.0);
-      final lr = Rect.fromLTWH(12, g.size.y - 100, 130, 36);
-      _drawHudBox(canvas, lr);
+      _drawHudBox(canvas, Rect.fromLTWH(12, g.size.y - 100, 130, 36));
       _drawText(canvas, 'LAVA: ${lavaDistM.toStringAsFixed(1)}m', 22, g.size.y - 88,
           color: const Color(0xFFE85D3C), size: 13, weight: FontWeight.w900);
     }
@@ -606,7 +634,6 @@ class GameRenderer {
     const colors = [Color(0xFFE85D3C), Color(0xFF4A7BA6), Color(0xFF5A8A3A), Color(0xFFF2B134)];
     const limbKeys = ['LH', 'RH', 'LF', 'RF'];
     _drawHudBox(canvas, Rect.fromCenter(center: Offset(cx, cy), width: 200, height: 50), radius: 20);
-
     for (int i = 0; i < 4; i++) {
       final dx = cx - 70 + i * 47;
       final stam = g.stamina[limbKeys[i]]!;
@@ -633,7 +660,9 @@ class GameRenderer {
     canvas.drawRRect(rr, Paint()..color = const Color(0xFF3A2E1F)..style = PaintingStyle.stroke..strokeWidth = 3);
   }
 
-  // =========== WEATHER ===========
+  // =========================================================
+  //  WEATHER INDICATOR
+  // =========================================================
   static void _drawWeatherIndicator(Canvas canvas, ClimbyGame g) {
     if (g.weather == WeatherType.none) return;
     final txt = g.weather == WeatherType.wind ? 'VIENTO'
@@ -644,7 +673,9 @@ class GameRenderer {
         color: const Color(0xFF3A2E1F), size: 12, weight: FontWeight.w900, align: TextAlign.center);
   }
 
-  // =========== WIN BANNER ===========
+  // =========================================================
+  //  WIN BANNER (with trophy SVG)
+  // =========================================================
   static void _drawWinBanner(Canvas canvas, ClimbyGame g) {
     final t = g.cinematicTimer.clamp(0, 1).toDouble();
     final scale = (t * 1.2).clamp(0.0, 1.0);
@@ -652,14 +683,14 @@ class GameRenderer {
     canvas.translate(g.size.x / 2, g.size.y * 0.3);
     canvas.rotate(-0.08);
     canvas.scale(scale);
-    final rect = Rect.fromCenter(center: Offset.zero, width: 240, height: 80);
+    final rect = Rect.fromCenter(center: Offset.zero, width: 260, height: 90);
     _drawHudBox(canvas, rect, radius: 20);
-    // Trophy icon
-    final trophyImg = GameAssets.ui2('trophy');
-    if (trophyImg != null) {
-      _drawSpriteAt(canvas, trophyImg, const Offset(-90, 0), 50, aspect: 432.0 / 433);
+    // Trophy SVG
+    final trophyInfo = GameAssets.ui2('trophy');
+    if (trophyInfo != null) {
+      _paintSvg(canvas, trophyInfo, Rect.fromCenter(center: const Offset(-95, 0), width: 50, height: 50));
     }
-    _drawText(canvas, 'CIMA!', 10, -16,
+    _drawText(canvas, '¡CIMA!', 10, -18,
         color: const Color(0xFF3A2E1F), size: 32, weight: FontWeight.w900, align: TextAlign.center);
     canvas.restore();
   }
