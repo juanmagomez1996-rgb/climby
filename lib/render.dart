@@ -7,6 +7,10 @@ import 'physics.dart';
 import 'holds.dart';
 import 'climby_game.dart';
 import 'storage.dart';
+import 'trampoline.dart';
+import 'trampoline_game.dart';
+
+part 'trampoline_render.dart';
 
 // =========================================================
 //  GameAssets — preload PNGs as ui.Image

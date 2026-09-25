@@ -44,7 +44,7 @@ class Point {
     fy += fyIn;
   }
 
-  void integrate(double dt) {
+  void integrate(double dt, [double damping = kDamping]) {
     if (locked) {
       x = lockX;
       y = lockY;
@@ -54,8 +54,8 @@ class Point {
       fy = 0;
       return;
     }
-    final vx = (x - px) * kDamping;
-    final vy = (y - py) * kDamping;
+    final vx = (x - px) * damping;
+    final vy = (y - py) * damping;
     px = x;
     py = y;
     x += vx + fx * dt * dt;

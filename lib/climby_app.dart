@@ -6,6 +6,8 @@ import 'level.dart';
 import 'storage.dart';
 import 'audio.dart';
 import 'render.dart';
+import 'trampoline.dart';
+import 'trampoline_game.dart';
 
 class ClimbyApp extends StatelessWidget {
   const ClimbyApp({super.key});
@@ -295,6 +297,14 @@ class _MenuScreenState extends State<MenuScreen> {
                       audio.click();
                       _go(context, Level.procedural(), 'normal');
                     }),
+                    const SizedBox(height: 8),
+                    _Btn(label: '🤸 TRAMPOLÍN',
+                      background: const Color(0xFF4A7BA6), textColor: Colors.white,
+                      onTap: () {
+                        audio.click();
+                        Navigator.push(context,
+                          MaterialPageRoute(builder: (_) => const TrampolineScreen()));
+                      }),
                     const SizedBox(height: 8),
                     _Btn(label: '⚡ BOSS CLIMB',
                       background: const Color(0xFF8B5FBF), textColor: Colors.white,
@@ -1100,6 +1110,245 @@ class _CustomizeScreenState extends State<CustomizeScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+
+// ============ TRAMPOLÍN ============
+class TrampolineScreen extends StatefulWidget {
+  const TrampolineScreen({super.key});
+  @override
+  State<TrampolineScreen> createState() => _TrampolineScreenState();
+}
+
+class _TrampolineScreenState extends State<TrampolineScreen> {
+  late TrampolineGame _game;
+
+  @override
+  void initState() {
+    super.initState();
+    _build();
+  }
+
+  void _build() {
+    _game = TrampolineGame();
+    _game.onFinished = _showJudges;
+    audio.startMusic();
+  }
+
+  @override
+  void dispose() {
+    audio.stopMusic();
+    super.dispose();
+  }
+
+  void _showJudges(RunStats stats, int score) {
+    if (!mounted) return;
+    audio.stopMusic();
+    final verdicts = judgeRun(stats, score, math.Random());
+    final best = Prefs.getRecord('Trampolín');
+    final isRecord = score > best;
+    if (isRecord) Prefs.setRecord('Trampolín', score.toDouble());
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => _JudgesDialog(
+        verdicts: verdicts,
+        stats: stats,
+        score: score,
+        best: math.max(best.round(), score),
+        isRecord: isRecord,
+        onRetry: () {
+          Navigator.pop(ctx);
+          setState(_build);
+        },
+        onMenu: () {
+          Navigator.pop(ctx);
+          Navigator.popUntil(context, (r) => r.isFirst);
+        },
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Stack(
+        children: [
+          Listener(
+            onPointerDown: (e) => _game.pointerDown(e.pointer, e.localPosition.dx, e.localPosition.dy),
+            onPointerMove: (e) => _game.pointerMove(e.pointer, e.localPosition.dx, e.localPosition.dy),
+            onPointerUp: (e) => _game.pointerUp(e.pointer),
+            onPointerCancel: (e) => _game.pointerUp(e.pointer),
+            child: GameWidget(key: ObjectKey(_game), game: _game),
+          ),
+          Positioned(
+            top: 16, right: 16,
+            child: SafeArea(
+              child: Row(
+                children: [
+                  _MiniBtn(
+                    label: Prefs.sfxEnabled ? '🔊' : '🔇',
+                    onTap: () async {
+                      await audio.setSfxEnabled(!Prefs.sfxEnabled);
+                      setState(() {});
+                    },
+                  ),
+                  const SizedBox(width: 6),
+                  _MiniBtn(label: '↻', onTap: () { audio.click(); setState(_build); }),
+                  const SizedBox(width: 6),
+                  _MiniBtn(label: '✕', onTap: () {
+                    audio.click();
+                    audio.stopMusic();
+                    Navigator.popUntil(context, (r) => r.isFirst);
+                  }),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Panel de jueces: las notas aparecen una a una.
+class _JudgesDialog extends StatefulWidget {
+  final List<JudgeVerdict> verdicts;
+  final RunStats stats;
+  final int score;
+  final int best;
+  final bool isRecord;
+  final VoidCallback onRetry;
+  final VoidCallback onMenu;
+  const _JudgesDialog({required this.verdicts, required this.stats, required this.score,
+    required this.best, required this.isRecord, required this.onRetry, required this.onMenu});
+  @override
+  State<_JudgesDialog> createState() => _JudgesDialogState();
+}
+
+class _JudgesDialogState extends State<_JudgesDialog> {
+  int _shown = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _next();
+  }
+
+  void _next() async {
+    await Future.delayed(const Duration(milliseconds: 650));
+    if (!mounted) return;
+    setState(() => _shown++);
+    if (_shown > widget.verdicts.length) {
+      audio.win();
+      return;
+    }
+    audio.countdown(1);
+    _next();
+  }
+
+  double get _average =>
+      widget.verdicts.map((v) => v.score).reduce((a, b) => a + b) / widget.verdicts.length;
+
+  Color _scoreColor(double s) {
+    if (s >= 8) return const Color(0xFF5A8A3A);
+    if (s >= 5) return const Color(0xFFF2B134);
+    return const Color(0xFFE85D3C);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final allShown = _shown > widget.verdicts.length;
+    final st = widget.stats;
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.all(14),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF4EAD5),
+          border: Border.all(color: const Color(0xFF3A2E1F), width: 3),
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: const [BoxShadow(color: Color(0xFF3A2E1F), offset: Offset(6, 6))],
+        ),
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Text('LOS JUECES DICEN...', textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Color(0xFF3A2E1F))),
+            const SizedBox(height: 10),
+            for (int i = 0; i < widget.verdicts.length; i++)
+              AnimatedOpacity(
+                opacity: i < _shown ? 1 : 0,
+                duration: const Duration(milliseconds: 300),
+                child: AnimatedSlide(
+                  offset: i < _shown ? Offset.zero : const Offset(0.3, 0),
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOutBack,
+                  child: _judgeRow(widget.verdicts[i]),
+                ),
+              ),
+            const SizedBox(height: 8),
+            AnimatedOpacity(
+              opacity: allShown ? 1 : 0,
+              duration: const Duration(milliseconds: 400),
+              child: Column(children: [
+                Text('NOTA ${_average.toStringAsFixed(1)}',
+                    style: TextStyle(fontSize: 34, fontWeight: FontWeight.w900, color: _scoreColor(_average),
+                        shadows: const [Shadow(color: Color(0xFF3A2E1F), offset: Offset(2, 2))])),
+                Text('${widget.score} puntos${widget.isRecord ? '  ·  ¡RÉCORD!' : '  ·  récord ${widget.best}'}',
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF3A2E1F))),
+                const SizedBox(height: 4),
+                Text('Mortales: ${st.totalFlips} · De pie: ${st.clean}/${st.landings} · ⭐ ${st.stars + st.balloons}'
+                    ' · Empujones: ${st.pushes} · Piezas perdidas: ${st.partsLost}',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 12, color: Color(0xFF3A2E1F))),
+                const SizedBox(height: 12),
+                _Btn(label: 'Otra vez', primary: true, onTap: allShown ? widget.onRetry : () {}),
+                const SizedBox(height: 8),
+                _Btn(label: 'Menú', onTap: allShown ? widget.onMenu : () {}),
+              ]),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _judgeRow(JudgeVerdict v) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: const Color(0xFF3A2E1F), width: 2),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(children: [
+        Text(v.emoji, style: const TextStyle(fontSize: 28)),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('${v.name} · ${v.role}',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: Color(0xFF3A2E1F))),
+            Text('"${v.comment}"',
+                style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: Color(0xFF3A2E1F))),
+          ]),
+        ),
+        const SizedBox(width: 6),
+        Container(
+          width: 52,
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          decoration: BoxDecoration(
+            color: _scoreColor(v.score),
+            border: Border.all(color: const Color(0xFF3A2E1F), width: 2),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(v.score.toStringAsFixed(1), textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Colors.white)),
+        ),
+      ]),
     );
   }
 }
