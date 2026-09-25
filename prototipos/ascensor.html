@@ -1,0 +1,610 @@
+<title>Ascensor Apestoso</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Baloo+2:wght@500;700;800&display=swap">
+<style>
+  :root {
+    --ink: #2A1E14;
+    --paper: #F3E6C4;
+    --card: #FFF6DD;
+    --mustard: #E8B931;
+    --bean: #6B3F1F;
+    --gas: #8DBF3A;
+    --gas-deep: #5E8A1F;
+    --blush: #E85D75;
+    --muted: #7A6650;
+    color-scheme: light;
+  }
+  html, body { height: 100%; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0;
+    padding-inline: 16px;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Baloo 2", system-ui, sans-serif;
+    font-size: 16px;
+    -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none;
+  }
+  .app { max-width: 440px; margin: 0 auto; padding-block: 12px 24px; display: flex; flex-direction: column; gap: 10px; }
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  header a { color: var(--bean); font-weight: 700; text-decoration: none; white-space: nowrap; }
+  header a:focus-visible, button:focus-visible { outline: 3px solid var(--bean); outline-offset: 2px; }
+  h1 { font-family: "Bowlby One", "Arial Black", sans-serif; font-weight: 400; font-size: 26px; margin: 0; line-height: 1; letter-spacing: .5px; }
+  .stage { position: relative; }
+  canvas { display: block; width: 100%; max-width: 100%; aspect-ratio: 400 / 420; border-radius: 14px; border: 3px solid var(--ink); background: #B9A68A; touch-action: none; }
+  .meters { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+  .meter { display: flex; flex-direction: column; gap: 2px; }
+  .meter span { font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .bar { height: 14px; border: 2px solid var(--ink); border-radius: 8px; background: var(--card); overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0%; background: var(--mustard); transition: width .08s linear; }
+  #pBar i { background: var(--blush); }
+  #sBar i { background: var(--gas); }
+  .gauge { position: relative; height: 34px; border: 2px solid var(--ink); border-radius: 18px; background: linear-gradient(90deg, var(--blush) 0%, var(--mustard) 28%, var(--gas) 42%, var(--gas) 58%, var(--mustard) 72%, var(--blush) 100%); }
+  .gauge b { position: absolute; top: -6px; width: 6px; height: 42px; margin-left: -3px; background: var(--ink); border-radius: 3px; left: 50%; }
+  .gauge em { position: absolute; inset: 0; display: grid; place-items: center; font-style: normal; font-size: 12px; font-weight: 800; letter-spacing: .08em; color: var(--ink); opacity: .55; }
+  .controls { display: flex; gap: 8px; }
+  .btn { font: inherit; font-weight: 800; border: 3px solid var(--ink); border-radius: 14px; background: var(--card); color: var(--ink); padding: 10px 14px; cursor: pointer; box-shadow: 0 4px 0 var(--ink); }
+  .btn:active, .btn.down { transform: translateY(3px); box-shadow: 0 1px 0 var(--ink); }
+  .btn.big { flex: 1; font-size: 20px; padding-block: 16px; background: var(--gas); touch-action: none; }
+  .btn.alt { background: var(--mustard); }
+  .ticker { min-height: 26px; font-weight: 700; color: var(--bean); }
+  .hint { font-size: 13px; color: var(--muted); margin: 0; }
+  .overlay { position: absolute; inset: 0; background: rgba(42, 30, 20, .82); border-radius: 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 18px; text-align: center; color: var(--card); overflow-y: auto; }
+  .overlay h2 { font-family: "Bowlby One", "Arial Black", sans-serif; font-weight: 400; font-size: 28px; margin: 0; line-height: 1.05; text-wrap: balance; color: var(--mustard); }
+  .overlay p { margin: 0; max-width: 34ch; line-height: 1.35; }
+  .overlay .row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+  .overlay ul { margin: 0; padding: 0; list-style: none; font-size: 15px; line-height: 1.4; }
+  @media (prefers-reduced-motion: reduce) { .bar i { transition: none; } }
+</style>
+
+<div class="app">
+  <header>
+    <h1>Ascensor Apestoso</h1>
+    <a href="index.html">← Prototipos</a>
+  </header>
+
+  <div class="stage">
+    <canvas id="scene" width="400" height="420" aria-label="Interior del ascensor con cinco pasajeros"></canvas>
+    <div class="overlay" id="ov">
+      <h2>30 pisos.<br>Un culpable.</h2>
+      <p>Cinco personas suben al piso 30. Una lleva un pedo que crece por momentos. Si no lo suelta, explota. Si lo suelta mal, la pillan.</p>
+      <div class="row">
+        <button class="btn alt" id="goImp">Soy el impostor</button>
+        <button class="btn" id="goDet">Soy pasajero</button>
+      </div>
+      <p class="hint" style="color:#E9DDBE">Prototipo con bots. La versión final es online para 4–8 personas.</p>
+    </div>
+  </div>
+
+  <div class="meters">
+    <div class="meter" id="pMeter"><span>Presión</span><div class="bar" id="pBar"><i></i></div></div>
+    <div class="meter"><span>Ruido</span><div class="bar" id="nBar"><i></i></div></div>
+    <div class="meter"><span>Olor</span><div class="bar" id="sBar"><i></i></div></div>
+  </div>
+
+  <div class="gauge" id="gauge"><b id="needle"></b><em>CONTROL DEL ESFÍNTER</em></div>
+
+  <div class="controls">
+    <button class="btn big" id="act">Mantén para soltar</button>
+  </div>
+  <div class="ticker" id="ticker" aria-live="polite"></div>
+  <p class="hint" id="help">Suelta cuando haya ruido (tos, ding, móvil) y con la aguja en verde. Toca a alguien para señalarle.</p>
+</div>
+
+<script>
+(() => {
+  // ---------- canvas ----------
+  const cv = document.getElementById('scene');
+  const cx = cv.getContext('2d');
+  const W = 400, H = 420;
+  function fit() {
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    cv.width = W * dpr; cv.height = H * dpr;
+    cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  fit();
+  window.addEventListener('resize', fit);
+
+  const $ = id => document.getElementById(id);
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const gauss = () => (Math.random() + Math.random() + Math.random() - 1.5) / 1.5;
+
+  // ---------- audio (todo sintetizado) ----------
+  let AC = null, master, fOsc, fLfo, fGain, hGain, noiseBuf;
+  function initAudio() {
+    if (AC) { AC.resume(); return; }
+    try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; }
+    master = AC.createGain(); master.gain.value = 0.7; master.connect(AC.destination);
+    noiseBuf = AC.createBuffer(1, AC.sampleRate * 2, AC.sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    fOsc = AC.createOscillator(); fOsc.type = 'sawtooth'; fOsc.frequency.value = 85;
+    fLfo = AC.createOscillator(); fLfo.frequency.value = 20;
+    const lg = AC.createGain(); lg.gain.value = 28;
+    fLfo.connect(lg).connect(fOsc.frequency);
+    const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 520; lp.Q.value = 7;
+    fGain = AC.createGain(); fGain.gain.value = 0;
+    fOsc.connect(lp).connect(fGain).connect(master);
+    const ns = AC.createBufferSource(); ns.buffer = noiseBuf; ns.loop = true;
+    const hp = AC.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 2600;
+    hGain = AC.createGain(); hGain.gain.value = 0;
+    ns.connect(hp).connect(hGain).connect(master);
+    fOsc.start(); fLfo.start(); ns.start();
+  }
+  function setFart(loud, on) {
+    if (!AC) return;
+    const t = AC.currentTime;
+    fGain.gain.setTargetAtTime(on ? loud * 0.6 : 0, t, 0.02);
+    hGain.gain.setTargetAtTime(on ? (1 - loud) * 0.1 : 0, t, 0.03);
+    fOsc.frequency.setTargetAtTime(65 + loud * 70, t, 0.05);
+    fLfo.frequency.setTargetAtTime(12 + loud * 22, t, 0.05);
+  }
+  function tone(freq, dur, type = 'sine', vol = 0.2, when = 0, slide) {
+    if (!AC) return;
+    const t = AC.currentTime + when;
+    const o = AC.createOscillator(), g = AC.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    if (slide) o.frequency.exponentialRampToValueAtTime(slide, t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(master); o.start(t); o.stop(t + dur + 0.05);
+  }
+  function burst(dur, freq, vol, when = 0, q = 1.2) {
+    if (!AC) return;
+    const t = AC.currentTime + when;
+    const s = AC.createBufferSource(); s.buffer = noiseBuf;
+    const f = AC.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = q;
+    const g = AC.createGain();
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    s.connect(f).connect(g).connect(master); s.start(t); s.stop(t + dur + 0.05);
+  }
+  const SFX = {
+    ding: () => { tone(988, .5, 'sine', .25); tone(740, .8, 'sine', .25, .28); },
+    cough: () => { burst(.13, 900, .7); burst(.16, 750, .7, .22); },
+    sneeze: () => { burst(.08, 1400, .3); burst(.35, 2200, .9, .12, .7); },
+    phone: () => { for (let i = 0; i < 12; i++) tone(i % 2 ? 1320 : 990, .08, 'square', .06, i * .1); },
+    clunk: () => { burst(.25, 140, 1, 0, .8); tone(60, .3, 'triangle', .3); },
+    boom: () => { burst(1.8, 120, 1.5, 0, .5); tone(55, 1.4, 'sawtooth', .5, 0, 25); },
+    point: () => tone(520, .12, 'triangle', .15, 0, 780),
+    win: () => [523, 659, 784, 1046].forEach((f, i) => tone(f, .25, 'triangle', .2, i * .12)),
+    lose: () => [392, 330, 262, 196].forEach((f, i) => tone(f, .3, 'triangle', .2, i * .16)),
+  };
+
+  // ---------- estado ----------
+  const ROSTER = [
+    { name: 'Marta', body: '#3E7CB1', skin: '#F2C9A0', hair: '#3B2416' },
+    { name: 'Don Luis', body: '#7A5C3E', skin: '#E9B98F', hair: '#CFCFCF' },
+    { name: 'TÚ', body: '#E85D75', skin: '#F5D0A9', hair: '#2A1E14', you: true },
+    { name: 'Kevin', body: '#D9822B', skin: '#C98E62', hair: '#1D140C' },
+    { name: 'Pilar', body: '#8E5CC7', skin: '#F0C7A5', hair: '#8A3B1C' },
+  ];
+  const YOU = 2;
+  let G = null;
+
+  function newGame(mode) {
+    G = {
+      mode, t: 0, floor: 1, phase: 'moving', phaseT: 0, over: false, paused: false,
+      pressure: 18, smell: 0, noise: 0, holding: false, holdT: 0, needleP: 0, needle: 0,
+      nextEvent: 2, nextCramp: rand(7, 11), nextDecoy: rand(5, 9), shake: 0,
+      pointCd: 0, accusations: 2,
+      imp: mode === 'impostor' ? YOU : [0, 1, 3, 4][Math.floor(Math.random() * 4)],
+      bot: { holding: false, left: 0, loud: 0 },
+      noises: [], texts: [], parts: [], pending: [],
+      ppl: ROSTER.map((r, i) => ({ ...r, i, x: 48 + i * 76, susp: 0, sweat: 0, relief: 0,
+        bubble: null, bubbleT: 0, look: -1, lookT: 0, point: -1, pointT: 0, gone: false, prep: 0 })),
+    };
+    $('pMeter').style.visibility = mode === 'impostor' ? 'visible' : 'hidden';
+    $('gauge').hidden = mode !== 'impostor';
+    $('act').textContent = mode === 'impostor' ? 'Mantén para soltar' : `Acusar (${G.accusations})`;
+    $('help').textContent = mode === 'impostor'
+      ? 'Suelta cuando haya ruido (tos, ding, móvil) y con la aguja en verde. Toca a alguien para señalarle.'
+      : 'Alguien se lo está soltando a escondidas. Mira quién suda, dónde suena el «prrt» y quién pone cara de alivio.';
+    say(mode === 'impostor' ? 'Aguanta hasta el piso 30 sin que te pillen.' : 'Uno de ellos es el culpable. Tienes 2 acusaciones.');
+    $('ov').hidden = true;
+  }
+
+  function say(txt) { $('ticker').textContent = txt; }
+  const present = () => G.ppl.filter(p => !p.gone);
+
+  // ---------- ruido ambiente ----------
+  function addNoise(type, who) {
+    const def = {
+      ding: { amp: .95, dur: 1.0, label: '¡Ding!' },
+      cough: { amp: .8, dur: .7, label: '*cof cof*' },
+      sneeze: { amp: 1, dur: .55, label: '¡ACHÍS!' },
+      phone: { amp: .85, dur: 1.8, label: '♪ Ring ring ♪' },
+      clunk: { amp: .7, dur: .6, label: '*CLONC*' },
+    }[type];
+    G.noises.push({ amp: def.amp, end: G.t + def.dur, dur: def.dur });
+    SFX[type]();
+    const x = who != null ? G.ppl[who].x : W / 2;
+    G.texts.push({ x, y: who != null ? 180 : 70, txt: def.label, life: 1, col: '#2A1E14', size: 18 });
+    if (who != null) G.ppl[who].prep = 0;
+  }
+  function scheduleEvent() {
+    const npcs = present().filter(p => !p.you);
+    const r = Math.random();
+    if (r < .45 && npcs.length) {
+      const p = npcs[Math.floor(Math.random() * npcs.length)];
+      const type = Math.random() < .7 ? 'cough' : 'sneeze';
+      p.prep = 0.8; // aviso: se ve que va a toser
+      G.pending.push({ at: G.t + 0.8, type, who: p.i });
+    } else if (r < .7) {
+      G.pending.push({ at: G.t, type: 'phone', who: npcs.length ? npcs[Math.floor(Math.random() * npcs.length)].i : null });
+    } else {
+      G.pending.push({ at: G.t, type: 'clunk', who: null });
+    }
+    G.nextEvent = G.t + rand(2.6, 5.2);
+  }
+
+  // ---------- el pedo en sí ----------
+  function emit(src, heard, amount, dt) {
+    G.smell = clamp(G.smell + amount * 0.75, 0, 100);
+    const p = G.ppl[src];
+    if (Math.random() < amount * 1.4) G.parts.push({ x: p.x + rand(-10, 10), y: 320, vx: rand(-14, 14), vy: rand(-30, -12), r: rand(8, 16), life: 1 });
+    if (heard > 0.12) {
+      // ¿de dónde vino? cuanto más fuerte, más fácil ubicarlo
+      const alive = present();
+      const wSrc = 0.2 + 0.7 * heard;
+      const others = alive.filter(q => q.i !== src);
+      const sum = others.reduce((s, q) => s + 1 / (1 + Math.abs(q.i - src)), 0) || 1;
+      const total = heard * dt * 70;
+      p.susp += total * wSrc;
+      others.forEach(q => { q.susp += total * (1 - wSrc) * (1 / (1 + Math.abs(q.i - src))) / sum; });
+      // los NPC miran al sospechoso principal
+      const top = alive.reduce((a, b) => (b.susp > a.susp ? b : a));
+      alive.forEach(q => { if (!q.you && q.i !== top.i && Math.random() < dt * 3) { q.look = top.i; q.lookT = 1.5; } });
+      if (Math.random() < dt * 2.2 * heard + (heard > .5 ? dt * 2 : 0)) {
+        const off = gauss() * (1 - heard) * 130;
+        G.texts.push({ x: clamp(p.x + off, 30, 370), y: 300, txt: heard > .55 ? 'PRRRT' : 'prrt', life: 1, col: '#5E8A1F', size: heard > .55 ? 24 : 16 });
+      }
+    }
+  }
+
+  // ---------- votación / acusación ----------
+  function openPicker(title, text, onPick, filter) {
+    G.paused = true; G.holding = false; setFart(0, false);
+    const ov = $('ov');
+    ov.innerHTML = `<h2>${title}</h2><p>${text}</p><div class="row" id="pick"></div>`;
+    present().filter(filter).forEach(p => {
+      const b = document.createElement('button');
+      b.className = 'btn'; b.textContent = p.name;
+      b.onclick = () => onPick(p);
+      $('pick').appendChild(b);
+    });
+    ov.hidden = false;
+  }
+  function continueBtn(label = 'Seguir subiendo') {
+    return `<div class="row"><button class="btn alt" id="cont">${label}</button></div>`;
+  }
+  function startVote(reason) {
+    openPicker('¡Votación!', `${reason} ¿Quién fue? Tu voto cuenta.`, choice => {
+      const votes = {};
+      const lines = [];
+      votes[choice.i] = 1;
+      lines.push(`TÚ → ${choice.name}`);
+      present().filter(p => !p.you).forEach(v => {
+        const cands = present().filter(q => q.i !== v.i);
+        const pick = cands.map(q => ({ p: q, s: q.susp + rand(0, 28) })).reduce((a, b) => (b.s > a.s ? b : a)).p;
+        votes[pick.i] = (votes[pick.i] || 0) + 1;
+        lines.push(`${v.name} → ${pick.name}`);
+      });
+      const max = Math.max(...Object.values(votes));
+      const top = Object.keys(votes).filter(k => votes[k] === max).map(Number);
+      const ov = $('ov');
+      let head, body;
+      if (top.length > 1) { head = 'Empate'; body = 'Nadie sale. Todos se miran fatal.'; }
+      else if (top[0] === YOU) { finish(false, 'Te han pillado', `Votaron por ti en el piso ${G.floor}.`, lines); return; }
+      else {
+        const k = G.ppl[top[0]]; k.gone = true;
+        head = `${k.name} fuera`; body = `${k.name} sale humillado en el siguiente piso. Era inocente, pero eso no lo sabe nadie.`;
+      }
+      G.ppl.forEach(p => (p.susp *= 0.3));
+      G.smell *= 0.5;
+      ov.innerHTML = `<h2>${head}</h2><p>${body}</p><ul>${lines.map(l => `<li>${l}</li>`).join('')}</ul>${continueBtn()}`;
+      $('cont').onclick = () => { ov.hidden = true; G.paused = false; };
+    }, p => !p.you);
+  }
+  function accuse() {
+    if (G.over || G.paused || G.accusations <= 0) return;
+    openPicker('¿Quién fue?', `Te quedan ${G.accusations} acusaciones.`, p => {
+      if (p.i === G.imp) { finish(true, '¡Pillado!', `Era ${p.name}. Lo has sacado en el piso ${G.floor}.`); return; }
+      G.accusations--;
+      p.gone = true;
+      $('act').textContent = `Acusar (${G.accusations})`;
+      if (G.accusations <= 0) { finish(false, 'Sin acusaciones', `Culpaste a ${p.name}, pero era ${G.ppl[G.imp].name}.`); return; }
+      const ov = $('ov');
+      ov.innerHTML = `<h2>No era ${p.name}</h2><p>${p.name} se baja ofendidísimo. El culpable sigue dentro.</p>${continueBtn()}`;
+      $('cont').onclick = () => { ov.hidden = true; G.paused = false; };
+    }, p => !p.you);
+  }
+
+  function finish(won, title, text, lines) {
+    G.over = true; G.paused = true; G.holding = false; setFart(0, false);
+    (won ? SFX.win : SFX.lose)();
+    const ov = $('ov');
+    ov.innerHTML = `<h2>${title}</h2><p>${text}</p>${lines ? `<ul>${lines.map(l => `<li>${l}</li>`).join('')}</ul>` : ''}
+      <div class="row"><button class="btn alt" id="again">Otra vez</button><button class="btn" id="swap">Cambiar de rol</button></div>`;
+    ov.hidden = false;
+    $('again').onclick = () => { initAudio(); newGame(G.mode); };
+    $('swap').onclick = () => { initAudio(); newGame(G.mode === 'impostor' ? 'detective' : 'impostor'); };
+  }
+
+  // ---------- update ----------
+  function update(dt) {
+    G.t += dt;
+    // viaje
+    G.phaseT += dt;
+    if (G.phase === 'moving' && G.phaseT > 2.0) {
+      G.floor++; G.phaseT = 0;
+      if (G.floor >= 30) {
+        if (G.mode === 'impostor') finish(true, '¡Piso 30!', 'Llegaste limpio. Nadie sabe nada. Nadie sabrá nunca.');
+        else finish(false, 'Se salió con la suya', `Era ${G.ppl[G.imp].name}. Llegó al piso 30 sin que le pillaras.`);
+        return;
+      }
+      if (Math.random() < 0.3) { G.phase = 'stopped'; addNoise('ding', null); }
+    } else if (G.phase === 'stopped' && G.phaseT > 2.2) {
+      G.phase = 'moving'; G.phaseT = 0;
+    }
+
+    // eventos de ruido
+    if (G.t > G.nextEvent) scheduleEvent();
+    G.pending = G.pending.filter(e => {
+      if (G.t >= e.at) { if (e.who == null || !G.ppl[e.who].gone) addNoise(e.type, e.who); return false; }
+      return true;
+    });
+    G.noises = G.noises.filter(n => n.end > G.t);
+    G.noise = 0.08 + G.noises.reduce((m, n) => Math.max(m, n.amp * Math.min(1, (n.end - G.t) / (n.dur * 0.35))), 0);
+    G.noise = clamp(G.noise, 0, 1);
+
+    // olor
+    G.smell = Math.max(0, G.smell - (G.phase === 'stopped' ? 16 : 0.8) * dt);
+
+    const imp = G.ppl[G.imp];
+    // presión del culpable
+    G.pressure += (2.5 + G.floor * 0.06) * dt;
+    if (G.t > G.nextCramp) {
+      G.pressure += rand(9, 16); G.nextCramp = G.t + rand(7, 12);
+      if (G.mode === 'impostor') { G.shake = 0.45; say('¡Retortijón!'); }
+    }
+
+    if (G.mode === 'impostor') {
+      G.needleP += dt * (2.0 + G.pressure / 38);
+      G.needle = Math.sin(G.needleP);
+      if (G.holding) {
+        G.holdT += dt;
+        const rel = Math.min(G.pressure, 32 * dt);
+        G.pressure -= rel;
+        const loud = clamp(0.08 + 0.8 * Math.abs(G.needle) ** 1.4 + Math.max(0, G.holdT - 1.2) * 0.4 + G.pressure / 400, 0, 1);
+        const heard = loud * (1 - 0.88 * G.noise);
+        emit(YOU, heard, rel, dt);
+        setFart(heard, rel > 0);
+      }
+      G.pointCd = Math.max(0, G.pointCd - dt);
+      if (G.pressure >= 100) {
+        G.shake = 1.2; SFX.boom(); G.smell = 100;
+        for (let k = 0; k < 40; k++) G.parts.push({ x: imp.x, y: 320, vx: rand(-220, 220), vy: rand(-220, 40), r: rand(12, 26), life: 1.4 });
+        finish(false, '¡BOOM!', `Explotó en el piso ${G.floor}. Hay que evacuar el edificio entero.`);
+        return;
+      }
+    } else {
+      // IA del culpable
+      const b = G.bot;
+      if (!b.holding) {
+        if ((G.pressure > 45 && G.noise > 0.55 && Math.random() < dt * 5) || G.pressure > 90 || (G.pressure > 70 && Math.random() < dt * 0.4)) {
+          b.holding = true; b.left = rand(0.5, 1.2);
+          b.loud = G.pressure > 90 ? rand(.6, .9) : rand(.15, .55);
+        }
+      } else {
+        b.left -= dt;
+        const rel = Math.min(G.pressure, 32 * dt);
+        G.pressure -= rel;
+        const heard = b.loud * (1 - 0.88 * G.noise);
+        emit(G.imp, heard, rel, dt);
+        setFart(heard, true);
+        if (b.left <= 0 || G.pressure <= 4) { b.holding = false; imp.relief = 1.6; setFart(0, false); }
+      }
+      // pistas falsas: otros también sudan a veces
+      if (G.t > G.nextDecoy) {
+        const inn = present().filter(p => !p.you && p.i !== G.imp);
+        if (inn.length) inn[Math.floor(Math.random() * inn.length)].sweat = rand(2.5, 4);
+        G.nextDecoy = G.t + rand(6, 11);
+      }
+      if (G.pressure > 65) imp.sweat = Math.max(imp.sweat, 0.3);
+    }
+
+    // decaimiento
+    G.ppl.forEach(p => {
+      p.susp = Math.max(0, p.susp - 2 * dt);
+      p.sweat = Math.max(0, p.sweat - dt);
+      p.relief = Math.max(0, p.relief - dt);
+      p.lookT = Math.max(0, p.lookT - dt); if (!p.lookT) p.look = -1;
+      p.pointT = Math.max(0, p.pointT - dt); if (!p.pointT) p.point = -1;
+      p.bubbleT = Math.max(0, p.bubbleT - dt);
+      p.prep = Math.max(0, p.prep - dt);
+    });
+    if (G.mode === 'impostor' && G.pressure > 70) G.ppl[YOU].sweat = 0.3;
+
+    // ¿se arma la votación?
+    if (G.mode === 'impostor') {
+      const hot = present().find(p => p.susp >= 100);
+      if (hot) startVote(`Todos miran a ${hot.you ? 'TI' : hot.name}.`);
+      else if (G.smell >= 92) startVote('¡Esto huele a muerto!');
+    }
+
+    // partículas y textos
+    G.parts.forEach(p => { p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.98; p.r += dt * 10; p.life -= dt * 0.35; });
+    G.parts = G.parts.filter(p => p.life > 0);
+    G.texts.forEach(t => { t.y -= 22 * dt; t.life -= dt * 0.7; });
+    G.texts = G.texts.filter(t => t.life > 0);
+    G.shake = Math.max(0, G.shake - dt);
+  }
+
+  // ---------- render ----------
+  function rr(x, y, w, h, r) { cx.beginPath(); cx.roundRect(x, y, w, h, r); }
+  function drawPerson(p) {
+    const baseY = 400, x = p.x;
+    const bob = G.phase === 'moving' ? Math.sin(G.t * 9 + p.i) * 0.8 : 0;
+    const top = 262 + bob;
+    // cuerpo
+    cx.fillStyle = p.body; rr(x - 26, top, 52, baseY - top, 16); cx.fill();
+    cx.lineWidth = 3; cx.strokeStyle = '#2A1E14'; cx.stroke();
+    // brazo señalando
+    if (p.point >= 0 && !G.ppl[p.point].gone) {
+      const tx = G.ppl[p.point].x;
+      cx.strokeStyle = p.body; cx.lineWidth = 9; cx.lineCap = 'round';
+      cx.beginPath(); cx.moveTo(x, top + 30); cx.lineTo(x + Math.sign(tx - x) * 44, top + 14); cx.stroke();
+      cx.strokeStyle = '#2A1E14'; cx.lineWidth = 2; cx.stroke();
+    }
+    // cabeza
+    const hy = top - 24;
+    const disgust = G.smell > 45;
+    cx.fillStyle = disgust ? blend(p.skin, '#9BC53D', Math.min(.5, (G.smell - 45) / 90)) : p.skin;
+    cx.beginPath(); cx.arc(x, hy, 24, 0, Math.PI * 2); cx.fill();
+    cx.lineWidth = 3; cx.strokeStyle = '#2A1E14'; cx.stroke();
+    // pelo
+    cx.fillStyle = p.hair; cx.beginPath(); cx.arc(x, hy - 4, 24, Math.PI * 1.05, Math.PI * 1.95); cx.fill();
+    // ojos
+    let dx = 0;
+    if (p.look >= 0) dx = Math.sign(G.ppl[p.look].x - x) * 3;
+    else if (p.point >= 0) dx = Math.sign(G.ppl[p.point].x - x) * 3;
+    cx.fillStyle = '#2A1E14';
+    if (p.relief > 0) {
+      cx.lineWidth = 2.5; cx.beginPath();
+      cx.arc(x - 8, hy - 2, 4, Math.PI * 1.1, Math.PI * 1.9); cx.moveTo(x + 12, hy - 2); cx.arc(x + 8, hy - 2, 4, Math.PI * 1.1, Math.PI * 1.9); cx.stroke();
+    } else if (disgust) {
+      cx.lineWidth = 3; cx.beginPath(); cx.moveTo(x - 12, hy - 3); cx.lineTo(x - 4, hy - 1); cx.moveTo(x + 12, hy - 3); cx.lineTo(x + 4, hy - 1); cx.stroke();
+    } else {
+      cx.beginPath(); cx.arc(x - 8 + dx, hy - 2, 3.2, 0, 7); cx.arc(x + 8 + dx, hy - 2, 3.2, 0, 7); cx.fill();
+    }
+    // cejas de sospecha
+    if (p.look >= 0) {
+      cx.lineWidth = 2.5; cx.beginPath(); cx.moveTo(x - 13, hy - 12); cx.lineTo(x - 4, hy - 9); cx.moveTo(x + 13, hy - 12); cx.lineTo(x + 4, hy - 9); cx.stroke();
+    }
+    // boca
+    cx.lineWidth = 2.5; cx.beginPath();
+    if (p.prep > 0) { cx.arc(x, hy + 11, 4.5, 0, 7); cx.stroke(); }
+    else if (p.relief > 0) { cx.arc(x, hy + 7, 7, 0.15 * Math.PI, 0.85 * Math.PI); cx.stroke(); }
+    else if (disgust) { cx.moveTo(x - 8, hy + 12); for (let k = 0; k <= 4; k++) cx.lineTo(x - 8 + k * 4, hy + 12 + (k % 2 ? -3 : 3)); cx.stroke(); }
+    else { cx.moveTo(x - 6, hy + 11); cx.lineTo(x + 6, hy + 11); cx.stroke(); }
+    // sudor
+    if (p.sweat > 0) {
+      cx.fillStyle = '#7CC6E8';
+      const s = (G.t * 1.5 + p.i) % 1;
+      cx.beginPath(); cx.arc(x + 22, hy - 8 + s * 14, 3.5, 0, 7); cx.fill();
+      cx.beginPath(); cx.arc(x - 21, hy - 2 + ((s + .5) % 1) * 12, 3, 0, 7); cx.fill();
+    }
+    // nombre
+    cx.font = '800 13px "Baloo 2", system-ui, sans-serif'; cx.textAlign = 'center';
+    cx.fillStyle = p.you ? '#E85D75' : '#2A1E14';
+    cx.fillText(p.name, x, baseY + 16);
+    // sospecha visible (solo el impostor "lee la sala")
+    if (G.mode === 'impostor') {
+      const v = clamp(p.susp / 100, 0, 1);
+      cx.fillStyle = 'rgba(42,30,20,.25)'; rr(x - 22, hy - 44, 44, 7, 3); cx.fill();
+      cx.fillStyle = v > .7 ? '#E85D75' : v > .4 ? '#E8B931' : '#8DBF3A'; rr(x - 22, hy - 44, 44 * v, 7, 3); cx.fill();
+    }
+    if (p.prep > 0) { cx.font = '800 16px "Baloo 2", system-ui, sans-serif'; cx.fillStyle = '#2A1E14'; cx.fillText('…', x + 26, hy - 26); }
+  }
+  function blend(a, b, t) {
+    const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
+    const r = (pa >> 16) + ((pb >> 16) - (pa >> 16)) * t, g = ((pa >> 8) & 255) + (((pb >> 8) & 255) - ((pa >> 8) & 255)) * t, bl = (pa & 255) + ((pb & 255) - (pa & 255)) * t;
+    return `rgb(${r | 0},${g | 0},${bl | 0})`;
+  }
+
+  function render() {
+    cx.save();
+    if (G && G.shake > 0) cx.translate(rand(-1, 1) * G.shake * 10, rand(-1, 1) * G.shake * 10);
+    // pared del fondo
+    cx.fillStyle = '#B9A68A'; cx.fillRect(-20, -20, W + 40, H + 40);
+    // puertas
+    const open = G && G.phase === 'stopped' ? Math.min(1, G.phaseT / 0.4) * (G.phaseT > 1.8 ? Math.max(0, (2.2 - G.phaseT) / 0.4) : 1) : 0;
+    cx.fillStyle = '#E9DDBE'; cx.fillRect(110, 70, 180, 250);
+    cx.fillStyle = '#C9B99A'; cx.fillRect(110, 250, 180, 70);
+    cx.fillStyle = '#9C9384';
+    cx.fillRect(110 - open * 88, 70, 90, 250); cx.fillRect(200 + open * 88, 70, 90, 250);
+    cx.strokeStyle = '#2A1E14'; cx.lineWidth = 3; cx.strokeRect(110, 70, 180, 250);
+    cx.beginPath(); cx.moveTo(200, 70); cx.lineTo(200, 320); if (!open) cx.stroke();
+    // paneles laterales
+    cx.fillStyle = '#A8957A'; cx.fillRect(0, 60, 100, 280); cx.fillRect(300, 60, 100, 280);
+    // pantalla del piso
+    cx.fillStyle = '#2A1E14'; rr(160, 14, 80, 42, 8); cx.fill();
+    cx.fillStyle = '#FF5A36'; cx.font = '26px "Bowlby One", "Arial Black", sans-serif'; cx.textAlign = 'center';
+    cx.fillText(G ? String(G.floor).padStart(2, '0') : '01', 212, 46);
+    cx.font = '16px system-ui'; cx.fillText('▲', 176, 44);
+    // suelo
+    cx.fillStyle = '#6B3F1F'; cx.fillRect(0, 340, W, 80);
+    if (G) {
+      present().forEach(drawPerson);
+      // nube de gas
+      G.parts.forEach(p => { cx.fillStyle = `rgba(141,191,58,${Math.min(.55, p.life * .5)})`; cx.beginPath(); cx.arc(p.x, p.y, p.r, 0, 7); cx.fill(); });
+      // tinte verde por olor
+      if (G.smell > 5) { cx.fillStyle = `rgba(141,191,58,${G.smell / 100 * 0.32})`; cx.fillRect(-20, -20, W + 40, H + 40); }
+      G.texts.forEach(t => {
+        cx.globalAlpha = clamp(t.life, 0, 1);
+        cx.font = `${t.size}px "Bowlby One", "Arial Black", sans-serif`; cx.textAlign = 'center';
+        cx.lineWidth = 4; cx.strokeStyle = '#FFF6DD'; cx.strokeText(t.txt, t.x, t.y);
+        cx.fillStyle = t.col; cx.fillText(t.txt, t.x, t.y);
+        cx.globalAlpha = 1;
+      });
+    }
+    cx.restore();
+  }
+
+  function hud() {
+    if (!G) return;
+    $('pBar').firstElementChild.style.width = clamp(G.pressure, 0, 100) + '%';
+    $('nBar').firstElementChild.style.width = G.noise * 100 + '%';
+    $('sBar').firstElementChild.style.width = G.smell + '%';
+    $('needle').style.left = (50 + G.needle * 47) + '%';
+  }
+
+  // ---------- bucle ----------
+  let last = performance.now();
+  function loop(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    if (G && !G.paused && !G.over) update(dt);
+    render(); hud();
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  // ---------- controles ----------
+  const act = $('act');
+  function press(on) {
+    if (!G || G.over || G.paused) return;
+    if (G.mode === 'detective') { if (on) accuse(); return; }
+    G.holding = on; act.classList.toggle('down', on);
+    if (on) G.holdT = 0; else setFart(0, false);
+  }
+  act.addEventListener('pointerdown', e => { e.preventDefault(); initAudio(); press(true); });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => act.addEventListener(ev, () => { if (G && G.mode === 'impostor') press(false); }));
+  window.addEventListener('keydown', e => { if (e.code === 'Space' && !e.repeat) { e.preventDefault(); initAudio(); press(true); } });
+  window.addEventListener('keyup', e => { if (e.code === 'Space' && G && G.mode === 'impostor') press(false); });
+
+  // señalar a alguien tocándolo
+  cv.addEventListener('pointerdown', e => {
+    if (!G || G.over || G.paused || G.mode !== 'impostor') return;
+    const r = cv.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width * W, y = (e.clientY - r.top) / r.height * H;
+    if (y < 200) return;
+    const tgt = present().find(p => !p.you && Math.abs(p.x - x) < 34);
+    if (!tgt) return;
+    if (G.pointCd > 0) { say(`Espera ${G.pointCd.toFixed(1)} s para volver a señalar.`); return; }
+    initAudio(); SFX.point();
+    const me = G.ppl[YOU];
+    me.point = tgt.i; me.pointT = 1.4; G.pointCd = 7;
+    if (G.smell > 10) { tgt.susp += 18; me.susp += 4; say(`Señalas a ${tgt.name}. Cuela… de momento.`); }
+    else { me.susp += 14; say('Señalas… ¿pero si no huele a nada? Sospechoso.'); }
+    tgt.bubbleT = 1.2;
+    G.texts.push({ x: tgt.x, y: 190, txt: '¿¡YO!?', life: 1, col: '#E85D75', size: 18 });
+  });
+
+  $('goImp').onclick = () => { initAudio(); newGame('impostor'); };
+  $('goDet').onclick = () => { initAudio(); newGame('detective'); };
+})();
+</script>

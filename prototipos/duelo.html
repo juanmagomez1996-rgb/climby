@@ -1,0 +1,370 @@
+<title>Duelo de Presión</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Baloo+2:wght@500;700;800&display=swap">
+<style>
+  :root {
+    --ink: #2A1E14;
+    --paper: #F3E6C4;
+    --card: #FFF6DD;
+    --mustard: #E8B931;
+    --bean: #6B3F1F;
+    --gas: #8DBF3A;
+    --p1: #E85D75;
+    --p2: #3E7CB1;
+    --muted: #7A6650;
+    color-scheme: light;
+  }
+  html, body { height: 100%; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0; padding-inline: 16px;
+    background: var(--paper); color: var(--ink);
+    font-family: "Baloo 2", system-ui, sans-serif; font-size: 16px;
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+  }
+  .app { max-width: 640px; margin: 0 auto; padding-block: 12px 24px; display: flex; flex-direction: column; gap: 10px; }
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  header a { color: var(--bean); font-weight: 700; text-decoration: none; white-space: nowrap; }
+  header a:focus-visible, button:focus-visible { outline: 3px solid var(--bean); outline-offset: 2px; }
+  h1 { font-family: "Bowlby One", "Arial Black", sans-serif; font-weight: 400; font-size: 26px; margin: 0; line-height: 1; }
+  .stage { position: relative; }
+  canvas { display: block; width: 100%; max-width: 100%; aspect-ratio: 480 / 300; border-radius: 14px; border: 3px solid var(--ink); background: #CFE3E6; touch-action: none; }
+  .tanks { display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: center; }
+  .bar { height: 16px; border: 3px solid var(--ink); border-radius: 10px; background: var(--card); overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 100%; }
+  #t1 i { background: var(--p1); }
+  #t2 { transform: scaleX(-1); }
+  #t2 i { background: var(--p2); }
+  .score { font-family: "Bowlby One", "Arial Black", sans-serif; font-size: 22px; font-variant-numeric: tabular-nums; }
+  .hint { font-size: 13px; color: var(--muted); margin: 0; line-height: 1.4; }
+  .btn { font: inherit; font-weight: 800; border: 3px solid var(--ink); border-radius: 14px; background: var(--card); color: var(--ink); padding: 10px 16px; cursor: pointer; box-shadow: 0 4px 0 var(--ink); }
+  .btn:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--ink); }
+  .overlay { position: absolute; inset: 0; background: rgba(42, 30, 20, .84); border-radius: 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 14px; text-align: center; color: var(--card); overflow-y: auto; }
+  .overlay h2 { font-family: "Bowlby One", "Arial Black", sans-serif; font-weight: 400; font-size: 26px; margin: 0; color: var(--mustard); line-height: 1.05; text-wrap: balance; }
+  .overlay p { margin: 0; max-width: 42ch; line-height: 1.35; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+  label.mic { display: flex; gap: 6px; align-items: center; font-size: 14px; }
+  select { font: inherit; border: 2px solid var(--ink); border-radius: 8px; background: var(--card); color: var(--ink); padding: 2px 6px; }
+</style>
+
+<div class="app">
+  <header>
+    <h1>Duelo de Presión</h1>
+    <a href="index.html">← Prototipos</a>
+  </header>
+  <div class="stage">
+    <canvas id="c" width="480" height="300" aria-label="Arena de duelo para dos jugadores"></canvas>
+    <div class="overlay" id="ov">
+      <h2>Empuja el globo a su portería</h2>
+      <p>Mantén para cargar, suelta para disparar. Cuanto más cargas, más fuerte, pero si te pasas se te escapa y te quedas tieso.</p>
+      <div class="row">
+        <button class="btn" id="go2" style="background:var(--mustard)">2 jugadores</button>
+        <button class="btn" id="goCpu">Contra la CPU</button>
+      </div>
+      <label class="mic" for="micSel">Soplar al micrófono:
+        <select id="micSel"><option value="0">Nadie</option><option value="1">Jugador rosa</option><option value="2">Jugador azul</option></select>
+      </label>
+      <p class="hint" id="micNote" style="color:#E9DDBE"></p>
+    </div>
+  </div>
+  <div class="tanks">
+    <div class="bar" id="t1"><i></i></div>
+    <div class="score" id="score">0 – 0</div>
+    <div class="bar" id="t2"><i></i></div>
+  </div>
+  <p class="hint"><b>Móvil:</b> cada jugador usa su mitad de la pantalla. Arrastra para subir o bajar y mantén para cargar.
+    <b>Teclado:</b> rosa W/S y D para cargar · azul ↑/↓ y ← para cargar. Gana el primero en llegar a 5.</p>
+</div>
+
+<script>
+(() => {
+  const cv = document.getElementById('c'), cx = cv.getContext('2d');
+  const W = 480, H = 300, WIN = 5;
+  function fit() { const d = Math.min(2, devicePixelRatio || 1); cv.width = W * d; cv.height = H * d; cx.setTransform(d, 0, 0, d, 0, 0); }
+  fit(); addEventListener('resize', fit);
+  const $ = id => document.getElementById(id);
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+  // ---------- audio ----------
+  let AC, master, noiseBuf;
+  function initAudio() {
+    if (AC) { AC.resume(); return; }
+    try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; }
+    master = AC.createGain(); master.gain.value = .6; master.connect(AC.destination);
+    noiseBuf = AC.createBuffer(1, AC.sampleRate, AC.sampleRate);
+    const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  }
+  function fart(power, pitch) {
+    if (!AC) return;
+    const t = AC.currentTime, dur = .15 + power * .5;
+    const o = AC.createOscillator(), l = AC.createOscillator(), lg = AC.createGain(), f = AC.createBiquadFilter(), g = AC.createGain();
+    o.type = 'sawtooth'; o.frequency.setValueAtTime(pitch + power * 30, t); o.frequency.exponentialRampToValueAtTime(pitch * .6, t + dur);
+    l.frequency.value = 16 + power * 18; lg.gain.value = 25; l.connect(lg).connect(o.frequency);
+    f.type = 'lowpass'; f.frequency.value = 500; f.Q.value = 6;
+    g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(.2 + power * .45, t + .02); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    o.connect(f).connect(g).connect(master); o.start(t); l.start(t); o.stop(t + dur + .05); l.stop(t + dur + .05);
+  }
+  function tone(fq, dur, type = 'triangle', vol = .2, when = 0) {
+    if (!AC) return; const t = AC.currentTime + when, o = AC.createOscillator(), g = AC.createGain();
+    o.type = type; o.frequency.value = fq; g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + .01); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    o.connect(g).connect(master); o.start(t); o.stop(t + dur + .05);
+  }
+
+  // ---------- micrófono (opcional) ----------
+  let mic = { who: 0, analyser: null, buf: null, level: 0 };
+  async function startMic(who) {
+    mic.who = 0;
+    if (!who) return true;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const src = AC.createMediaStreamSource(stream);
+      mic.analyser = AC.createAnalyser(); mic.analyser.fftSize = 512; mic.buf = new Float32Array(512);
+      src.connect(mic.analyser); mic.who = who; return true;
+    } catch (e) {
+      $('micNote').textContent = 'No se pudo abrir el micrófono aquí. Descarga duelo.html y ábrelo desde localhost o https en tu navegador.';
+      return false;
+    }
+  }
+  function micLevel() {
+    if (!mic.analyser) return 0;
+    mic.analyser.getFloatTimeDomainData(mic.buf);
+    let s = 0; for (const v of mic.buf) s += v * v;
+    const rms = Math.sqrt(s / mic.buf.length);
+    mic.level += (rms - mic.level) * .3;
+    return clamp((mic.level - .04) * 6, 0, 1);
+  }
+
+  // ---------- estado ----------
+  let G = null;
+  function mkPlayer(side) {
+    return { side, x: side === 1 ? 34 : W - 34, y: H / 2, ty: H / 2, tank: 100, charging: false, charge: 0, over: 0, stun: 0, score: 0, flash: 0 };
+  }
+  function newGame(cpu) {
+    G = { cpu, p: [null, mkPlayer(1), mkPlayer(2)], ball: null, parts: [], texts: [], pause: 1.2, over: false, t: 0, cpuT: 0 };
+    resetBall(0);
+    $('ov').hidden = true;
+  }
+  function resetBall(dir) {
+    G.ball = { x: W / 2, y: H / 2, vx: dir * 40, vy: rand(-40, 40), r: 20, wob: 0 };
+    G.pause = 1.1;
+  }
+
+  // ---------- física ----------
+  const MAXC = 1.0, OVER = .45;
+  function blast(pl, power) {
+    const b = G.ball, dirX = pl.side === 1 ? 1 : -1;
+    const dx = b.x - pl.x, dy = b.y - pl.y, dist = Math.hypot(dx, dy);
+    const ang = Math.abs(Math.atan2(dy, dx * dirX));
+    const cone = clamp(1 - ang / 0.75, 0, 1);
+    const fall = clamp(1 - dist / 440, 0, 1);
+    const f = power * 820 * cone * (0.35 + 0.65 * fall);
+    if (f > 0) { b.vx += dx / dist * f; b.vy += dy / dist * f; b.wob = .5; }
+    for (let i = 0; i < 10 + power * 30; i++) {
+      const a = rand(-.6, .6);
+      G.parts.push({ x: pl.x + dirX * 16, y: pl.y, vx: Math.cos(a) * dirX * rand(150, 420) * (.4 + power), vy: Math.sin(a) * rand(150, 420) * (.4 + power), r: rand(6, 12), life: 1 });
+    }
+    fart(power, pl.side === 1 ? 90 : 70);
+    if (power > .8) G.texts.push({ x: pl.x + dirX * 60, y: pl.y - 26, txt: 'PRRRAAP', life: 1, col: pl.side === 1 ? '#E85D75' : '#3E7CB1' });
+  }
+  function release(pl) {
+    if (!pl.charging) return;
+    pl.charging = false;
+    if (pl.stun > 0 || pl.charge < .05) { pl.charge = 0; return; }
+    blast(pl, Math.min(pl.charge, MAXC));
+    pl.charge = 0; pl.over = 0;
+  }
+
+  function update(dt) {
+    G.t += dt;
+    const b = G.ball;
+    // CPU
+    if (G.cpu) {
+      const c = G.p[2];
+      c.ty = b.y + (b.vx > 0 ? b.vy * .25 : 0);
+      G.cpuT -= dt;
+      const inRange = b.x > W * .35;
+      if (!c.charging && inRange && c.tank > 30 && G.cpuT <= 0 && c.stun <= 0) { c.charging = true; c.want = rand(.35, .95); }
+      if (c.charging && (c.charge >= c.want || c.tank <= 0)) { release(c); G.cpuT = rand(.3, .9); }
+    }
+    for (const pl of [G.p[1], G.p[2]]) {
+      pl.y += (pl.ty - pl.y) * Math.min(1, dt * 10);
+      pl.y = clamp(pl.y, 34, H - 34);
+      pl.stun = Math.max(0, pl.stun - dt);
+      pl.flash = Math.max(0, pl.flash - dt);
+      if (pl.charging && pl.stun <= 0) {
+        if (pl.tank > 0 && pl.charge < MAXC) { const d = Math.min(dt * 1.1, pl.tank / 45); pl.charge += d; pl.tank -= d * 45; }
+        if (pl.charge >= MAXC || pl.tank <= 0) {
+          pl.over += dt;
+          if (pl.over > OVER) { // te pasaste: se escapa sin control
+            pl.charging = false; pl.charge = 0; pl.over = 0; pl.stun = 1.3;
+            fart(.5, 55); G.texts.push({ x: pl.x + (pl.side === 1 ? 50 : -50), y: pl.y - 30, txt: '¡Se escapó!', life: 1.2, col: '#6B3F1F' });
+            for (let i = 0; i < 16; i++) G.parts.push({ x: pl.x, y: pl.y + 10, vx: rand(-120, 120), vy: rand(-140, 20), r: rand(6, 12), life: 1 });
+          }
+        }
+      } else if (!pl.charging) pl.tank = Math.min(100, pl.tank + 17 * dt);
+    }
+    // soplido por micrófono: empuje continuo
+    if (mic.who) {
+      const pl = G.p[mic.who], lv = micLevel();
+      if (lv > 0 && pl.tank > 0 && pl.stun <= 0) {
+        pl.tank -= lv * 30 * dt;
+        const dirX = pl.side === 1 ? 1 : -1, dx = b.x - pl.x, dy = b.y - pl.y, dist = Math.hypot(dx, dy);
+        const cone = clamp(1 - Math.abs(Math.atan2(dy, dx * dirX)) / .75, 0, 1);
+        b.vx += dx / dist * lv * 900 * cone * dt; b.vy += dy / dist * lv * 900 * cone * dt;
+        if (Math.random() < lv) G.parts.push({ x: pl.x + dirX * 16, y: pl.y, vx: dirX * rand(150, 300), vy: rand(-60, 60), r: rand(5, 9), life: 1 });
+      }
+    }
+
+    if (G.pause > 0) { G.pause -= dt; } else {
+      b.x += b.vx * dt; b.y += b.vy * dt;
+      const damp = Math.pow(0.55, dt); b.vx *= damp; b.vy *= damp;
+      if (b.y < b.r) { b.y = b.r; b.vy = Math.abs(b.vy) * .8; tone(300, .06, 'square', .05); }
+      if (b.y > H - b.r) { b.y = H - b.r; b.vy = -Math.abs(b.vy) * .8; tone(300, .06, 'square', .05); }
+      const inGoal = b.y > H * .2 && b.y < H * .8;
+      if (b.x < b.r) { if (inGoal) goal(2); else { b.x = b.r; b.vx = Math.abs(b.vx) * .8; } }
+      else if (b.x > W - b.r) { if (inGoal) goal(1); else { b.x = W - b.r; b.vx = -Math.abs(b.vx) * .8; } }
+    }
+    b.wob = Math.max(0, b.wob - dt);
+    G.parts.forEach(q => { q.x += q.vx * dt; q.y += q.vy * dt; q.vx *= .94; q.vy *= .94; q.r += 14 * dt; q.life -= dt * 1.2; });
+    G.parts = G.parts.filter(q => q.life > 0);
+    G.texts.forEach(t => { t.y -= 20 * dt; t.life -= dt * .9; });
+    G.texts = G.texts.filter(t => t.life > 0);
+  }
+  function goal(who) {
+    const pl = G.p[who]; pl.score++; pl.flash = 1;
+    [523, 659, 784].forEach((f, i) => tone(f, .2, 'triangle', .2, i * .1));
+    if (pl.score >= WIN) {
+      G.over = true;
+      const name = who === 1 ? 'Rosa' : (G.cpu ? 'La CPU' : 'Azul');
+      $('ov').innerHTML = `<h2>¡Gana ${name}!</h2><p>${G.p[1].score} – ${G.p[2].score}. El aire de esta sala ya no es respirable.</p>
+        <div class="row"><button class="btn" id="again" style="background:var(--mustard)">Revancha</button></div>`;
+      $('ov').hidden = false;
+      $('again').onclick = () => newGame(G.cpu);
+      return;
+    }
+    resetBall(who === 1 ? -1 : 1);
+  }
+
+  // ---------- render ----------
+  function drawPlayer(pl) {
+    const col = pl.side === 1 ? '#E85D75' : '#3E7CB1', dir = pl.side === 1 ? 1 : -1;
+    cx.save(); cx.translate(pl.x, pl.y);
+    const shake = pl.charging ? pl.charge * 2.5 + (pl.over > 0 ? 3 : 0) : 0;
+    cx.translate(rand(-shake, shake), rand(-shake, shake));
+    // está de espaldas a la pelota: el culo apunta al centro
+    cx.fillStyle = col; cx.strokeStyle = '#2A1E14'; cx.lineWidth = 3;
+    const puff = 1 + pl.charge * .35;
+    cx.beginPath(); cx.ellipse(dir * 4, 0, 18 * puff, 22, 0, 0, 7); cx.fill(); cx.stroke();
+    // cachetes traseros
+    cx.fillStyle = '#F5D0A9';
+    cx.beginPath(); cx.ellipse(dir * 16, -6, 8 * puff, 9, 0, 0, 7); cx.ellipse(dir * 16, 8, 8 * puff, 9, 0, 0, 7); cx.fill(); cx.stroke();
+    // cabeza mirando por encima del hombro
+    cx.fillStyle = '#F5D0A9'; cx.beginPath(); cx.arc(-dir * 12, -22, 12, 0, 7); cx.fill(); cx.stroke();
+    cx.fillStyle = '#2A1E14';
+    if (pl.stun > 0) { cx.font = '800 12px "Baloo 2", sans-serif'; cx.textAlign = 'center'; cx.fillText('x  x', -dir * 12, -20); }
+    else { cx.beginPath(); cx.arc(-dir * 12 + dir * 4, -24, 2.4, 0, 7); cx.arc(-dir * 12 + dir * 9, -24, 2.4, 0, 7); cx.fill(); }
+    if (pl.charging && pl.charge > .5) { cx.fillStyle = 'rgba(232,93,117,.5)'; cx.beginPath(); cx.arc(-dir * 12, -18, 5, 0, 7); cx.fill(); }
+    cx.restore();
+    // medidor de carga
+    if (pl.charging) {
+      const w = 44, x = pl.x - w / 2, y = pl.y + 30;
+      cx.fillStyle = 'rgba(42,30,20,.3)'; cx.fillRect(x, y, w, 6);
+      cx.fillStyle = pl.charge >= MAXC ? (Math.floor(G.t * 16) % 2 ? '#E85D75' : '#E8B931') : '#8DBF3A';
+      cx.fillRect(x, y, w * Math.min(1, pl.charge / MAXC), 6);
+    }
+  }
+  function render() {
+    cx.fillStyle = '#CFE3E6'; cx.fillRect(0, 0, W, H);
+    // azulejos de baño
+    cx.strokeStyle = 'rgba(42,30,20,.08)'; cx.lineWidth = 1;
+    for (let x = 0; x <= W; x += 30) { cx.beginPath(); cx.moveTo(x, 0); cx.lineTo(x, H); cx.stroke(); }
+    for (let y = 0; y <= H; y += 30) { cx.beginPath(); cx.moveTo(0, y); cx.lineTo(W, y); cx.stroke(); }
+    cx.strokeStyle = 'rgba(42,30,20,.25)'; cx.setLineDash([6, 8]); cx.beginPath(); cx.moveTo(W / 2, 0); cx.lineTo(W / 2, H); cx.stroke(); cx.setLineDash([]);
+    // porterías
+    cx.fillStyle = '#E85D75'; cx.fillRect(0, H * .2, 7, H * .6);
+    cx.fillStyle = '#3E7CB1'; cx.fillRect(W - 7, H * .2, 7, H * .6);
+    if (!G) return;
+    G.parts.forEach(q => { cx.fillStyle = `rgba(141,191,58,${Math.max(0, q.life * .55)})`; cx.beginPath(); cx.arc(q.x, q.y, q.r, 0, 7); cx.fill(); });
+    drawPlayer(G.p[1]); drawPlayer(G.p[2]);
+    // globo
+    const b = G.ball, s = 1 + Math.sin(G.t * 40) * b.wob * .15;
+    cx.save(); cx.translate(b.x, b.y); cx.scale(s, 2 - s);
+    cx.fillStyle = '#E8B931'; cx.strokeStyle = '#2A1E14'; cx.lineWidth = 3;
+    cx.beginPath(); cx.arc(0, 0, b.r, 0, 7); cx.fill(); cx.stroke();
+    cx.fillStyle = 'rgba(255,246,221,.7)'; cx.beginPath(); cx.ellipse(-7, -8, 6, 4, -.5, 0, 7); cx.fill();
+    cx.restore();
+    cx.strokeStyle = '#2A1E14'; cx.lineWidth = 1.5; cx.beginPath(); cx.moveTo(b.x, b.y + b.r); cx.quadraticCurveTo(b.x + 6, b.y + b.r + 10, b.x - 2, b.y + b.r + 18); cx.stroke();
+    G.texts.forEach(t => {
+      cx.globalAlpha = clamp(t.life, 0, 1); cx.font = '18px "Bowlby One", "Arial Black", sans-serif'; cx.textAlign = 'center';
+      cx.lineWidth = 4; cx.strokeStyle = '#FFF6DD'; cx.strokeText(t.txt, t.x, t.y); cx.fillStyle = t.col; cx.fillText(t.txt, t.x, t.y); cx.globalAlpha = 1;
+    });
+    if (G.pause > 0 && !G.over) { cx.font = '28px "Bowlby One", "Arial Black", sans-serif'; cx.textAlign = 'center'; cx.fillStyle = '#2A1E14'; cx.fillText(Math.ceil(G.pause), W / 2, 60); }
+  }
+  function hud() {
+    if (!G) return;
+    $('t1').firstElementChild.style.width = G.p[1].tank + '%';
+    $('t2').firstElementChild.style.width = G.p[2].tank + '%';
+    $('score').textContent = `${G.p[1].score} – ${G.p[2].score}`;
+  }
+
+  let last = performance.now();
+  function loop(now) {
+    const dt = Math.min(.033, (now - last) / 1000); last = now;
+    if (G && !G.over) update(dt);
+    render(); hud();
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  // ---------- controles ----------
+  const touches = new Map();
+  function toY(e) { const r = cv.getBoundingClientRect(); return (e.clientY - r.top) / r.height * H; }
+  function sideOf(e) { const r = cv.getBoundingClientRect(); return (e.clientX - r.left) / r.width < .5 ? 1 : 2; }
+  cv.addEventListener('pointerdown', e => {
+    if (!G || G.over) return; e.preventDefault(); initAudio();
+    const side = sideOf(e); if (G.cpu && side === 2) return;
+    cv.setPointerCapture(e.pointerId);
+    touches.set(e.pointerId, side);
+    const pl = G.p[side]; pl.ty = toY(e); if (pl.stun <= 0) pl.charging = true;
+  });
+  cv.addEventListener('pointermove', e => { const s = touches.get(e.pointerId); if (s && G) G.p[s].ty = toY(e); });
+  const up = e => { const s = touches.get(e.pointerId); if (s && G) release(G.p[s]); touches.delete(e.pointerId); };
+  cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+
+  const held = new Set();
+  addEventListener('keydown', e => {
+    if (!G || G.over) return;
+    const k = e.code;
+    if (['KeyW', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft'].includes(k)) e.preventDefault(); else return;
+    held.add(k);
+    if (e.repeat) return;
+    if (k === 'KeyD' && G.p[1].stun <= 0) G.p[1].charging = true;
+    if (k === 'ArrowLeft' && !G.cpu && G.p[2].stun <= 0) G.p[2].charging = true;
+  });
+  addEventListener('keyup', e => {
+    held.delete(e.code);
+    if (!G) return;
+    if (e.code === 'KeyD') release(G.p[1]);
+    if (e.code === 'ArrowLeft' && !G.cpu) release(G.p[2]);
+  });
+  // movimiento con teclas
+  setInterval(() => {
+    if (!G || G.over) return;
+    if (held.has('KeyW')) G.p[1].ty -= 6; if (held.has('KeyS')) G.p[1].ty += 6;
+    if (!G.cpu) { if (held.has('ArrowUp')) G.p[2].ty -= 6; if (held.has('ArrowDown')) G.p[2].ty += 6; }
+    G.p[1].ty = clamp(G.p[1].ty, 34, H - 34); G.p[2].ty = clamp(G.p[2].ty, 34, H - 34);
+  }, 16);
+
+  async function start(cpu) {
+    initAudio();
+    const who = +$('micSel').value;
+    if (cpu && who === 2) { $('micNote').textContent = 'Contra la CPU, el micrófono solo lo puede usar el jugador rosa.'; return; }
+    if (!(await startMic(who))) return;
+    newGame(cpu);
+  }
+  $('go2').onclick = () => start(false);
+  $('goCpu').onclick = () => start(true);
+})();
+</script>

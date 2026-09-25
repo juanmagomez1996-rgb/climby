@@ -1,0 +1,106 @@
+<title>Laboratorio de Gases</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Baloo+2:wght@500;700;800&display=swap">
+<style>
+  :root {
+    --ink: #2A1E14;
+    --paper: #F3E6C4;
+    --card: #FFF6DD;
+    --mustard: #E8B931;
+    --bean: #6B3F1F;
+    --gas: #8DBF3A;
+    --blush: #E85D75;
+    --tile: #CFE3E6;
+    --muted: #7A6650;
+    color-scheme: light;
+  }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0; padding-inline: 16px;
+    background: var(--paper); color: var(--ink);
+    font-family: "Baloo 2", system-ui, sans-serif; font-size: 17px; line-height: 1.45;
+  }
+  main { max-width: 760px; margin: 0 auto; padding-block: 32px 48px; display: flex; flex-direction: column; gap: 28px; }
+  .top { display: flex; flex-direction: column; gap: 8px; }
+  .top small { font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--bean); font-size: 13px; }
+  h1 { font-family: "Bowlby One", "Arial Black", sans-serif; font-weight: 400; font-size: clamp(36px, 9vw, 64px); line-height: .95; margin: 0; text-wrap: balance; }
+  h1 span { color: var(--gas); -webkit-text-stroke: 2px var(--ink); }
+  .top p { margin: 0; max-width: 58ch; }
+  .games { display: grid; gap: 16px; }
+  a.game { display: grid; grid-template-columns: 96px 1fr; gap: 16px; align-items: center; text-decoration: none; color: var(--ink); background: var(--card); border: 3px solid var(--ink); border-radius: 18px; padding: 14px; box-shadow: 0 5px 0 var(--ink); transition: transform .08s; }
+  a.game:hover { transform: translateY(-2px); }
+  a.game:active { transform: translateY(3px); box-shadow: 0 2px 0 var(--ink); }
+  a.game:focus-visible { outline: 3px solid var(--bean); outline-offset: 3px; }
+  .game canvas { width: 96px; height: 96px; border-radius: 12px; border: 3px solid var(--ink); display: block; }
+  .game h2 { font-family: "Bowlby One", "Arial Black", sans-serif; font-weight: 400; font-size: 22px; margin: 0; line-height: 1.1; }
+  .game p { margin: 2px 0 6px; }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tags span { font-size: 12px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; border: 2px solid var(--ink); border-radius: 999px; padding: 0 8px; }
+  footer { font-size: 14px; color: var(--muted); max-width: 60ch; }
+  @media (max-width: 420px) { a.game { grid-template-columns: 72px 1fr; } .game canvas { width: 72px; height: 72px; } }
+  @media (prefers-reduced-motion: reduce) { a.game { transition: none; } }
+</style>
+
+<main>
+  <div class="top">
+    <small>Prototipos jugables · v0.1</small>
+    <h1>Laboratorio de <span>Gases</span></h1>
+    <p>Tres ideas para probar cuál es la más divertida antes de construirla en serio. Todo el sonido está sintetizado en el navegador, así que sube el volumen.</p>
+  </div>
+
+  <div class="games">
+    <a class="game" href="ascensor.html">
+      <canvas data-icon="lift" width="192" height="192" aria-hidden="true"></canvas>
+      <div>
+        <h2>Ascensor Apestoso</h2>
+        <p>Deducción social en 30 pisos. El impostor suelta el gas cuando hay ruido y los demás intentan pillarle. Si no lo suelta, explota.</p>
+        <div class="tags"><span>Sigilo</span><span>Impostor</span><span>Bots · luego online</span></div>
+      </div>
+    </a>
+    <a class="game" href="jetpack.html">
+      <canvas data-icon="jet" width="192" height="192" aria-hidden="true"></canvas>
+      <div>
+        <h2>Jetpack de Emergencia</h2>
+        <p>Runner infinito. Planear, hacer dash y frenar gastan del mismo tanque. Come frijoles y decide en qué gastas cada pedo.</p>
+        <div class="tags"><span>Runner</span><span>1 jugador</span><span>Récord</span></div>
+      </div>
+    </a>
+    <a class="game" href="duelo.html">
+      <canvas data-icon="duel" width="192" height="192" aria-hidden="true"></canvas>
+      <div>
+        <h2>Duelo de Presión</h2>
+        <p>Dos jugadores en la misma pantalla empujan un globo con ráfagas. Si cargas demasiado, se te escapa. Tiene modo micrófono para soplar de verdad.</p>
+        <div class="tags"><span>Local 2P</span><span>Contra la CPU</span><span>Micrófono</span></div>
+      </div>
+    </a>
+  </div>
+
+  <footer>El modo micrófono del duelo solo funciona si abres el archivo en tu navegador (localhost o https). En la vista previa de claude.ai el micrófono está bloqueado.</footer>
+</main>
+
+<script>
+  // mini iconos dibujados a mano
+  document.querySelectorAll('canvas[data-icon]').forEach(c => {
+    const x = c.getContext('2d'); x.scale(2, 2); x.lineWidth = 3; x.strokeStyle = '#2A1E14';
+    const puff = (px, py, r) => { x.fillStyle = 'rgba(141,191,58,.8)'; x.beginPath(); x.arc(px, py, r, 0, 7); x.fill(); };
+    const k = c.dataset.icon;
+    if (k === 'lift') {
+      x.fillStyle = '#B9A68A'; x.fillRect(0, 0, 96, 96);
+      x.fillStyle = '#9C9384'; x.fillRect(22, 18, 52, 70); x.strokeRect(22, 18, 52, 70); x.beginPath(); x.moveTo(48, 18); x.lineTo(48, 88); x.stroke();
+      x.fillStyle = '#2A1E14'; x.fillRect(34, 4, 28, 12); x.fillStyle = '#FF5A36'; x.font = '10px "Bowlby One", sans-serif'; x.textAlign = 'center'; x.fillText('30', 48, 14);
+      puff(30, 70, 12); puff(44, 62, 9); puff(62, 72, 11);
+    } else if (k === 'jet') {
+      x.fillStyle = '#F6C95B'; x.fillRect(0, 0, 96, 96); x.fillStyle = '#6B3F1F'; x.fillRect(0, 76, 96, 20); x.fillStyle = '#8DBF3A'; x.fillRect(0, 76, 96, 4);
+      puff(22, 58, 12); puff(12, 66, 8); puff(32, 66, 7);
+      x.fillStyle = '#E85D75'; x.beginPath(); x.roundRect(40, 38, 24, 26, 8); x.fill(); x.stroke();
+      x.fillStyle = '#F5D0A9'; x.beginPath(); x.arc(56, 30, 10, 0, 7); x.fill(); x.stroke();
+    } else {
+      x.fillStyle = '#CFE3E6'; x.fillRect(0, 0, 96, 96);
+      puff(30, 48, 10); puff(66, 48, 10);
+      x.fillStyle = '#E85D75'; x.beginPath(); x.ellipse(14, 48, 10, 14, 0, 0, 7); x.fill(); x.stroke();
+      x.fillStyle = '#3E7CB1'; x.beginPath(); x.ellipse(82, 48, 10, 14, 0, 0, 7); x.fill(); x.stroke();
+      x.fillStyle = '#E8B931'; x.beginPath(); x.arc(48, 48, 12, 0, 7); x.fill(); x.stroke();
+    }
+  });
+</script>

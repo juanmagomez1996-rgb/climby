@@ -1,0 +1,367 @@
+<title>Jetpack de Emergencia</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Baloo+2:wght@500;700;800&display=swap">
+<style>
+  :root {
+    --ink: #2A1E14;
+    --paper: #F3E6C4;
+    --card: #FFF6DD;
+    --mustard: #E8B931;
+    --bean: #6B3F1F;
+    --gas: #8DBF3A;
+    --blush: #E85D75;
+    --muted: #7A6650;
+    color-scheme: light;
+  }
+  html, body { height: 100%; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0; padding-inline: 16px;
+    background: var(--paper); color: var(--ink);
+    font-family: "Baloo 2", system-ui, sans-serif; font-size: 16px;
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+  }
+  .app { max-width: 560px; margin: 0 auto; padding-block: 12px 24px; display: flex; flex-direction: column; gap: 10px; }
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  header a { color: var(--bean); font-weight: 700; text-decoration: none; white-space: nowrap; }
+  header a:focus-visible, button:focus-visible { outline: 3px solid var(--bean); outline-offset: 2px; }
+  h1 { font-family: "Bowlby One", "Arial Black", sans-serif; font-weight: 400; font-size: 26px; margin: 0; line-height: 1; }
+  .stage { position: relative; }
+  canvas { display: block; width: 100%; max-width: 100%; aspect-ratio: 480 / 320; border-radius: 14px; border: 3px solid var(--ink); background: #F6C95B; touch-action: none; }
+  .gasrow { display: flex; align-items: center; gap: 10px; }
+  .gasrow span { font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .bar { flex: 1; height: 18px; border: 3px solid var(--ink); border-radius: 10px; background: var(--card); overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 100%; background: var(--gas); }
+  .bar.low i { background: var(--blush); }
+  .score { font-family: "Bowlby One", "Arial Black", sans-serif; font-size: 18px; font-variant-numeric: tabular-nums; min-width: 5ch; text-align: right; }
+  .pad { display: grid; grid-template-columns: 1fr 1fr 1.4fr; gap: 8px; }
+  .btn { font: inherit; font-weight: 800; border: 3px solid var(--ink); border-radius: 14px; background: var(--card); color: var(--ink); padding: 14px 8px; cursor: pointer; box-shadow: 0 4px 0 var(--ink); touch-action: none; line-height: 1.1; }
+  .btn small { display: block; font-weight: 600; font-size: 12px; color: var(--muted); }
+  .btn.down, .btn:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--ink); }
+  #bJump { background: var(--gas); }
+  #bDash { background: var(--mustard); }
+  .hint { font-size: 13px; color: var(--muted); margin: 0; }
+  .overlay { position: absolute; inset: 0; background: rgba(42, 30, 20, .82); border-radius: 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 16px; text-align: center; color: var(--card); }
+  .overlay h2 { font-family: "Bowlby One", "Arial Black", sans-serif; font-weight: 400; font-size: 26px; margin: 0; color: var(--mustard); line-height: 1.05; text-wrap: balance; }
+  .overlay p { margin: 0; max-width: 38ch; line-height: 1.35; }
+  .overlay .btn { padding-inline: 20px; }
+</style>
+
+<div class="app">
+  <header>
+    <h1>Jetpack de Emergencia</h1>
+    <a href="index.html">← Prototipos</a>
+  </header>
+  <div class="stage">
+    <canvas id="c" width="480" height="320" aria-label="Runner lateral"></canvas>
+    <div class="overlay" id="ov">
+      <h2>Un solo tanque de gas</h2>
+      <p>Saltar es gratis. Planear, hacer dash y frenar gastan del mismo tanque. Come frijoles para recargar.</p>
+      <button class="btn" id="start" style="background:var(--gas)">Correr</button>
+    </div>
+  </div>
+  <div class="gasrow">
+    <span>Gas</span><div class="bar" id="gas"><i></i></div><div class="score" id="score">0 m</div>
+  </div>
+  <div class="pad">
+    <button class="btn" id="bBrake">Frenar<small>← / A</small></button>
+    <button class="btn" id="bDash">Dash<small>→ / D</small></button>
+    <button class="btn" id="bJump">Saltar · Planear<small>Espacio (mantén)</small></button>
+  </div>
+  <p class="hint">Cajas: rómpelas con dash. Prensas: frena y espera a que suban. Huecos grandes: salta y mantén para planear.</p>
+</div>
+
+<script>
+(() => {
+  const cv = document.getElementById('c'), cx = cv.getContext('2d');
+  const W = 480, H = 320, GROUND = 262, PX = 110;
+  function fit() { const d = Math.min(2, devicePixelRatio || 1); cv.width = W * d; cv.height = H * d; cx.setTransform(d, 0, 0, d, 0, 0); }
+  fit(); addEventListener('resize', fit);
+  const $ = id => document.getElementById(id);
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+  // ---------- audio ----------
+  let AC, master, fOsc, fLfo, fGain, noiseBuf;
+  function initAudio() {
+    if (AC) { AC.resume(); return; }
+    try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; }
+    master = AC.createGain(); master.gain.value = .6; master.connect(AC.destination);
+    noiseBuf = AC.createBuffer(1, AC.sampleRate, AC.sampleRate);
+    const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    fOsc = AC.createOscillator(); fOsc.type = 'sawtooth'; fOsc.frequency.value = 80;
+    fLfo = AC.createOscillator(); fLfo.frequency.value = 18;
+    const lg = AC.createGain(); lg.gain.value = 25; fLfo.connect(lg).connect(fOsc.frequency);
+    const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 480; lp.Q.value = 6;
+    fGain = AC.createGain(); fGain.gain.value = 0;
+    fOsc.connect(lp).connect(fGain).connect(master); fOsc.start(); fLfo.start();
+  }
+  function voice(vol, pitch = 80, wob = 18) {
+    if (!AC) return; const t = AC.currentTime;
+    fGain.gain.setTargetAtTime(vol, t, .03); fOsc.frequency.setTargetAtTime(pitch, t, .04); fLfo.frequency.setTargetAtTime(wob, t, .04);
+  }
+  function tone(f, dur, type = 'sine', vol = .2, when = 0, slide) {
+    if (!AC) return; const t = AC.currentTime + when, o = AC.createOscillator(), g = AC.createGain();
+    o.type = type; o.frequency.setValueAtTime(f, t); if (slide) o.frequency.exponentialRampToValueAtTime(slide, t + dur);
+    g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + .01); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    o.connect(g).connect(master); o.start(t); o.stop(t + dur + .05);
+  }
+  function burst(dur, freq, vol) {
+    if (!AC) return; const t = AC.currentTime, s = AC.createBufferSource(), f = AC.createBiquadFilter(), g = AC.createGain();
+    s.buffer = noiseBuf; f.type = 'bandpass'; f.frequency.value = freq; g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    s.connect(f).connect(g).connect(master); s.start(t); s.stop(t + dur + .05);
+  }
+
+  // ---------- estado ----------
+  let G = null, best = 0;
+  try { best = +localStorage.getItem('jetpack-best') || 0; } catch (e) {}
+  const input = { jump: false, dash: false, brake: false, jumpPressed: false, dashPressed: false };
+
+  function newGame() {
+    G = {
+      t: 0, cam: 0, speed: 200, base: 200, gas: 100, dist: 0, over: false,
+      p: { y: GROUND - 40, vy: 0, ground: true, dash: 0, dashCd: 0, gliding: false, braking: false, squash: 0 },
+      segs: [{ x0: -200, x1: 700 }], obs: [], beans: [], clouds: [], parts: [], nextX: 700, shake: 0,
+    };
+    for (let i = 0; i < 6; i++) G.beans.push({ x: 300 + i * 34, y: GROUND - 30, got: false });
+    $('ov').hidden = true;
+  }
+
+  // ---------- generador de tramos ----------
+  function extend() {
+    while (G.nextX < G.cam + W + 400) {
+      const d = clamp((G.dist - 60) / 900, 0, 1); // dificultad 0..1
+      const x = G.nextX;
+      const r = Math.random();
+      const last = G.segs[G.segs.length - 1];
+      if (r < 0.28) { // hueco
+        const big = Math.random() < 0.25 + d * 0.35;
+        const gap = big ? rand(230, 300 + d * 90) : rand(90, 150 + d * 40);
+        last.x1 = x; const start = x + gap; const len = rand(260, 420);
+        G.segs.push({ x0: start, x1: start + len });
+        if (big) for (let i = 0; i < 4; i++) G.beans.push({ x: x + gap * (.2 + i * .2), y: GROUND - 120 + Math.sin(i) * 12, got: false });
+        G.nextX = start + len;
+      } else {
+        const len = rand(300, 460);
+        last.x1 = x + len;
+        const kind = Math.random();
+        if (kind < .32) G.obs.push({ type: 'cone', x: x + len * .5, w: 26, h: 30 });
+        else if (kind < .6) G.obs.push({ type: 'crate', x: x + len * .45, w: 40, h: 150, broken: false });
+        else if (kind < .82 + d * .1) G.obs.push({ type: 'press', x: x + len * .45, w: 56, off: rand(0, 2.8), period: 2.8 - d * .5 });
+        if (Math.random() < .7) { const bx = x + rand(40, len - 120); for (let i = 0; i < 3; i++) G.beans.push({ x: bx + i * 30, y: GROUND - 30 - (Math.random() < .4 ? 70 : 0), got: false }); }
+        G.nextX = x + len;
+      }
+    }
+    G.segs = G.segs.filter(s => s.x1 > G.cam - 100);
+    G.obs = G.obs.filter(o => o.x + o.w > G.cam - 100);
+    G.beans = G.beans.filter(b => b.x > G.cam - 50);
+  }
+
+  // altura de la prensa (0 = arriba del todo, 1 = abajo, aplastando)
+  function pressDown(o) {
+    const ph = ((G.t + o.off) % o.period) / o.period;
+    if (ph < .45) return 0;
+    if (ph < .55) return (ph - .45) / .1;
+    if (ph < .8) return 1;
+    return 1 - (ph - .8) / .2;
+  }
+
+  // ---------- update ----------
+  function puff(x, y, vx, vy, n, col = 'rgba(141,191,58,') {
+    for (let i = 0; i < n; i++) G.parts.push({ x, y, vx: vx + rand(-40, 40), vy: vy + rand(-40, 40), r: rand(5, 11), life: 1, col });
+  }
+  function die(why) {
+    if (G.over) return;
+    G.over = true; G.shake = .6; voice(0);
+    tone(300, .4, 'triangle', .25, 0, 90); burst(.5, 200, .8);
+    const m = Math.floor(G.dist);
+    const rec = m > best; if (rec) { best = m; try { localStorage.setItem('jetpack-best', String(best)); } catch (e) {} }
+    setTimeout(() => {
+      $('ov').innerHTML = `<h2>${why}</h2><p>${m} m${rec ? ' · ¡récord!' : ` · récord ${best} m`}</p><button class="btn" id="again" style="background:var(--gas)">Otra vez</button>`;
+      $('ov').hidden = false;
+      $('again').onclick = () => { initAudio(); newGame(); };
+    }, 500);
+  }
+
+  function update(dt) {
+    const p = G.p;
+    G.t += dt;
+    G.base = Math.min(430, 200 + G.t * 3.2);
+    p.dashCd = Math.max(0, p.dashCd - dt);
+
+    // dash (pedo propulsor)
+    if (input.dashPressed && p.dashCd === 0 && G.gas >= 25) {
+      G.gas -= 25; p.dash = .28; p.dashCd = .55; p.vy = Math.min(p.vy, 0) * .2;
+      puff(G.cam + PX - 16, p.y + 26, -260, 0, 14); burst(.3, 180, .9); tone(90, .3, 'sawtooth', .3, 0, 55);
+    }
+    input.dashPressed = false;
+
+    // frenar (pedo hacia delante)
+    p.braking = input.brake && G.gas > 0 && p.dash <= 0;
+    let target = G.base;
+    if (p.braking) { target = G.base * .3; G.gas -= 22 * dt; if (Math.random() < dt * 30) puff(G.cam + PX + 20, p.y + 22, 200, -20, 1); }
+    if (p.dash > 0) { p.dash -= dt; target = G.base + 480; }
+    G.speed += (target - G.speed) * Math.min(1, dt * (p.braking ? 7 : 4));
+
+    // salto / planeo
+    if (input.jumpPressed && p.ground) { p.vy = -560; p.ground = false; p.squash = .15; tone(260, .12, 'square', .08, 0, 420); }
+    input.jumpPressed = false;
+    p.gliding = !p.ground && input.jump && p.vy > -60 && G.gas > 0 && p.dash <= 0;
+    if (p.dash > 0) p.vy = 0;
+    else {
+      p.vy += 1500 * dt;
+      if (p.gliding) { p.vy = Math.min(p.vy, 70); p.vy -= 260 * dt; G.gas -= 20 * dt; if (Math.random() < dt * 40) puff(G.cam + PX - 4, p.y + 40, -60, 120, 1); }
+    }
+    G.gas = clamp(G.gas + (p.ground ? 3 * dt : 0), 0, 100);
+
+    // sonido continuo
+    if (p.dash > 0) voice(.45, 120, 30);
+    else if (p.gliding) voice(.3, 72, 14);
+    else if (p.braking) voice(.35, 95, 26);
+    else voice(0);
+
+    const oldY = p.y;
+    p.y += p.vy * dt;
+    G.cam += G.speed * dt;
+    G.dist += G.speed * dt / 20;
+
+    // suelo
+    const wx = G.cam + PX;
+    const onSeg = G.segs.some(s => wx + 12 > s.x0 && wx - 12 < s.x1);
+    if (onSeg && p.vy >= 0 && oldY + 40 <= GROUND + 2 && p.y + 40 >= GROUND) { if (!p.ground) p.squash = .12; p.y = GROUND - 40; p.vy = 0; p.ground = true; }
+    else if (!onSeg || p.y + 40 < GROUND - 1) p.ground = false;
+    if (p.y > H + 40) return die('Al vacío');
+
+    // obstáculos
+    const pl = wx - 16, pr = wx + 16, pt = p.y, pb = p.y + 40;
+    for (const o of G.obs) {
+      if (pr < o.x || pl > o.x + o.w) continue;
+      if (o.type === 'cone' && pb > GROUND - o.h + 6) return die('Tropezaste con un cono');
+      if (o.type === 'crate' && !o.broken && pb > GROUND - o.h) {
+        if (p.dash > 0) { o.broken = true; G.shake = .25; burst(.25, 400, .7); for (let i = 0; i < 12; i++) G.parts.push({ x: o.x + 20, y: GROUND - rand(0, o.h), vx: rand(60, 320), vy: rand(-300, 0), r: rand(4, 9), life: 1, col: 'rgba(160,105,50,' }); }
+        else return die('Contra las cajas');
+      }
+      if (o.type === 'press') { const bottom = 20 + pressDown(o) * (GROUND - 20); if (pt < bottom - 4) return die('Aplastado'); }
+    }
+    for (const b of G.beans) {
+      if (!b.got && Math.abs(b.x - wx) < 22 && Math.abs(b.y - (p.y + 20)) < 28) {
+        b.got = true; G.gas = Math.min(100, G.gas + 12); tone(700 + Math.random() * 200, .08, 'triangle', .12, 0, 1100);
+      }
+    }
+    p.squash = Math.max(0, p.squash - dt);
+    G.parts.forEach(q => { q.x += q.vx * dt; q.y += q.vy * dt; q.vx *= .96; q.vy *= .96; q.r += 12 * dt; q.life -= dt * 1.4; });
+    G.parts = G.parts.filter(q => q.life > 0);
+    G.shake = Math.max(0, G.shake - dt);
+    extend();
+  }
+
+  // ---------- render ----------
+  const city = Array.from({ length: 40 }, (_, i) => ({ x: i * 60, h: 40 + ((i * 97) % 90), w: 44 + ((i * 31) % 20) }));
+  function render() {
+    cx.save();
+    if (G && G.shake > 0) cx.translate(rand(-6, 6) * G.shake, rand(-6, 6) * G.shake);
+    const sky = cx.createLinearGradient(0, 0, 0, H); sky.addColorStop(0, '#F6C95B'); sky.addColorStop(1, '#F29E6B');
+    cx.fillStyle = sky; cx.fillRect(-10, -10, W + 20, H + 20);
+    const cam = G ? G.cam : 0;
+    // ciudad lejana
+    cx.fillStyle = 'rgba(107,63,31,.35)';
+    city.forEach(b => { const x = ((b.x - cam * .25) % 2400 + 2400) % 2400 - 100; cx.fillRect(x, GROUND - 30 - b.h, b.w, b.h + 40); });
+    if (!G) { cx.restore(); return; }
+    // suelo
+    for (const s of G.segs) {
+      const x0 = s.x0 - cam, x1 = s.x1 - cam; if (x1 < -10 || x0 > W + 10) continue;
+      cx.fillStyle = '#6B3F1F'; cx.fillRect(x0, GROUND, x1 - x0, H - GROUND + 10);
+      cx.fillStyle = '#8DBF3A'; cx.fillRect(x0, GROUND, x1 - x0, 8);
+      cx.strokeStyle = '#2A1E14'; cx.lineWidth = 3; cx.strokeRect(x0, GROUND, x1 - x0, H);
+    }
+    // obstáculos
+    for (const o of G.obs) {
+      const x = o.x - cam; if (x > W + 60 || x < -80) continue;
+      cx.strokeStyle = '#2A1E14'; cx.lineWidth = 3;
+      if (o.type === 'cone') {
+        cx.fillStyle = '#FF7A2F'; cx.beginPath(); cx.moveTo(x, GROUND); cx.lineTo(x + o.w / 2, GROUND - o.h); cx.lineTo(x + o.w, GROUND); cx.closePath(); cx.fill(); cx.stroke();
+        cx.fillStyle = '#FFF6DD'; cx.fillRect(x + 7, GROUND - 16, o.w - 14, 5);
+      } else if (o.type === 'crate' && !o.broken) {
+        for (let k = 0; k < 3; k++) { const y = GROUND - (k + 1) * 50; cx.fillStyle = '#C08A4A'; cx.fillRect(x, y, o.w, 50); cx.strokeRect(x, y, o.w, 50); cx.beginPath(); cx.moveTo(x, y); cx.lineTo(x + o.w, y + 50); cx.stroke(); }
+      } else if (o.type === 'press') {
+        const bottom = 20 + pressDown(o) * (GROUND - 20);
+        cx.fillStyle = '#6E6A63'; cx.fillRect(x + o.w / 2 - 6, 0, 12, bottom - 30);
+        cx.fillStyle = '#9C9384'; cx.fillRect(x, bottom - 30, o.w, 30); cx.strokeRect(x, bottom - 30, o.w, 30);
+        cx.fillStyle = '#E8B931'; for (let k = 0; k < 4; k++) cx.fillRect(x + 4 + k * 13, bottom - 10, 7, 6);
+      }
+    }
+    // frijoles
+    for (const b of G.beans) {
+      if (b.got) continue; const x = b.x - cam;
+      cx.save(); cx.translate(x, b.y + Math.sin(G.t * 4 + b.x) * 3); cx.rotate(-.5);
+      cx.fillStyle = '#7B3B22'; cx.beginPath(); cx.ellipse(0, 0, 10, 6.5, 0, 0, 7); cx.fill();
+      cx.strokeStyle = '#2A1E14'; cx.lineWidth = 2; cx.stroke();
+      cx.fillStyle = 'rgba(255,246,221,.6)'; cx.beginPath(); cx.ellipse(-3, -2, 3, 1.6, 0, 0, 7); cx.fill();
+      cx.restore();
+    }
+    // gas
+    G.parts.forEach(q => { cx.fillStyle = q.col + Math.max(0, q.life * .6) + ')'; cx.beginPath(); cx.arc(q.x - cam, q.y, q.r, 0, 7); cx.fill(); });
+    // jugador
+    const p = G.p; const x = PX;
+    const sq = p.squash > 0 ? 1 - p.squash * 1.5 : 1;
+    cx.save(); cx.translate(x, p.y + 40); cx.scale(2 - sq, sq);
+    if (p.dash > 0) cx.rotate(.12);
+    // cuerpo
+    cx.fillStyle = '#E85D75'; cx.strokeStyle = '#2A1E14'; cx.lineWidth = 3;
+    cx.beginPath(); cx.roundRect(-16, -36, 32, 36, 12); cx.fill(); cx.stroke();
+    // shorts / culo
+    cx.fillStyle = '#3E7CB1'; cx.beginPath(); cx.roundRect(-17, -14, 34, 14, 6); cx.fill(); cx.stroke();
+    // cabeza
+    cx.fillStyle = '#F5D0A9'; cx.beginPath(); cx.arc(4, -46, 14, 0, 7); cx.fill(); cx.stroke();
+    cx.fillStyle = '#2A1E14';
+    if (p.gliding || p.dash > 0 || p.braking) { cx.lineWidth = 2.5; cx.beginPath(); cx.moveTo(4, -49); cx.lineTo(10, -47); cx.moveTo(10, -51); cx.lineTo(14, -49); cx.stroke(); cx.beginPath(); cx.arc(10, -39, 3, 0, 7); cx.fill(); }
+    else { cx.beginPath(); cx.arc(7, -48, 2.5, 0, 7); cx.arc(13, -48, 2.5, 0, 7); cx.fill(); cx.fillRect(7, -40, 7, 2.5); }
+    // piernas
+    cx.lineWidth = 5; cx.beginPath();
+    const run = p.ground ? Math.sin(G.t * 22) * 7 : 4;
+    cx.moveTo(-6, 0); cx.lineTo(-6 + run, 8); cx.moveTo(6, 0); cx.lineTo(6 - run, 8); cx.stroke();
+    cx.restore();
+    // "PFFF" al hacer dash
+    if (p.dash > 0) { cx.font = '18px "Bowlby One", "Arial Black", sans-serif'; cx.fillStyle = '#5E8A1F'; cx.fillText('PFFFT', PX - 90, p.y + 20); }
+    cx.restore();
+  }
+
+  function hud() {
+    if (!G) return;
+    $('gas').firstElementChild.style.width = G.gas + '%';
+    $('gas').classList.toggle('low', G.gas < 25);
+    $('score').textContent = Math.floor(G.dist) + ' m';
+  }
+
+  let last = performance.now();
+  function loop(now) {
+    const dt = Math.min(.033, (now - last) / 1000); last = now;
+    if (G && !G.over) update(dt);
+    render(); hud();
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  // ---------- controles ----------
+  function bind(el, key) {
+    const on = e => { e.preventDefault(); initAudio(); if (!input[key]) { input[key] = true; if (key === 'jump') input.jumpPressed = true; if (key === 'dash') input.dashPressed = true; } el.classList.add('down'); };
+    const off = () => { input[key] = false; el.classList.remove('down'); };
+    el.addEventListener('pointerdown', on);
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => el.addEventListener(ev, off));
+  }
+  bind($('bJump'), 'jump'); bind($('bDash'), 'dash'); bind($('bBrake'), 'brake');
+  const KEYS = { Space: 'jump', ArrowUp: 'jump', KeyW: 'jump', ArrowRight: 'dash', KeyD: 'dash', ArrowLeft: 'brake', KeyA: 'brake' };
+  addEventListener('keydown', e => {
+    const k = KEYS[e.code]; if (!k) return; e.preventDefault(); initAudio();
+    if (!G || G.over) { if (e.code === 'Space' && $('ov').hidden === false) { newGame(); } return; }
+    if (e.repeat) return;
+    input[k] = true; if (k === 'jump') input.jumpPressed = true; if (k === 'dash') input.dashPressed = true;
+  });
+  addEventListener('keyup', e => { const k = KEYS[e.code]; if (k) input[k] = false; });
+  // tocar el canvas también salta/planea
+  cv.addEventListener('pointerdown', e => { e.preventDefault(); initAudio(); if (G && !G.over) { input.jump = true; input.jumpPressed = true; } });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => cv.addEventListener(ev, () => { input.jump = false; }));
+  $('start').onclick = () => { initAudio(); newGame(); };
+})();
+</script>
