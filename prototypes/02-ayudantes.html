@@ -1,0 +1,426 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Ayudantes Desechables</title></head><body>
+<script src="proto.js"></script>
+<script>
+// Ayudantes Desechables: invoca Blips con UNA tarea; se estresan y, si revientan, la lían.
+const G = Proto.create({ onRestart() { G.hideScreen(); total = 0; startLevel(0); } });
+const C = G.C, ctx = G.ctx, CS = 45, OY = 124, COLS = 12, ROWS = 13;
+const TASKS = {
+  switch: { label: 'Pulsa el interruptor', sub: 'Lo aguanta hasta que otro acabe', col: C.teal },
+  key: { label: 'Abre la puerta', sub: 'Busca la llave y abre', col: C.gold },
+  fire: { label: 'Apaga el fuego', sub: 'Se acerca y lo sofoca', col: '#FF8A3D' },
+  goal: { label: 'Pulsa el botón rojo', sub: 'El objetivo del nivel', col: C.pink },
+  sofa: { label: 'Mueve el sofá', sub: 'Imposible solo: hacen falta 3', col: C.lime },
+};
+const LV = [
+  { name: 'El botón rojo', goal: 'Que alguien pulse el botón rojo', win: 'goal', cards: ['switch', 'goal'], max: 4, par: 2, parT: 14, map: [
+    '############', '#B.........#', '#..........#', '#..........#', '#....p.....#', '#..........#', '#..........#',
+    '####GGG#####', '#..........#', '#..........#', '#.......b..#', '#..........#', '############'] },
+  { name: 'Fuego y llave', goal: 'Llega al botón rojo', win: 'goal', cards: ['fire', 'key', 'goal'], max: 5, par: 3, parT: 20, map: [
+    '############', '#B...#.....#', '#....#..k..#', '#....F.....#', '#....#.....#', '######L#####', '#..........#',
+    '#..........#', '#.......b..#', '#..........#', '#..........#', '#..........#', '############'] },
+  { name: 'La cinta', goal: 'Llega al botón rojo (la cinta obliga)', win: 'goal', cards: ['switch', 'key', 'goal'], max: 6, par: 4, parT: 28, map: [
+    '############', '#B...#..k..#', '#....#.....#', '#.p..G.....#', '#....G.....#', '#....#.....#', '######L#####',
+    '#.....v....#', '#.....v....#', '#.....>>>>v#', '#.........v#', '#.......b<<#', '############'] },
+  { name: 'El sofá', goal: 'Lleva el sofá a la X', win: 'sofa', cards: ['sofa', 'fire'], max: 6, par: 4, parT: 20, map: [
+    '############', '#B.........#', '#..........#', '#..S.......#', '#..........#', '#####F######', '#..........#',
+    '#..........#', '#......X...#', '#..........#', '#..........#', '#..........#', '############'] },
+  { name: 'Mudanza total', goal: 'Lleva el sofá a la X', win: 'sofa', cards: ['switch', 'key', 'sofa'], max: 8, par: 5, parT: 32, map: [
+    '############', '#B...#..k..#', '#....G.....#', '#.p..G..F..#', '#....#.....#', '#.S..#.....#', '#....#.....#',
+    '#....#.....#', '#....#.....#', '###L########', '#..>>>>>>..#', '#.......X..#', '############'] },
+];
+const CONV = { '>': [1, 0], '<': [-1, 0], '^': [0, -1], 'v': [0, 1] };
+const SLOTS = [[-0.36, -0.08], [0.36, -0.08], [0, 0.34], [0, -0.4], [-0.36, 0.3], [0.36, 0.3]];
+const HELLO = ['¡Voy!', '¡Allá voy!', '¡Encantado!', '¡A mandar!', '¡Hola, jefe!'];
+
+let li = 0, lv, map, box, key, sofa, blips, sel, used, chaos, lvT, completions, calmCd, state, endT, won, nextId = 1, total = 0;
+let gatesOpen = false, sofaMoving = false, loseReason = '';
+
+function startLevel(i) {
+  li = i; lv = LV[i]; map = lv.map.map(r => r.split('')); key = null; sofa = null; blips = [];
+  for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
+    const ch = map[y][x];
+    if (ch === 'B') { box = { x, y }; map[y][x] = '.'; }
+    if (ch === 'k') { key = { x, y, carrier: null, gone: false }; map[y][x] = '.'; }
+    if (ch === 'S') { sofa = { x, y, cx: x, cy: y, tx: x, ty: y, done: false }; map[y][x] = '.'; }
+  }
+  sel = 0; used = 0; chaos = 0; lvT = 0; completions = 0; calmCd = 0; state = 'play'; won = false;
+  G.particles.length = 0; G.floaters.length = 0;
+  G.float(`Nivel ${i + 1}: ${lv.name}`, 270, 440, C.gold, 30);
+}
+
+const T = (x, y) => (x < 0 || y < 0 || x >= COLS || y >= ROWS) ? '#' : map[y][x];
+function pass(x, y) { const t = T(x, y); if (t === '#' || t === 'L' || t === 'F') return false; if (t === 'G') return gatesOpen; return true; }
+function bfs(sx, sy, goal) {
+  const prev = new Int16Array(COLS * ROWS).fill(-1), q = [sx + sy * COLS]; prev[q[0]] = q[0];
+  for (let h = 0; h < q.length; h++) {
+    const c = q[h], x = c % COLS, y = (c / COLS) | 0;
+    if (goal(x, y)) { const p = []; let k = c; while (k !== prev[k]) { p.push([k % COLS, (k / COLS) | 0]); k = prev[k]; } p.push([sx, sy]); return p.reverse(); }
+    const cv = CONV[T(x, y)], ds = cv ? [cv] : [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    for (const [dx, dy] of ds) {
+      const nx = x + dx, ny = y + dy; if (!pass(nx, ny)) continue;
+      const n = nx + ny * COLS; if (prev[n] !== -1) continue; prev[n] = c; q.push(n);
+    }
+  }
+  return null;
+}
+function adj(x, y, ch) { for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (T(x + dx, y + dy) === ch) return [x + dx, y + dy]; return null; }
+function anyTile(ch) { return map.some(r => r.includes(ch)); }
+function nearFire(b) { for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (T(b.cx + dx, b.cy + dy) === 'F') return true; return false; }
+const active = b => b.state !== 'done' && b.state !== 'rogue';
+
+function say(b, t, col = C.ink) { G.float(t, (b.x + 0.5) * CS, OY + b.y * CS - 30, col, 17); }
+function summon() {
+  if (state !== 'play') return;
+  if (used >= lv.max) { G.float('¡No quedan invocaciones!', 270, 700, C.pink, 20); G.beep(110, 0.2, 'sawtooth', 0.05); return; }
+  used++;
+  const b = { id: nextId++, task: lv.cards[sel], x: box.x, y: box.y, cx: box.x, cy: box.y, tx: box.x, ty: box.y, stress: 0, state: 'go',
+    waitT: 0.3, carry: false, att: false, slot: 0, rogueT: 0, hitCd: 0, doneT: 0, born: 0, warned: false, face: 1 };
+  blips.push(b);
+  G.burst((box.x + 0.5) * CS, OY + (box.y + 0.5) * CS, C.blue, 18, 220);
+  G.beep(520, 0.08, 'square', 0.05, 400); G.beep(900, 0.1, 'triangle', 0.04);
+  say(b, G.pick(HELLO), C.blue);
+}
+function complete(b, holder) {
+  if (b.state === 'done') return;
+  b.state = 'done'; b.doneT = 0.7; b.att = false;
+  if (!holder) completions++;
+  say(b, '¡Hecho!', C.gold);
+  G.burst((b.x + 0.5) * CS, OY + (b.y + 0.2) * CS, C.teal, 16, 200);
+  G.beep(660, 0.08, 'triangle', 0.05); setTimeout(() => G.beep(990, 0.12, 'triangle', 0.05), 70);
+}
+function explode(b, ch) {
+  b.state = 'done'; b.doneT = 0.35; b.exploded = true; chaos += ch;
+  const px = (b.x + 0.5) * CS, py = OY + (b.y + 0.3) * CS;
+  G.burst(px, py, C.pink, 26, 340, 7); G.burst(px, py, C.blue, 12, 200);
+  G.shake(12, 0.3); G.beep(90, 0.3, 'sawtooth', 0.07, -40);
+}
+function goRogue(b) {
+  if (b.carry && key) { key.carrier = null; key.x = b.cx; key.y = b.cy; b.carry = false; }
+  b.att = false; b.state = 'rogue'; b.rogueT = 7; b.hitCd = 0.5;
+  b.tx = b.cx = Math.round(b.x); b.ty = b.cy = Math.round(b.y);
+  say(b, '¡¡NO PUEDO MÁS!!', C.pink); G.shake(10, 0.35); G.beep(160, 0.4, 'sawtooth', 0.07, 300);
+}
+function wait(b) { b.state = 'wait'; b.waitT = 0.4; }
+function seek(b, goal, onArrive) {
+  if (goal(b.cx, b.cy)) return onArrive();
+  const p = bfs(b.cx, b.cy, goal);
+  if (!p) return wait(b);
+  b.tx = p[1][0]; b.ty = p[1][1]; b.state = 'go';
+}
+function nextSlot() { for (let i = 0; i < SLOTS.length; i++) if (!blips.some(o => o.att && o.slot === i)) return i; return 0; }
+
+function decide(b, dt) {
+  const cv = CONV[T(b.cx, b.cy)];
+  if (cv && pass(b.cx + cv[0], b.cy + cv[1])) { b.tx = b.cx + cv[0]; b.ty = b.cy + cv[1]; b.state = 'go'; return; }
+  switch (b.task) {
+    case 'switch':
+      if (b.state === 'hold') { if (completions > b.holdN) { say(b, '¡Por fin!', C.teal); complete(b, true); } return; }
+      return seek(b, (x, y) => T(x, y) === 'p' && !blips.some(o => o !== b && o.state === 'hold' && o.cx === x && o.cy === y),
+        () => { b.state = 'hold'; b.holdN = completions; say(b, '¡Aguanto!', C.teal); G.beep(300, 0.1, 'square', 0.04, 200); });
+    case 'key':
+      if (!key || key.gone) return complete(b);
+      if (!b.carry) {
+        if (key.carrier) return wait(b);
+        return seek(b, (x, y) => x === key.x && y === key.y, () => { b.carry = true; key.carrier = b; say(b, '¡Llave!', C.gold); G.beep(880, 0.1, 'triangle', 0.05); });
+      }
+      return seek(b, (x, y) => adj(x, y, 'L'), () => {
+        const [lx, ly] = adj(b.cx, b.cy, 'L'); map[ly][lx] = 'O'; key.gone = true; b.carry = false;
+        G.burst((lx + 0.5) * CS, OY + (ly + 0.5) * CS, C.gold, 24, 260); G.shake(5); complete(b);
+      });
+    case 'fire':
+      if (b.state === 'spray') {
+        b.sprayT -= dt;
+        if (Math.random() < 0.5) G.burst((b.fire[0] + 0.5) * CS, OY + (b.fire[1] + 0.5) * CS, '#CFF6FF', 2, 120, 4);
+        if (b.sprayT <= 0) { map[b.fire[1]][b.fire[0]] = '.'; G.burst((b.fire[0] + 0.5) * CS, OY + (b.fire[1] + 0.5) * CS, '#888', 20, 180); complete(b); }
+        return;
+      }
+      if (!anyTile('F')) return complete(b);
+      return seek(b, (x, y) => adj(x, y, 'F'), () => { b.state = 'spray'; b.sprayT = 1.3; b.fire = adj(b.cx, b.cy, 'F'); G.beep(200, 0.5, 'triangle', 0.03, -100); });
+    case 'goal':
+      return seek(b, (x, y) => T(x, y) === 'b', () => winLevel());
+    case 'sofa':
+      if (!sofa || sofa.done) return complete(b);
+      return seek(b, (x, y) => Math.abs(x - sofa.cx) + Math.abs(y - sofa.cy) <= 1, () => {
+        b.att = true; b.slot = nextSlot(); const n = blips.filter(o => o.att && active(o)).length;
+        say(b, n >= 3 ? '¡Arriba!' : `Somos ${n}/3...`, C.lime); G.beep(400 + n * 100, 0.1, 'square', 0.04);
+      });
+  }
+}
+
+function moveTo(o, sp, dt) {
+  const dx = o.tx - o.x, dy = o.ty - o.y, d = Math.hypot(dx, dy);
+  if (dx) o.face = Math.sign(dx);
+  if (d <= sp * dt) { o.x = o.tx; o.y = o.ty; o.cx = o.tx; o.cy = o.ty; return true; }
+  o.x += dx / d * sp * dt; o.y += dy / d * sp * dt; return false;
+}
+
+function updSofa(dt) {
+  sofaMoving = false;
+  if (!sofa || sofa.done) return;
+  const car = blips.filter(b => b.att && active(b));
+  if (!moveTo(sofa, 1.7, dt)) { sofaMoving = true; return; }
+  if (T(sofa.cx, sofa.cy) === 'X') {
+    sofa.done = true; car.forEach(b => complete(b));
+    G.burst((sofa.x + 0.5) * CS, OY + (sofa.y + 0.5) * CS, C.lime, 30, 300);
+    if (lv.win === 'sofa') winLevel();
+    return;
+  }
+  if (car.length >= 3) {
+    const p = bfs(sofa.cx, sofa.cy, (x, y) => T(x, y) === 'X');
+    if (p && p.length > 1) { sofa.tx = p[1][0]; sofa.ty = p[1][1]; sofaMoving = true; }
+  }
+}
+
+function updBlips(dt) {
+  for (const b of blips) {
+    b.born += dt;
+    if (b.state === 'done') { b.doneT -= dt; continue; }
+    if (b.state === 'rogue') { updRogue(b, dt); continue; }
+    let r = 100 / 30;
+    if (b.state === 'wait') r *= 2.2; else if (b.state === 'hold') r *= 1.4; else if (b.att && !sofaMoving) r *= 2;
+    if (nearFire(b)) r += 8;
+    if (state === 'play') b.stress += r * dt;
+    if (b.stress > 70 && !b.warned) { b.warned = true; say(b, G.pick(['¡Aaagh!', '¡Date prisa!', '¡Me agobio!']), '#FF9A9A'); G.beep(240, 0.15, 'square', 0.04, -80); }
+    if (b.stress < 60) b.warned = false;
+    if (b.stress >= 100) { goRogue(b); continue; }
+    if (b.att) {
+      const o = SLOTS[b.slot]; b.x = sofa.x + o[0]; b.y = sofa.y + o[1]; b.cx = Math.round(b.x); b.cy = Math.round(b.y);
+      if (!sofa || sofa.done) complete(b);
+      continue;
+    }
+    if (moveTo(b, 2.6, dt)) { b.waitT -= dt; if (b.waitT <= 0 || b.state !== 'wait') decide(b, dt); }
+  }
+  blips = blips.filter(b => b.state !== 'done' || b.doneT > 0);
+}
+
+function updRogue(b, dt) {
+  b.rogueT -= dt; b.hitCd -= dt; b.stress = 100;
+  if (b.rogueT <= 0) { say(b, '¡PUM!', C.pink); return explode(b, 8); }
+  if (moveTo(b, 3.4, dt)) {
+    let best = { x: box.x, y: box.y }, bd = G.dist(b.x, b.y, box.x, box.y);
+    for (const o of blips) if (o !== b && active(o)) { const d = G.dist(b.x, b.y, o.x, o.y); if (d < bd) { bd = d; best = o; } }
+    const gx = Math.round(best.x), gy = Math.round(best.y);
+    const p = bfs(b.cx, b.cy, (x, y) => x === gx && y === gy);
+    if (p && p.length > 1) { b.tx = p[1][0]; b.ty = p[1][1]; }
+  }
+  for (const o of blips) {
+    if (o === b || !active(o) || b.hitCd > 0 || G.dist(b.x, b.y, o.x, o.y) > 0.6) continue;
+    o.stress += 35; b.hitCd = 0.8;
+    say(o, '¡Ay!', C.pink); G.burst((o.x + 0.5) * CS, OY + (o.y + 0.3) * CS, C.pink, 12, 200); G.shake(6); G.beep(140, 0.12, 'square', 0.06);
+  }
+  if (G.dist(b.x, b.y, box.x, box.y) < 0.6) { G.float('¡Mi caja! +22 caos', 270, OY + box.y * CS + 70, C.pink, 20); explode(b, 22); }
+}
+
+function winLevel() {
+  if (state !== 'play') return;
+  won = true; state = 'end'; endT = 1.5;
+  for (const b of blips) { if (b.state === 'rogue') explode(b, 0); else if (b.state !== 'done') complete(b, true); }
+  G.float('¡NIVEL COMPLETADO!', 270, 420, C.gold, 34); G.burst(270, 420, C.gold, 40, 400, 7);
+  [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => G.beep(f, 0.14, 'triangle', 0.06), i * 90));
+}
+function lose(reason) {
+  if (state !== 'play') return;
+  won = false; state = 'end'; endT = 1.3; loseReason = reason; G.shake(14, 0.5);
+  G.beep(200, 0.6, 'sawtooth', 0.07, -150);
+}
+function finish() {
+  state = 'over';
+  if (won) {
+    const t = Math.round(lvT), stars = 1 + (used <= lv.par) + (t <= lv.parT);
+    const sc = stars * 300 + (lv.max - used) * 50 + Math.max(0, Math.round((lv.parT * 1.5 - t) * 5));
+    total += sc;
+    const st = '★'.repeat(stars) + '☆'.repeat(3 - stars);
+    const info = `<p>Ayudantes usados: <b>${used}</b> (ideal ${lv.par}) · Tiempo: <b>${t}s</b> (ideal ${lv.parT}s)</p><p>Total: <b>${total}</b></p>`;
+    if (li < LV.length - 1) G.screen({ sub: `Nivel ${li + 1} superado · +${sc}`, title: st, html: info, button: 'Siguiente nivel', onClick: () => startLevel(li + 1) });
+    else {
+      const best = G.best('ayudantes', total);
+      G.screen({ sub: '¡Los 5 niveles superados!', title: 'Nadie ha sufrido (mucho)', big: total, html: `${info}<p>Mejor: <b>${best}</b></p>`, button: 'Jugar otra vez', onClick: () => { total = 0; startLevel(0); } });
+    }
+  } else {
+    const best = G.best('ayudantes', total) || 0;
+    G.screen({ sub: `Nivel ${li + 1} · ${loseReason}`, title: '¡Caos total!', big: total,
+      html: `<p>Puntos acumulados. Mejor: <b>${best}</b></p><p>Consejo: invoca en orden y calma a los que sudan.</p>`, button: 'Reintentar nivel', onClick: () => startLevel(li) });
+  }
+}
+
+function blipAt(x, y) {
+  let best = null, bd = 30;
+  for (const b of blips) { if (b.state === 'done') continue; const d = G.dist(x, y, (b.x + 0.5) * CS, OY + (b.y + 0.5) * CS - 8); if (d < bd) { bd = d; best = b; } }
+  return best;
+}
+
+function update(dt) {
+  if (state === 'over') return;
+  updSofa(dt); updBlips(dt);
+  if (state === 'end') { endT -= dt; if (endT <= 0) finish(); return; }
+  lvT += dt; calmCd = Math.max(0, calmCd - dt);
+  gatesOpen = blips.some(b => b.state !== 'done' && T(b.cx, b.cy) === 'p');
+  lv.cards.forEach((c, i) => { if (G.keyPressed(String(i + 1))) { sel = i; G.beep(500, 0.04); } });
+  if (G.keyPressed(' ') || G.keyPressed('Enter')) summon();
+  const P = G.pointer;
+  if (P.pressed) {
+    if (G.inRect(P.sx, P.sy, 16, 752, 160, 192)) summon();
+    else if (P.sx > 190 && P.sy > 752) { lv.cards.forEach((c, i) => { if (G.inRect(P.sx, P.sy, 192, 752 + i * 64, 332, 56)) { sel = i; G.beep(500, 0.04); } }); }
+    else {
+      const b = blipAt(P.sx, P.sy);
+      if (b && b.state === 'rogue') { say(b, '¡Pum! +10 caos', C.pink); explode(b, 10); }
+      else if (b) {
+        if (calmCd > 0) say(b, 'Espera...', C.dim);
+        else { b.stress = Math.max(0, b.stress - 35); calmCd = 3; say(b, '¡Tranqui!', C.teal); G.burst((b.x + 0.5) * CS, OY + b.y * CS, C.teal, 10, 120); G.beep(700, 0.1, 'sine', 0.05, -200); }
+      }
+    }
+  }
+  chaos += blips.filter(b => b.state === 'rogue').length * 3 * dt;
+  if (chaos >= 100) { chaos = 100; lose('Los Blips se han rebelado'); }
+  else if (used >= lv.max && !blips.some(b => b.state !== 'done')) lose('Sin invocaciones');
+}
+
+// ---------- Dibujo ----------
+function hex2rgb(h) { const n = parseInt(h.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; }
+function mix(a, b, t) { const A = hex2rgb(a), B = hex2rgb(b); return `rgb(${A.map((v, i) => Math.round(G.lerp(v, B[i], t))).join(',')})`; }
+function drawKey(x, y, s = 1) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+  G.circle(-6, 0, 6, null, C.gold, 4); G.rrect(-1, -2, 16, 4, 2, C.gold); G.rrect(10, 1, 3, 6, 1, C.gold); G.rrect(5, 1, 3, 5, 1, C.gold);
+  ctx.restore();
+}
+function drawTile(x, y) {
+  const t = T(x, y), px = x * CS, py = OY + y * CS, cx = px + CS / 2, cy = py + CS / 2;
+  if (t === '#') {
+    const open = n => T(n[0], n[1]) !== '#';
+    G.rrect(px, py, CS, CS, 4, '#3b2e55');
+    if (open([x, y + 1])) G.rrect(px + 2, py + CS - 8, CS - 4, 6, 3, '#2a2040');
+    if (open([x, y - 1])) G.rrect(px + 3, py + 2, CS - 6, 4, 2, '#524174');
+    return;
+  }
+  ctx.fillStyle = (x + y) % 2 ? '#261d35' : '#2a2139'; ctx.fillRect(px, py, CS, CS);
+  if (t === 'G') {
+    if (gatesOpen) { ctx.setLineDash([5, 5]); G.rrect(px + 4, py + 4, CS - 8, CS - 8, 6, null, C.teal + '66', 2); ctx.setLineDash([]); }
+    else for (let i = 0; i < 3; i++) G.rrect(px + 7 + i * 12, py + 3, 7, CS - 6, 3, C.teal);
+  } else if (t === 'L') {
+    G.rrect(px + 3, py + 3, CS - 6, CS - 6, 8, '#C9892B', C.gold, 3); G.circle(cx, cy - 4, 5, '#3b2e55'); G.rrect(cx - 2, cy - 2, 4, 11, 2, '#3b2e55');
+  } else if (t === 'O') {
+    G.rrect(px + 3, py + 3, CS - 6, CS - 6, 8, null, C.gold + '55', 2);
+  } else if (t === 'F') {
+    for (let i = 0; i < 5; i++) {
+      const f = Math.sin(G.t * 12 + i * 2.1 + x) * 3;
+      G.circle(px + 9 + i * 7, cy + 8 - Math.abs(f) - (i % 2) * 6, 9 - (i % 2) * 2, i % 2 ? C.gold : '#FF6B3D');
+    }
+    G.circle(cx, cy - 6 + Math.sin(G.t * 10) * 2, 6, '#FFE08A');
+  } else if (t === 'p') {
+    const on = gatesOpen;
+    G.circle(cx, cy + 4, 15, '#1a1424'); G.circle(cx, cy + (on ? 5 : 1), 13, on ? C.teal : '#2f7f73', on ? '#fff8' : null, 2);
+  } else if (t === 'b') {
+    G.rrect(cx - 16, cy + 2, 32, 14, 4, '#555'); G.circle(cx, cy + 1, 14 + Math.sin(G.t * 5) * 1.5, C.pink, '#fff6', 2);
+    G.text('!', cx, cy + 8, { size: 18, align: 'center', color: '#fff', shadow: false });
+  } else if (t === 'X') {
+    ctx.setLineDash([6, 5]); G.rrect(px + 4, py + 4, CS - 8, CS - 8, 6, null, C.lime, 3); ctx.setLineDash([]);
+    G.text('X', cx, cy + 8, { size: 20, align: 'center', color: C.lime + '88', shadow: false });
+  } else if (CONV[t]) {
+    const [dx, dy] = CONV[t]; ctx.fillStyle = '#1c1628'; ctx.fillRect(px + 2, py + 2, CS - 4, CS - 4);
+    const off = (G.t * 30) % 15;
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(Math.atan2(dy, dx)); ctx.strokeStyle = C.dim + '99'; ctx.lineWidth = 3;
+    for (let k = -1; k <= 1; k++) { const ox = k * 15 + off - 7; ctx.beginPath(); ctx.moveTo(ox - 5, -8); ctx.lineTo(ox + 2, 0); ctx.lineTo(ox - 5, 8); ctx.stroke(); }
+    ctx.restore();
+  }
+}
+function drawBox() {
+  const cx = (box.x + 0.5) * CS, cy = OY + (box.y + 0.5) * CS;
+  G.rrect(cx - 19, cy - 14, 38, 30, 6, '#7B4FB5', '#B98CF0', 2);
+  G.rrect(cx - 21, cy - 18, 42, 8, 4, '#9A6AD6');
+  G.circle(cx, cy - 20, 6, C.pink);
+  G.circle(cx - 7, cy + 2, 4, '#fff'); G.circle(cx + 7, cy + 2, 4, '#fff');
+  G.circle(cx - 7 + Math.sin(G.t) * 1.5, cy + 3, 2, C.bg); G.circle(cx + 7 + Math.sin(G.t) * 1.5, cy + 3, 2, C.bg);
+}
+function drawSofa() {
+  if (!sofa || sofa.done) return;
+  const cx = (sofa.x + 0.5) * CS, cy = OY + (sofa.y + 0.5) * CS - (sofaMoving ? 10 : 0);
+  G.rrect(cx - 20, cy - 12, 40, 22, 8, '#C84A6A'); G.rrect(cx - 22, cy - 2, 44, 14, 7, C.pink);
+  G.rrect(cx - 24, cy - 8, 8, 20, 4, '#C84A6A'); G.rrect(cx + 16, cy - 8, 8, 20, 4, '#C84A6A');
+  G.circle(cx - 6, cy - 4, 3.5, '#fff'); G.circle(cx + 6, cy - 4, 3.5, '#fff'); G.circle(cx - 6, cy - 3, 1.6, C.bg); G.circle(cx + 6, cy - 3, 1.6, C.bg);
+}
+function drawBlip(b) {
+  const s = Math.min(1, b.stress / 100), rogue = b.state === 'rogue';
+  let px = (b.x + 0.5) * CS, py = OY + (b.y + 0.5) * CS + 14;
+  if (s > 0.6 && b.state !== 'done') px += G.rand(-1, 1) * (s - 0.55) * 9;
+  let sc = Math.min(1, 0.3 + b.born * 4), al = 1;
+  if (b.state === 'done') { const k = 1 - Math.max(0, b.doneT) / 0.7; sc *= 1 + k * 0.5; al = Math.max(0, 1 - k); }
+  const col = rogue ? '#E8364F' : mix(C.blue, '#E86A8A', G.clamp((s - 0.45) * 1.8, 0, 1));
+  const bob = Math.sin(G.t * (rogue ? 20 : 8) + b.id) * 1.5;
+  ctx.save(); ctx.globalAlpha = al; ctx.translate(px, py); ctx.scale(sc, sc);
+  ctx.fillStyle = '#0006'; ctx.beginPath(); ctx.ellipse(0, 0, 13, 4, 0, 0, 7); ctx.fill();
+  // brazos
+  ctx.strokeStyle = col; ctx.lineWidth = 4; ctx.lineCap = 'round';
+  const arm = rogue ? -14 + Math.sin(G.t * 25) * 6 : (b.att ? -16 : Math.sin(G.t * 6 + b.id) * 3);
+  ctx.beginPath(); ctx.moveTo(-10, -24 + bob); ctx.lineTo(-17, -24 + bob + (b.att ? -14 : 8 + arm)); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(10, -24 + bob); ctx.lineTo(17, -24 + bob + (b.att ? -14 : 8 + (rogue ? -arm : arm))); ctx.stroke();
+  ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(0, -22 + bob, 12, 22, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#ffffff33'; ctx.beginPath(); ctx.ellipse(-4, -32 + bob, 4, 8, -0.3, 0, 7); ctx.fill();
+  const ey = -30 + bob, red = rogue || s > 0.85, lk = b.face * 1.2;
+  G.circle(-5, ey, 5, red ? '#FFD0D0' : '#fff'); G.circle(5, ey, 5, red ? '#FFD0D0' : '#fff');
+  G.circle(-5 + lk, ey + 0.5, red ? 2.8 : 2.2, red ? '#D0002A' : C.bg); G.circle(5 + lk, ey + 0.5, red ? 2.8 : 2.2, red ? '#D0002A' : C.bg);
+  if (rogue || s > 0.7) { ctx.strokeStyle = C.bg; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-9, ey - 8); ctx.lineTo(-2, ey - 5); ctx.moveTo(9, ey - 8); ctx.lineTo(2, ey - 5); ctx.stroke(); }
+  ctx.strokeStyle = C.bg; ctx.lineWidth = 2; ctx.beginPath();
+  if (rogue) { ctx.fillStyle = C.bg; ctx.ellipse(0, ey + 13, 5, 6, 0, 0, 7); ctx.fill(); }
+  else if (s < 0.35) { ctx.arc(0, ey + 9, 5, 0.2, Math.PI - 0.2); ctx.stroke(); }
+  else if (s < 0.65) { ctx.moveTo(-4, ey + 12); ctx.lineTo(4, ey + 12); ctx.stroke(); }
+  else { ctx.moveTo(-6, ey + 12); for (let i = -6; i <= 6; i += 3) ctx.lineTo(i, ey + 12 + ((i / 3) % 2 ? 2 : -2)); ctx.stroke(); }
+  if (s > 0.35 && !rogue) for (let i = 0; i < (s > 0.65 ? 2 : 1); i++) {
+    const d = (G.t * 30 + b.id * 7 + i * 9) % 18; G.circle(i ? -13 : 13, -38 + d + bob, 2.5, '#BDEBFF');
+  }
+  ctx.restore();
+  if (b.state === 'done' || al < 0.2) return;
+  const hy = py - 58;
+  G.rrect(px - 14, hy, 28, 5, 2, '#0008'); G.rrect(px - 14, hy, 28 * s, 5, 2, s > 0.7 ? C.pink : s > 0.4 ? C.gold : C.teal);
+  if (!rogue) G.rrect(px - 4, hy - 11, 8, 8, 2, TASKS[b.task].col);
+  if (b.carry) drawKey(px + 16, py - 40, 0.7);
+  if (b.state === 'wait') G.text('?', px + 16, py - 42, { size: 18, color: C.gold, align: 'center' });
+  if (b.state === 'spray') { ctx.strokeStyle = '#CFF6FF'; ctx.lineWidth = 3; ctx.setLineDash([4, 5]); ctx.lineDashOffset = -G.t * 60; ctx.beginPath(); ctx.moveTo(px, py - 20); ctx.lineTo((b.fire[0] + 0.5) * CS, OY + (b.fire[1] + 0.5) * CS); ctx.stroke(); ctx.setLineDash([]); }
+}
+
+function draw() {
+  ctx.fillStyle = C.bg; ctx.fillRect(0, 0, G.W, G.H);
+  if (!lv) return;
+  // HUD
+  G.text(`NIVEL ${li + 1}/5 · ${lv.name}`, 16, 90, { size: 18, color: C.gold });
+  G.text(`${Math.floor(lvT)}s`, 524, 90, { size: 18, align: 'right' });
+  G.text('CAOS', 16, 114, { size: 13, body: true, weight: 700, color: chaos > 60 ? C.pink : C.dim });
+  G.bar(66, 104, 458, 12, chaos / 100, chaos > 60 ? C.pink : C.gold);
+  // mapa
+  for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) drawTile(x, y);
+  drawBox();
+  if (key && !key.gone && !key.carrier) drawKey((key.x + 0.5) * CS, OY + (key.y + 0.5) * CS + Math.sin(G.t * 4) * 3, 1.2);
+  drawSofa();
+  [...blips].sort((a, b) => a.y - b.y).forEach(drawBlip);
+  // panel inferior
+  G.rrect(0, 716, 540, 244, 0, '#211a2e');
+  G.text('Objetivo: ' + lv.goal, 16, 740, { size: 15, body: true, weight: 700, color: C.ink });
+  G.text(calmCd > 0 ? `Calmar: ${calmCd.toFixed(1)}s` : 'Toca un Blip: calmar', 524, 740, { size: 13, body: true, align: 'right', color: calmCd > 0 ? C.dim : C.teal });
+  const P = G.pointer, press = P.down && G.inRect(P.sx, P.sy, 16, 752, 160, 192), left = lv.max - used;
+  G.rrect(16, 752, 160, 192, 16, '#4a3470', '#7B4FB5', 3);
+  G.circle(96, 832 + (press ? 4 : 0), 50, '#2a1c40');
+  G.circle(96, 826 + (press ? 8 : 0), 48, left ? C.pink : '#6b5a7a', '#fff5', 3);
+  G.text('INVOCAR', 96, 834 + (press ? 8 : 0), { size: 17, align: 'center', color: '#fff' });
+  for (let i = 0; i < lv.max; i++) G.circle(96 - (lv.max - 1) * 8 + i * 16, 902, 6, i < left ? C.blue : '#2a1c40');
+  G.text(`Quedan ${left}`, 96, 932, { size: 14, body: true, weight: 700, align: 'center', color: C.dim });
+  lv.cards.forEach((c, i) => {
+    const y = 752 + i * 64, T0 = TASKS[c], on = i === sel;
+    G.rrect(192, y, 332, 56, 12, on ? '#3d2f57' : '#2a2139', on ? C.gold : '#ffffff18', on ? 3 : 1.5);
+    G.rrect(204, y + 14, 28, 28, 7, T0.col);
+    G.text(String(i + 1), 218, y + 34, { size: 16, align: 'center', color: C.bg, shadow: false });
+    G.text(T0.label, 244, y + 25, { size: 17, body: true, weight: 700 });
+    G.text(T0.sub, 244, y + 45, { size: 13, body: true, color: C.dim });
+  });
+}
+
+startLevel(0);
+G.screen({
+  sub: 'Prototipo · Puzle caótico', title: 'Ayudantes Desechables',
+  html: `<p>Tu caja invoca Blips: ayudantes que viven para UNA tarea. Cuanto más tardan, más se agobian. Si revientan, van a por los demás.</p>
+  <ul><li>Elige una tarea (toca la tarjeta o pulsa 1-2-3).</li>
+  <li>Pulsa la caja INVOCAR (o Espacio) para crear un Blip con esa tarea.</li>
+  <li>Toca un Blip para calmarlo. Si se ha vuelto loco, tócalo para reventarlo (+caos).</li>
+  <li>El orden importa: una puerta cerrada = Blip esperando y sudando.</li></ul>`,
+  button: 'Jugar', onClick: () => startLevel(0),
+});
+G.run(update, draw);
+</script></body></html>

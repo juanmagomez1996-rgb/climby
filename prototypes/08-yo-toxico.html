@@ -1,0 +1,440 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Tu Yo Tóxico</title></head><body>
+<script src="proto.js"></script>
+<script>
+const G = Proto.create({ onRestart() { onRestartBar(); } });
+const C = G.C, ctx = G.ctx;
+const T = 30, OY = 96, COLS = 18, ROWS = 23, GRAV = 1800, SPD = 185;
+const WALL = '##################', EMPTY = '#................#';
+const rep = (s, n) => Array(n).fill(s);
+
+// Leyenda: # muro · = plataforma amable (solo Sano) · ~ lodo (mata a Sano) · * flores (matan a Tóxico)
+// ^ pinchos · a/b palanca Sano/Tóxico · A/B compuertas · S/T salida · G/R puertas · c caja · M máquina
+const LEVELS = [
+  { name: 'Espejo', hint: 'Tóxico se mueve al revés. Cada uno a su puerta.', sab: null, map: [
+    WALL, ...rep(EMPTY, 18), '#G*..^..ST..^..~R#', WALL, WALL, WALL] },
+  { name: 'Aparcar', hint: 'Usa las paredes para aparcar a uno mientras mueves al otro.', sab: 'talk', map: [
+    WALL, ...rep(EMPTY, 5), '#.T....**.......R#', WALL, WALL, ...rep(EMPTY, 7),
+    '#.............#..#', '#............##..#', '#...........###..#', '#.S..~~....####G.#', WALL, WALL, WALL] },
+  { name: 'Palancas', hint: 'Palanca turquesa: solo Sano. Rosa: solo Tóxico.', sab: 'lever', map: [
+    WALL, ...rep('#...A............#', 5), '#R..A...T.......b#', '##########==######', '##########^^######',
+    ...rep('#...........B....#', 10), '#a....~..S..B...G#', WALL, WALL, WALL] },
+  { name: 'La caja', hint: 'Empuja la caja para subir. Ojo: Tóxico sabotea.', sab: 'crate', map: [
+    WALL, ...rep('#...B............#', 5), '#R..B...T..**...b#', WALL, WALL, ...rep(EMPTY, 7),
+    '#...............G#', '#...........######', '#...........######', '#.S..c......######', WALL, WALL, WALL] },
+  { name: 'La máquina', hint: 'Entrad juntos en la máquina… o vete solo por la puerta verde.', sab: 'talk', map: [
+    WALL, ...rep(EMPTY, 8), '#G...............#', '#===.............#', EMPTY, '#===.............#', EMPTY,
+    '#===.............#', EMPTY, '#===.............#', EMPTY, '#===.............#',
+    '#.S..~..MM..*..T.#', WALL, WALL, WALL] },
+];
+LEVELS.forEach((l, i) => { if (l.map.length !== ROWS || l.map.some(r => r.length !== COLS)) console.error('Nivel mal formado', i + 1); });
+
+const INSULTS = ['¡Qué lento eres!', 'Esto lo hago por tu bien', 'Uy, se me resbaló', '¿Meditación? Qué aburrido', 'Tu aura huele a pies', '¿Llorando otra vez?', 'Yo soy tu parte divertida', 'Ni el spa te aguanta'];
+const CALM = ['Respira… respira…', 'No le hagas caso', 'Estoy trabajando en mí', 'Paz interior. Paz.'];
+
+let li = 0, grid, gates, crates, sano, tox, state = 'menu', stT = 0, totalTime = 0, deaths = 0, levelT = 0;
+let sab = { t: 99, p: 0 }, bubbles = [], zaps = [], leftBehindSaid = false;
+
+// ---------- Entrada multitáctil ----------
+const ptrs = new Map();
+function loc(e) { const r = G.canvas.getBoundingClientRect(); return { x: (e.clientX - r.left) * G.W / r.width, y: (e.clientY - r.top) * G.H / r.height }; }
+G.canvas.addEventListener('pointerdown', e => ptrs.set(e.pointerId, loc(e)));
+G.canvas.addEventListener('pointermove', e => { if (ptrs.has(e.pointerId)) ptrs.set(e.pointerId, loc(e)); });
+['pointerup', 'pointercancel'].forEach(ev => G.canvas.addEventListener(ev, e => ptrs.delete(e.pointerId)));
+const BL = { x: 16, y: 810, w: 112, h: 118 }, BR = { x: 138, y: 810, w: 112, h: 118 };
+const BRS = { x: 268, y: 838, w: 58, h: 58 }, BJ = { x: 338, y: 810, w: 186, h: 118 };
+const held = b => { for (const p of ptrs.values()) if (G.inRect(p.x, p.y, b.x, b.y, b.w, b.h)) return true; return false; };
+let jPrev = false, rPrev = false;
+
+// ---------- Mapa ----------
+const cell = (c, r) => (c < 0 || c >= COLS || r < 0) ? '#' : (r >= ROWS ? '.' : grid[r][c]);
+function solidFor(kind, ch, r, down, prevBottom) {
+  if (ch === '#') return true;
+  if (ch === 'A') return !gates.A;
+  if (ch === 'B') return !gates.B;
+  if (ch === '=' && kind !== 'tox') return down && prevBottom <= r * T + OY + 0.01;
+  return false;
+}
+const overlap = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+function cellsOf(b, f) {
+  const c0 = Math.floor(b.x / T), c1 = Math.floor((b.x + b.w - 0.001) / T);
+  const r0 = Math.floor((b.y - OY) / T), r1 = Math.floor((b.y + b.h - 0.001 - OY) / T);
+  for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) f(cell(c, r), c, r);
+}
+function mkChar(who, c, r) {
+  return { who, x: c * T + 4, y: r * T + OY + T - 26, w: 22, h: 26, vx: 0, vy: 0, ground: false, coy: 0, buf: 0,
+    face: who === 'sano' ? 1 : -1, sq: 0, lastLever: null, jv: who === 'sano' ? 540 : 700, blink: G.rand(1, 4) };
+}
+function loadLevel(i) {
+  li = i; const L = LEVELS[i];
+  grid = L.map.map(r => r.split(''));
+  gates = { A: false, B: false }; crates = []; bubbles = []; zaps = [];
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+    const ch = grid[r][c];
+    if (ch === 'S') { sano = mkChar('sano', c, r); grid[r][c] = '.'; }
+    if (ch === 'T') { tox = mkChar('tox', c, r); grid[r][c] = '.'; }
+    if (ch === 'c') { crates.push({ x: c * T + 1, y: r * T + OY + 2, w: 28, h: 28, vx: 0, vy: 0, ground: false }); grid[r][c] = '.'; }
+  }
+  sab = { t: G.rand(9, 13), p: 0 }; levelT = 0; leftBehindSaid = false;
+  state = 'play';
+}
+
+// ---------- Física ----------
+function stepX(b, kind, d, pushed) {
+  if (!d) return;
+  b.x += d;
+  let lim = null;
+  const take = e => { lim = lim === null ? e : (d > 0 ? Math.min(lim, e) : Math.max(lim, e)); };
+  cellsOf(b, (ch, c, r) => { if (solidFor(kind, ch, r, false, 0)) take(d > 0 ? c * T : c * T + T); });
+  for (const cr of crates) {
+    if (cr === b || !overlap(b, cr)) continue;
+    if (kind !== 'crate') stepX(cr, 'crate', d > 0 ? b.x + b.w - cr.x : b.x - (cr.x + cr.w), true);
+    if (overlap(b, cr)) take(d > 0 ? cr.x : cr.x + cr.w);
+  }
+  if (kind === 'crate' && !pushed) for (const ch of [sano, tox]) if (overlap(b, ch)) take(d > 0 ? ch.x : ch.x + ch.w);
+  if (lim !== null) { b.x = d > 0 ? lim - b.w : lim; if (kind === 'crate') b.vx = 0; }
+}
+function stepY(b, kind, d) {
+  if (!d) return;
+  b.y += d;
+  const prevBottom = b.y + b.h - d;
+  let lim = null;
+  const take = e => { lim = lim === null ? e : (d > 0 ? Math.min(lim, e) : Math.max(lim, e)); };
+  cellsOf(b, (ch, c, r) => { if (solidFor(kind, ch, r, d > 0, prevBottom)) take(d > 0 ? r * T + OY : r * T + OY + T); });
+  for (const cr of crates) if (cr !== b && overlap(b, cr)) take(d > 0 ? cr.y : cr.y + cr.h);
+  if (lim !== null) { if (d > 0) { b.y = lim - b.h; b.ground = true; } else b.y = lim; b.vy = 0; }
+}
+function moveBody(b, kind, dx, dy) {
+  const n = Math.max(1, Math.ceil(Math.max(Math.abs(dx), Math.abs(dy)) / 8));
+  for (let i = 0; i < n; i++) { stepX(b, kind, dx / n); stepY(b, kind, dy / n); }
+}
+function touching(c, set) {
+  let hit = null;
+  cellsOf({ x: c.x + 4, y: c.y + 5, w: c.w - 8, h: c.h - 7 }, (ch, cc, r) => {
+    if (!set.includes(ch)) return;
+    const top = r * T + OY + (ch === '^' ? T * 0.45 : ch === '~' ? T * 0.3 : T * 0.15);
+    if (c.y + c.h - 2 > top) hit = ch;
+  });
+  return hit;
+}
+function stepChar(c, dir, dt) {
+  const slow = c.who === 'tox' && touching(c, '~') ? 0.55 : 1;
+  c.vx = dir * SPD * slow;
+  if (dir) c.face = dir;
+  c.vy = Math.min(c.vy + GRAV * dt, 900);
+  c.coy = c.ground ? 0.09 : c.coy - dt; c.buf -= dt;
+  if (c.buf > 0 && c.coy > 0) {
+    c.vy = -c.jv; c.buf = 0; c.coy = 0; c.sq = -0.5;
+    G.beep(c.who === 'sano' ? 520 : 330, 0.09, c.who === 'sano' ? 'sine' : 'square', 0.04, 260);
+  }
+  const vyBefore = c.vy; c.ground = false;
+  moveBody(c, c.who, c.vx * dt, c.vy * dt);
+  if (c.ground && vyBefore > 350) { c.sq = 0.45; G.burst(c.x + c.w / 2, c.y + c.h, '#ffffff55', 4, 80, 3); }
+  c.sq *= Math.exp(-10 * dt);
+}
+function onDoor(c, ch) {
+  return c.ground && cell(Math.floor((c.x + c.w / 2) / T), Math.floor((c.y + c.h - 2 - OY) / T)) === ch;
+}
+
+// ---------- Palancas y sabotaje ----------
+function gateCells(L) { const out = []; for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) if (grid[r][c] === L) out.push({ c, r }); return out; }
+function toggleGate(L) {
+  const cells = gateCells(L);
+  if (gates[L]) {
+    for (const { c, r } of cells) {
+      const box = { x: c * T, y: r * T + OY, w: T, h: T };
+      if ([sano, tox, ...crates].some(b => overlap(b, box))) { G.float('¡Hay alguien en medio!', 270, 400, C.ink, 20); return false; }
+    }
+  }
+  gates[L] = !gates[L];
+  G.beep(gates[L] ? 660 : 220, 0.15, 'triangle', 0.06, gates[L] ? 300 : -100);
+  for (const { c, r } of cells) G.burst(c * T + 15, r * T + OY + 15, L === 'A' ? C.teal : C.pink, 3, 120, 4);
+  return true;
+}
+function leverCheck(c) {
+  const col = Math.floor((c.x + c.w / 2) / T), row = Math.floor((c.y + c.h - 2 - OY) / T);
+  const ch = cell(col, row);
+  if (ch === 'a' || ch === 'b') {
+    const k = col + ',' + row;
+    if (c.lastLever === k) return;
+    c.lastLever = k;
+    const mine = (ch === 'a') === (c.who === 'sano');
+    if (mine) toggleGate(ch.toUpperCase());
+    else G.float(ch === 'a' ? 'Solo Sano' : 'Solo Tóxico', col * T + 15, row * T + OY - 10, C.dim, 18);
+  } else if (c.lastLever && +c.lastLever.split(',')[0] !== col) c.lastLever = null;
+}
+function say(c, text, t = 1.8) { bubbles = bubbles.filter(b => b.c !== c); bubbles.push({ c, text, t }); }
+function zap(x2, y2) { zaps.push({ x1: tox.x + 11, y1: tox.y + 8, x2, y2, t: 0.4 }); G.burst(x2, y2, C.pink, 12, 200, 4); G.shake(6, 0.2); G.beep(900, 0.2, 'sawtooth', 0.05, -700); }
+function doSabotage() {
+  const kind = LEVELS[li].sab;
+  if (kind === 'lever') {
+    const levers = [];
+    for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) if ('ab'.includes(grid[r][c])) levers.push({ c, r, L: grid[r][c].toUpperCase() });
+    const lv = G.pick(levers);
+    if (lv && toggleGate(lv.L)) { zap(lv.c * T + 15, lv.r * T + OY + 15); G.float('¡Palanca!', lv.c * T + 15, lv.r * T + OY - 10, C.pink, 20); }
+    say(sano, G.pick(CALM), 1.6);
+  } else if (kind === 'crate' && crates.length) {
+    const cr = crates[0];
+    cr.vx = (Math.random() < 0.5 ? -1 : 1) * 460; cr.vy = -260;
+    zap(cr.x + 14, cr.y + 14); G.float('¡Empujón!', cr.x + 14, cr.y - 10, C.pink, 20);
+    say(sano, '¡Mi caja!', 1.4);
+  } else {
+    G.shake(4, 0.2); G.beep(160, 0.2, 'sawtooth', 0.04);
+    say(sano, G.pick(CALM), 1.6);
+  }
+}
+
+// ---------- Estados ----------
+function die(c) {
+  state = 'dead'; stT = 0.9; deaths++;
+  G.burst(c.x + c.w / 2, c.y + c.h / 2, c.who === 'sano' ? C.teal : C.pink, 26, 320, 6);
+  G.shake(12, 0.35); G.beep(180, 0.35, 'sawtooth', 0.07, -140);
+  G.float(c.who === 'sano' ? '¡Sano cayó!' : '¡Tóxico cayó!', 270, 420, C.ink, 26);
+  c.dead = true;
+}
+function levelClear() {
+  state = 'clear'; stT = 1.2;
+  for (const c of [sano, tox]) G.burst(c.x + 11, c.y + 13, c === sano ? C.lime : C.pink, 20, 280, 5);
+  G.float('¡Nivel superado!', 270, 420, C.gold, 32); G.shake(6, 0.2);
+  [523, 659, 784].forEach((f, i) => setTimeout(() => G.beep(f, 0.14, 'triangle', 0.07), i * 110));
+}
+function startEnding(kind) {
+  state = 'ending'; stT = 1.6; endKind = kind;
+  if (kind === 'juntos') { G.burst(270, 700, C.gold, 60, 420, 7); G.burst(270, 700, C.teal, 30, 300, 5); G.burst(270, 700, C.pink, 30, 300, 5); }
+  else { G.burst(sano.x + 11, sano.y + 13, C.lime, 40, 300, 6); say(tox, '¡Pues vete! ¡No te necesito!', 2); }
+  G.shake(14, 0.5);
+  [392, 523, 659, 784, 1046].forEach((f, i) => setTimeout(() => G.beep(f, 0.18, 'triangle', 0.07), i * 120));
+}
+let endKind = null;
+const fmt = s => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
+function finish() {
+  state = 'over';
+  const score = Math.max(100, Math.round(6000 - totalTime * 10 - deaths * 250));
+  const prev = G.best('yotoxico');
+  const best = G.best('yotoxico', score);
+  const E = endKind === 'juntos'
+    ? { t: 'Recombinados', p: 'Volvéis a ser una sola persona. Sigues siendo majo, pero ahora también sabes decir que no.' }
+    : { t: 'Libre de Tóxico', p: 'Sales del spa ligero como una pluma. A tu espalda, Tóxico insulta a las toallas. Algo te falta… ¿o no?' };
+  G.screen({ sub: endKind === 'juntos' ? 'Final A · juntos' : 'Final B · solo', title: E.t, big: score + ' pts',
+    html: `<p>${E.p}</p><ul><li>Tiempo: ${fmt(totalTime)}</li><li>Muertes: ${deaths}</li><li>Mejor: ${best} pts${prev === null || score > prev ? ' · ¡nuevo récord!' : ''}</li></ul><p style="color:${C.dim}">Hay otro final. ¿Lo pruebas?</p>`,
+    button: 'Otra vez', onClick: startRun });
+}
+function startRun() { totalTime = 0; deaths = 0; loadLevel(0); G.float('1 · ' + LEVELS[0].name, 270, 400, C.gold, 30); }
+function onRestartBar() {
+  if (state === 'over' || state === 'menu') { G.hideScreen(); startRun(); }
+  else { loadLevel(li); G.float('Nivel reiniciado', 270, 400, C.dim, 22); }
+}
+
+// ---------- Update ----------
+function update(dt) {
+  const tl = held(BL), tr = held(BR), tj = held(BJ), trs = held(BRS);
+  let dir = 0;
+  if (G.key('ArrowLeft') || G.key('a') || G.key('A') || tl) dir -= 1;
+  if (G.key('ArrowRight') || G.key('d') || G.key('D') || tr) dir += 1;
+  const jp = G.keyPressed(' ') || G.keyPressed('ArrowUp') || G.keyPressed('w') || G.keyPressed('W') || (tj && !jPrev);
+  const rp = G.keyPressed('r') || G.keyPressed('R') || (trs && !rPrev);
+  jPrev = tj; rPrev = trs;
+  for (const b of bubbles) b.t -= dt;
+  bubbles = bubbles.filter(b => b.t > 0);
+  for (const z of zaps) z.t -= dt;
+  zaps = zaps.filter(z => z.t > 0);
+  for (const c of [sano, tox]) if (c) { c.blink -= dt; if (c.blink < -0.12) c.blink = G.rand(2, 5); }
+
+  if (state === 'play') {
+    if (rp) { onRestartBar(); return; }
+    totalTime += dt; levelT += dt;
+    for (const cr of crates) {
+      cr.vy = Math.min(cr.vy + GRAV * dt, 900); cr.ground = false;
+      moveBody(cr, 'crate', cr.vx * dt, cr.vy * dt);
+      if (cr.ground) { cr.vx *= Math.exp(-5 * dt); if (Math.abs(cr.vx) < 8) cr.vx = 0; }
+      if (cr.y > OY + ROWS * T + 60) { const L = li; loadLevel(L); return; }
+    }
+    if (jp) { sano.buf = 0.13; tox.buf = 0.13; }
+    stepChar(sano, dir, dt);
+    stepChar(tox, -dir, dt); // Tóxico: espejo horizontal
+    leverCheck(sano); leverCheck(tox);
+    const bottom = OY + ROWS * T;
+    if (touching(sano, '~^') || sano.y > bottom) return die(sano);
+    if (touching(tox, '*^') || tox.y > bottom) return die(tox);
+    if (li === 4) {
+      const inM = c => c.ground && cell(Math.floor((c.x + c.w / 2) / T), Math.floor((c.y + c.h - 2 - OY) / T)) === 'M';
+      if (inM(sano) && inM(tox)) return startEnding('juntos');
+      if (onDoor(sano, 'G')) return startEnding('solo');
+      if (!leftBehindSaid && sano.y < OY + 14 * T) { leftBehindSaid = true; say(tox, '¿Me vas a dejar aquí? Mejor.', 2.2); }
+    } else if (onDoor(sano, 'G') && onDoor(tox, 'R')) return levelClear();
+    if (LEVELS[li].sab) {
+      sab.t -= dt;
+      if (sab.t <= 0 && sab.p <= 0) { sab.p = 1.6; sab.t = 99; say(tox, G.pick(INSULTS), 1.9); G.beep(250, 0.1, 'square', 0.04, 120); }
+      if (sab.p > 0) { sab.p -= dt; if (sab.p <= 0) { doSabotage(); sab.t = G.rand(12, 17); } }
+    }
+  } else if (state === 'dead') {
+    stT -= dt; if (stT <= 0) loadLevel(li);
+  } else if (state === 'clear') {
+    stT -= dt;
+    if (stT <= 0) { loadLevel(li + 1); G.float((li + 1) + ' · ' + LEVELS[li].name, 270, 400, C.gold, 30); }
+  } else if (state === 'ending') {
+    stT -= dt; if (stT <= 0) finish();
+  }
+}
+
+// ---------- Dibujo ----------
+const decor = Array.from({ length: 16 }, () => ({ x: G.rand(20, 520), o: G.rand(0, 700), r: G.rand(4, 12), s: G.rand(8, 22) }));
+function drawTile(ch, c, r) {
+  const x = c * T, y = r * T + OY, t = G.t;
+  if (ch === '#') {
+    ctx.fillStyle = '#3a2b52'; ctx.fillRect(x, y, T, T);
+    if (cell(c, r - 1) !== '#' && r > 0) {
+      G.rrect(x, y, T, 9, 4, '#5b4784');
+      G.circle(x + 8 + (c * 7) % 14, y + 9, 3 + (c % 3), '#5b4784');
+    } else { ctx.fillStyle = '#ffffff08'; ctx.fillRect(x + 6 + (c * 5 + r * 3) % 14, y + 8 + (r * 7) % 12, 4, 4); }
+  } else if (ch === '=') {
+    G.rrect(x + 1, y, T - 2, 11, 5, '#a8f0de', '#53d8c3', 2);
+    G.circle(x + 10, y + 5, 1.6, '#2a8a78'); G.circle(x + 20, y + 5, 1.6, '#2a8a78');
+  } else if (ch === '~') {
+    ctx.fillStyle = '#7bb53a';
+    ctx.beginPath(); ctx.moveTo(x, y + T);
+    for (let i = 0; i <= 6; i++) ctx.lineTo(x + i * 5, y + 10 + Math.sin(t * 4 + i + c) * 3);
+    ctx.lineTo(x + T, y + T); ctx.closePath(); ctx.fill();
+    G.circle(x + 8 + ((t * 20 + c * 9) % 14), y + 20 - ((t * 15 + c * 5) % 10), 2.5, C.lime);
+  } else if (ch === '*') {
+    const cx = x + 15, cy = y + 13 + Math.sin(t * 3 + c) * 1.5;
+    ctx.strokeStyle = '#4c9a4a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(cx, y + T); ctx.lineTo(cx, cy); ctx.stroke();
+    for (let i = 0; i < 5; i++) { const a = i / 5 * Math.PI * 2 + t; G.circle(cx + Math.cos(a) * 7, cy + Math.sin(a) * 7, 5, C.blue); }
+    G.circle(cx, cy, 5, C.gold);
+    G.circle(cx - 2, cy - 1, 1, C.bg); G.circle(cx + 2, cy - 1, 1, C.bg);
+  } else if (ch === '^') {
+    ctx.fillStyle = '#d8cfe6';
+    for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(x + i * 10, y + T); ctx.lineTo(x + i * 10 + 5, y + 13); ctx.lineTo(x + i * 10 + 10, y + T); ctx.fill(); }
+  } else if (ch === 'A' || ch === 'B') {
+    const col = ch === 'A' ? C.teal : C.pink;
+    if (!gates[ch]) { ctx.fillStyle = col + '55'; ctx.fillRect(x + 4, y, T - 8, T); ctx.fillStyle = col; ctx.fillRect(x + 7, y, 4, T); ctx.fillRect(x + 19, y, 4, T); }
+    else { ctx.strokeStyle = col + '44'; ctx.lineWidth = 2; ctx.setLineDash([4, 5]); ctx.strokeRect(x + 5, y + 1, T - 10, T - 2); ctx.setLineDash([]); }
+  } else if (ch === 'a' || ch === 'b') {
+    const col = ch === 'a' ? C.teal : C.pink, on = gates[ch.toUpperCase()];
+    ctx.save(); ctx.translate(x + 15, y + T - 6); ctx.rotate(on ? 0.6 : -0.6);
+    ctx.strokeStyle = C.ink; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -18); ctx.stroke();
+    G.circle(0, -19, 6, col); ctx.restore();
+    G.rrect(x + 5, y + T - 8, T - 10, 8, 3, col);
+  } else if (ch === 'G' || ch === 'R') {
+    const col = ch === 'G' ? C.lime : C.pink;
+    const who = ch === 'G' ? sano : tox, on = who && onDoor(who, ch);
+    ctx.beginPath(); ctx.roundRect(x + 2, y - T + 2, T - 4, 2 * T - 2, [13, 13, 2, 2]);
+    ctx.fillStyle = on ? col : col + '55'; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = col; ctx.stroke();
+    G.circle(x + 15, y - T + 14, 5, '#fff'); G.circle(x + 15 + Math.sin(t * 2) * 2, y - T + 14, 2.5, C.bg);
+    G.text(ch === 'G' ? 'S' : 'T', x + 15, y + 12, { size: 13, align: 'center', color: C.bg, shadow: false });
+  }
+}
+function drawMachine() {
+  let mx = null, my = null;
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) if (grid[r][c] === 'M' && mx === null) { mx = c * T; my = r * T + OY; }
+  if (mx === null) return;
+  G.rrect(mx - 8, my - 2 * T, 2 * T + 16, 3 * T, 22, '#ffb23e33', C.gold, 4);
+  G.rrect(mx + 2, my - 2 * T + 10, 2 * T - 4, 42, 14, '#53d8c344', C.teal, 2);
+  for (let i = 0; i < 4; i++) G.circle(mx + 8 + i * 15, my - 2 * T + 64, 3.5, Math.sin(G.t * 6 + i) > 0 ? C.pink : C.lime);
+  G.text('RE-UNIR', mx + T, my - 2 * T - 10, { size: 14, align: 'center', color: C.gold });
+}
+function drawCrate(cr) {
+  G.rrect(cr.x, cr.y, cr.w, cr.h, 4, '#a06d40', '#5d3d22', 3);
+  ctx.strokeStyle = '#5d3d22'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(cr.x + 4, cr.y + 4); ctx.lineTo(cr.x + cr.w - 4, cr.y + cr.h - 4); ctx.stroke();
+}
+function drawChar(c) {
+  if (c.dead && state === 'dead') return;
+  const isS = c.who === 'sano', col = isS ? C.teal : C.pink;
+  const w = c.w * (1 + c.sq * 0.35) + 6, h = c.h * (1 - c.sq * 0.35) + 4;
+  ctx.save(); ctx.translate(c.x + c.w / 2, c.y + c.h);
+  if (!isS) {
+    ctx.fillStyle = '#c23a5a';
+    for (let i = 0; i < 7; i++) {
+      const a = -Math.PI * (0.1 + 0.8 * i / 6), wob = Math.sin(G.t * 12 + i) * 0.06;
+      const bx = Math.cos(a + wob) * w / 2, by = -h / 2 + Math.sin(a + wob) * h / 2;
+      ctx.beginPath(); ctx.moveTo(bx - 4, by + 2); ctx.lineTo(bx + Math.cos(a) * 9, by + Math.sin(a) * 9); ctx.lineTo(bx + 4, by + 2); ctx.fill();
+    }
+  }
+  ctx.beginPath(); ctx.ellipse(0, -h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+  ctx.fillStyle = col; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = isS ? '#2a8a78' : '#a02848'; ctx.stroke();
+  const ex = c.face * 3, ey = -h * 0.58, look = c.face * 1.6;
+  for (const s of [-1, 1]) {
+    G.circle(ex + s * 6, ey, 5, '#fff');
+    if (c.blink > 0) G.circle(ex + s * 6 + look, ey + (c.vy > 100 ? 1.5 : 0), 2.4, C.bg);
+    else { ctx.fillStyle = col; ctx.fillRect(ex + s * 6 - 5, ey - 5, 10, 10); }
+  }
+  ctx.strokeStyle = C.bg; ctx.lineWidth = 2.2; ctx.beginPath();
+  if (isS) {
+    ctx.fillStyle = col; ctx.fillRect(ex - 11, ey - 6, 22, 4); // párpados relajados
+    ctx.arc(ex, ey + 6, 4, 0.2, Math.PI - 0.2);
+  } else {
+    ctx.moveTo(ex - 11, ey - 8); ctx.lineTo(ex - 3, ey - 4); ctx.moveTo(ex + 11, ey - 8); ctx.lineTo(ex + 3, ey - 4);
+    ctx.moveTo(ex - 4, ey + 8); ctx.quadraticCurveTo(ex + 1, ey + 5, ex + 6, ey + 6);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+function drawBubble(b) {
+  const c = b.c;
+  ctx.font = `700 15px ${G.BODY}`;
+  const tw = ctx.measureText(b.text).width + 20;
+  const x = G.clamp(c.x + c.w / 2 - tw / 2, 6, 534 - tw), y = Math.max(100, c.y - 44);
+  ctx.globalAlpha = G.clamp(b.t * 4, 0, 1);
+  G.rrect(x, y, tw, 30, 10, c.who === 'tox' ? '#ffe3ea' : '#e2fff8', c.who === 'tox' ? C.pink : C.teal, 2);
+  ctx.fillStyle = c.who === 'tox' ? '#ffe3ea' : '#e2fff8';
+  const tx = G.clamp(c.x + c.w / 2, x + 10, x + tw - 10);
+  ctx.beginPath(); ctx.moveTo(tx - 6, y + 29); ctx.lineTo(tx, y + 38); ctx.lineTo(tx + 6, y + 29); ctx.fill();
+  G.text(b.text, x + tw / 2, y + 16, { size: 15, body: true, weight: 700, align: 'center', baseline: 'middle', color: C.bg, shadow: false });
+  ctx.globalAlpha = 1;
+}
+function drawButton(b, label, active, col) {
+  G.rrect(b.x, b.y + (active ? 3 : 0), b.w, b.h, 18, active ? col : col + '44', col, 3);
+  const cx = b.x + b.w / 2, cy = b.y + b.h / 2 + (active ? 3 : 0);
+  ctx.fillStyle = active ? C.bg : C.ink;
+  if (label === 'L' || label === 'R') {
+    const s = label === 'L' ? -1 : 1;
+    ctx.beginPath(); ctx.moveTo(cx + s * 22, cy); ctx.lineTo(cx - s * 16, cy - 24); ctx.lineTo(cx - s * 16, cy + 24); ctx.fill();
+  } else if (label === 'RS') {
+    ctx.strokeStyle = active ? C.bg : C.ink; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(cx, cy, 13, 0.5, Math.PI * 1.8); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx + 13, cy - 12); ctx.lineTo(cx + 15, cy - 2); ctx.lineTo(cx + 5, cy - 4); ctx.fill();
+  } else G.text(label, cx, cy, { size: 26, align: 'center', baseline: 'middle', color: active ? C.bg : C.ink, shadow: false });
+}
+function draw() {
+  ctx.fillStyle = C.bg2; ctx.fillRect(0, 0, G.W, G.H);
+  ctx.fillStyle = '#ffffff0a';
+  for (const d of decor) { const y = OY + 690 - ((G.t * d.s + d.o) % 690); G.circle(d.x, y, d.r, '#ffffff0c'); }
+  if (!grid) return;
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) { const ch = grid[r][c]; if (ch !== '.' && ch !== 'M') drawTile(ch, c, r); }
+  drawMachine();
+  for (const cr of crates) drawCrate(cr);
+  drawChar(sano); drawChar(tox);
+  for (const z of zaps) {
+    ctx.globalAlpha = z.t / 0.4; ctx.strokeStyle = C.pink; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(z.x1, z.y1);
+    for (let i = 1; i < 8; i++) ctx.lineTo(G.lerp(z.x1, z.x2, i / 8) + G.rand(-8, 8), G.lerp(z.y1, z.y2, i / 8) + G.rand(-8, 8));
+    ctx.lineTo(z.x2, z.y2); ctx.stroke(); ctx.globalAlpha = 1;
+  }
+  for (const b of bubbles) drawBubble(b);
+  if (sab.p > 0) G.text('!', tox.x + 11, tox.y - (bubbles.some(b => b.c === tox) ? 50 : 8), { size: 22, align: 'center', color: C.pink });
+  // HUD
+  G.text(`${li + 1}/5 · ${LEVELS[li].name}`, 14, 76, { size: 18, color: C.gold });
+  G.text(`${fmt(totalTime)} · muertes ${deaths}`, 526, 76, { size: 15, align: 'right', body: true, weight: 700, color: C.ink });
+  G.text(LEVELS[li].hint, 270, 92, { size: 13, align: 'center', body: true, weight: 700, color: C.dim });
+  // Controles
+  ctx.fillStyle = '#00000044'; ctx.fillRect(0, OY + ROWS * T, G.W, G.H - OY - ROWS * T);
+  const kl = G.key('ArrowLeft') || G.key('a') || G.key('A'), kr = G.key('ArrowRight') || G.key('d') || G.key('D');
+  drawButton(BL, 'L', held(BL) || kl, C.ink);
+  drawButton(BR, 'R', held(BR) || kr, C.ink);
+  drawButton(BRS, 'RS', held(BRS), C.dim);
+  drawButton(BJ, 'SALTAR', held(BJ) || G.key(' '), C.gold);
+  G.text('Tóxico se mueve al revés', 133, 947, { size: 12, align: 'center', body: true, weight: 700, color: C.dim });
+  G.text('los dos saltan', 431, 947, { size: 12, align: 'center', body: true, weight: 700, color: C.dim });
+}
+
+G.run(update, draw);
+loadLevel(0); state = 'menu';
+G.screen({
+  sub: 'Prototipo 08 · plataformas-puzle', title: 'Tu Yo Tóxico',
+  html: `<p>Una máquina del spa te ha partido en dos: <b style="color:${C.teal}">Sano</b> y <b style="color:${C.pink}">Tóxico</b>. Los controlas a la vez.</p>
+  <ul><li>◀ ▶ (o flechas / A-D): mover. <b>Tóxico va al revés.</b></li>
+  <li>SALTAR (o espacio / ↑): saltan los dos. Tóxico salta más.</li>
+  <li>Sano muere en el lodo verde; Tóxico, con las flores. Las plataformas pastel solo aguantan a Sano.</li>
+  <li>Cada uno a su puerta a la vez (S verde, T roja). R: reiniciar nivel.</li></ul>`,
+  button: 'Empezar', onClick: startRun,
+});
+</script></body></html>

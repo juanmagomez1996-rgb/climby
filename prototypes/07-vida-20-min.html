@@ -1,0 +1,439 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Una Vida en 20 Minutos</title></head><body>
+<script src="proto.js"></script>
+<script>
+// Una Vida en 20 Minutos: una vida entera de Ramón en ~3-4 minutos de recreativa.
+const G = Proto.create({ onRestart() { reset(); G.hideScreen(); } });
+const C = G.C, ctx = G.ctx, { rand, randi, pick, clamp, lerp, dist } = G;
+const S = { x: 30, y: 140, w: 480, h: 560 };
+const CX = S.x + S.w / 2, SB = S.y + S.h, SR = S.x + S.w, GY = SB - 90, RX = CX - 50;
+const P = G.pointer, TAU = Math.PI * 2, YPX = 220;
+const KEYS = ['s', 'd', 'f', 'r'], NAMES = ['Salud', 'Dinero', 'Felicidad', 'Relaciones'], COLS = [C.pink, C.gold, C.lime, C.blue];
+const BARY = [752, 796, 840, 884];
+const STAGES = [
+  { from: 0, name: 'INFANCIA', sky: ['#7ec8ff', '#c8ecff'], ground: '#6ac46a', shirt: C.lime },
+  { from: 13, name: 'ADOLESCENCIA', sky: ['#ff8aa8', '#ffd0a0'], ground: '#7a8a6a', shirt: C.pink },
+  { from: 20, name: 'VIDA ADULTA', sky: ['#4a5a8a', '#8a9ac0'], ground: '#5a5a6a', shirt: C.blue },
+  { from: 45, name: 'MADUREZ', sky: ['#8a6ab0', '#e0b0c0'], ground: '#6a8a5a', shirt: '#9a6ae0' },
+  { from: 65, name: 'VEJEZ', sky: ['#3a2a5a', '#ff9a5a'], ground: '#8a6a4a', shirt: '#c9b48a' },
+];
+const stageOf = a => { let k = 0; STAGES.forEach((s, i) => { if (a >= s.from) k = i; }); return k; };
+const pn = t => t.replaceAll('{p}', st.partner || 'tu pareja');
+
+// ---------- Decisiones (fx = [salud, dinero, felicidad, relaciones]) ----------
+const EV = [
+  { age: 6, q: 'Primer día de cole. ¿Con quién te sientas?', o: [
+    { t: 'Con el niño raro que come pegamento', fx: [0, 0, 5, 10], tag: 'se sentó con el niño raro', later: { a: 26, t: 'El niño raro ahora es millonario. Te invita a su yate.', fx: [0, 15, 10, 5] } },
+    { t: 'Solo, al fondo, junto a la ventana', fx: [0, 0, -3, -8], later: { a: 30, t: 'Sigues eligiendo la mesa del fondo. En todo.', fx: [0, 0, -5, -5] } }] },
+  { age: 9, q: '¿Qué haces por las tardes?', o: [
+    { t: 'Fútbol en el descampado', fx: [10, 0, 5, 5], tag: 'jugó al fútbol en el descampado', risk: [0.25, [-15, 0, -5, 0], 'Te rompes la pierna. Vas escayolado a tu cumple.', 'una patada mal dada'] },
+    { t: 'Clases de piano', fx: [0, -3, 3, 0], tag: 'aprendió piano', later: { a: 50, t: 'Tocas el piano en la boda de tu sobrina. Llora todo el mundo.', fx: [0, 0, 12, 10] } },
+    { t: 'Videojuegos hasta las tantas', fx: [-5, 0, 10, 0], later: { a: 35, t: 'Sigues siendo imbatible al Blorptris. No sirve de nada.', fx: [0, 0, 5, 0] } }] },
+  { age: 15, q: 'Mañana hay examen. ¿Estudias o te vas de fiesta?', o: [
+    { t: 'Estudio', fx: [0, 0, -5, -3], tag: 'estudió la noche del examen', later: { a: 30, t: 'Aquel examen te abrió una puerta. Una pequeña.', fx: [0, 20, 0, 0] } },
+    { t: 'Fiesta', fx: [-5, 0, 10, 10], tag: 'se fue de fiesta la noche del examen', later: { a: 45, t: 'Aquella fiesta sigue siendo tu mejor recuerdo.', fx: [0, 0, 8, 0] } }] },
+  { age: 17, q: '¿Le pides salir a Lucía?', o: [
+    { t: 'Sí, con una flor del parque', tag: 'le pidió salir a Lucía', f() {
+      if (Math.random() < 0.4 + st.st.r / 200) { st.flags.pareja = 1; st.partner = 'Lucía'; apply([0, 0, 15, 15]); return 'Lucía dice que sí. Te tiembla todo.'; }
+      apply([0, 0, -15, -5]); st.later.push({ a: 60, t: 'Ves a Lucía en el súper. Te saluda con cariño.', fx: [0, 0, 6, 0] }); return 'Te dice que no. Delante de todos.'; } },
+    { t: 'Ni de broma', fx: [0, 0, -5, 0], tag: 'nunca le pidió salir a Lucía', later: { a: 62, t: 'Aún piensas en Lucía a veces.', fx: [0, 0, -10, 0] } }] },
+  { age: 19, q: 'Se acaba el instituto. ¿Y ahora?', o: [
+    { t: 'Universidad', fx: [0, -10, 0, 5], tag: 'fue a la universidad', later: { a: 28, t: 'El título por fin sirve para algo.', fx: [0, 25, 5, 0] } },
+    { t: 'Aceptas el trabajo de alfombras', fx: [-3, 15, -3, 0], tag: 'aceptó el trabajo de alfombras', later: { a: 45, t: 'Eres el rey de las alfombras del barrio.', fx: [0, 15, 5, 5] } },
+    { t: 'Te vas a viajar sin un duro', fx: [0, -15, 15, 5], tag: 'se fue a viajar sin un duro' }] },
+  { age: 24, q: 'Un perro te sigue hasta casa.', o: [
+    { t: 'Te lo quedas. Se llama Tornillo.', fx: [3, -5, 10, 5], flag: 'perro', tag: 'adoptó a Tornillo', later: { a: 37, t: 'Tornillo se muere de viejo. Lo enterráis bajo el limonero.', fx: [0, 0, -15, 0], off: 'perro' } },
+    { t: 'Lo devuelves a la calle', fx: [0, 0, -3, 0], later: { a: 40, t: 'Ves un perro igualito. Te mira raro.', fx: [0, 0, -5, 0] } }] },
+  { age: 28, need: 'pareja', q: '{p} quiere casarse contigo.', o: [
+    { t: '¡Sí, quiero!', fx: [0, -10, 15, 15], flag: 'casado', tag: 'se casó con {p}' },
+    { t: 'Todavía no...', fx: [0, 0, -5, -15], f() { if (Math.random() < 0.5) { st.flags.pareja = 0; return pn('{p} se va. Se lleva la tostadora.'); } return pn('{p} espera. Pero lo apunta.'); } }] },
+  { age: 28, not: 'pareja', q: 'Una app de citas te empareja con Marga.', o: [
+    { t: 'Quedas con ella', tag: 'quedó con Marga', f() {
+      if (Math.random() < 0.6) { st.flags.pareja = 1; st.partner = 'Marga'; apply([0, -3, 12, 15]); return 'Marga se ríe de tus chistes. De todos.'; }
+      apply([0, -3, -8, 0]); return 'Marga va al baño y no vuelve.'; } },
+    { t: 'Mejor solo', fx: [0, 0, -5, -8] }] },
+  { age: 32, q: '¿Tener hijos?', o: [
+    { t: 'Sí, una niña', fx: [-5, -20, 12, 10], flag: 'hija', tag: 'tuvo una hija', later: { a: 58, t: 'Tu hija te llama solo para hablar.', fx: [0, 0, 15, 10] } },
+    { t: 'Mejor una planta', fx: [0, 0, 3, 0], tag: 'cuidó de una planta 23 años', flag: 'planta', later: { a: 55, t: 'La planta sigue viva. Es tu mayor logro.', fx: [0, 0, 5, 0] } }] },
+  { age: 36, q: 'Tu jefe te ofrece un ascenso... a cambio de tus fines de semana.', o: [
+    { t: 'Aceptas', fx: [-10, 25, -5, -15], tag: 'trabajó todos los fines de semana' },
+    { t: 'Rechazas', fx: [0, -5, 5, 5] }] },
+  { age: 41, q: 'Crisis de los 40.', o: [
+    { t: 'Te compras una moto roja', fx: [0, -15, 15, 0], tag: 'se compró una moto roja', risk: [0.3, [-30, 0, -5, 0], 'Te la pegas con la moto. Tres meses en el hospital.', 'la moto roja'] },
+    { t: 'Corres una maratón', fx: [15, 0, 5, 0], tag: 'corrió una maratón' },
+    { t: 'Lo aceptas y ya', fx: [0, 0, -5, 5] }] },
+  { age: 47, q: 'Tu cuñado te ofrece invertir en criptopatatas.', o: [
+    { t: 'Meto todos mis ahorros', tag: 'lo metió todo en criptopatatas', f() {
+      if (Math.random() < 0.45) { apply([0, 40, 10, 0]); return '¡Las criptopatatas se disparan! Eres rico.'; }
+      apply([-5, -40, -10, 0]); st.lastHurt = 'el disgusto de las criptopatatas'; return 'Las criptopatatas eran patatas.'; } },
+    { t: 'Ni un euro', fx: [0, 0, 0, -5], m: 'Tu cuñado deja de hablarte. Ganas algo.' }] },
+  { age: 53, q: 'El médico dice: menos croquetas.', o: [
+    { t: 'Le haces caso', fx: [12, 0, -5, 0] },
+    { t: 'Una croqueta más no mata', fx: [-8, 0, 8, 0], tag: 'no renunció a las croquetas', later: { a: 64, t: 'Las croquetas pasan factura.', fx: [-25, 0, 0, 0], cause: 'las croquetas' } }] },
+  { age: 63, q: '¿Te jubilas ya?', o: [
+    { t: 'Sí, a mirar obras', fx: [5, -10, 10, 5], tag: 'miró obras con pasión' },
+    { t: 'Sigo currando', fx: [-10, 15, -5, -5] }] },
+  { age: 70, q: 'Hay baile en el centro de mayores.', o: [
+    { t: '¡A bailar!', fx: [3, 0, 12, 10], tag: 'bailó un pasodoble a los 70', risk: [0.25, [-20, 0, 0, 0], 'Te rompes la cadera en un pasodoble.', 'un pasodoble'] },
+    { t: 'Sofá y tele', fx: [-5, 0, -3, -5] }] },
+  { age: 74, need: 'pareja', auto: { t: '{p} se va antes que tú. La casa suena distinta.', fx: [-5, 0, -20, -10], off: 'pareja' } },
+  { age: 77, q: 'Un viejo amigo te escribe después de 40 años.', o: [
+    { t: 'Le llamas', fx: [0, 0, 10, 15], tag: 'volvió a llamar a un viejo amigo' },
+    { t: 'Mañana', fx: [0, 0, -8, -5], later: { a: 80, t: 'Tu amigo ha muerto. El mañana no llegó.', fx: [0, 0, -15, -5] } }] },
+  { age: 84, q: '¿Qué haces con tus ahorros?', o: [
+    { t: 'Repartirlos en vida', fx: [0, -30, 10, 15], tag: 'lo repartió todo en vida' },
+    { t: 'Un crucero', fx: [0, -25, 15, 0], tag: 'se fue de crucero a los 84' },
+    { t: 'Bajo el colchón', fx: [0, 0, -3, -3] }] },
+];
+
+// ---------- Estado ----------
+let st;
+function reset() {
+  st = { age: 0, yt: 0, st: { s: 75, d: 15, f: 60, r: 50 }, flags: {}, partner: null, later: [], tags: [], done: new Set(),
+    ev: null, beat: null, banners: [], dead: false, deathT: 0, shown: false, score: 0, lastBeat: 0, walk: 0, lastHurt: '', stage: 0, cause: '', sel: 0, flash: [0, 0, 0, 0], playing: true };
+}
+function banner(head, text, col = C.gold) { st.banners.push({ head, text: pn(text), t: 0, col }); }
+function apply(fx, cause) {
+  fx.forEach((v, i) => {
+    if (!v) return;
+    const dv = Math.round(v * rand(0.7, 1.3)) || Math.sign(v), k = KEYS[i];
+    st.st[k] = clamp(st.st[k] + dv, 0, 100); st.flash[i] = 1;
+    G.float((dv > 0 ? '+' : '') + dv, 508, BARY[i] + 4, COLS[i], 22);
+    if (i === 0 && dv < 0 && cause) st.lastHurt = cause;
+  });
+  if (st.st.s <= 0) die();
+}
+function die(cause) {
+  if (st.dead) return;
+  st.dead = true; st.deathT = 0; st.ev = null; st.beat = null;
+  st.cause = cause || (st.lastHurt ? 'por ' + st.lastHurt : 'por no cuidarse');
+  G.shake(6, 0.4);
+  [523, 440, 392, 262].forEach((f, i) => setTimeout(() => G.beep(f, 0.35, 'triangle', 0.06), i * 260));
+}
+const yearDur = () => st.age < 4 ? 0.8 : 2.1;
+
+function yearTick() {
+  st.age++;
+  const s = st.st, a = st.age;
+  if (a > 40) s.s -= 0.6; if (a > 60) s.s -= 1; if (s.f < 20) s.s -= 1;
+  if (a >= 19 && a < 65) s.d += 0.7; else if (a >= 65) s.d -= 0.4;
+  if (!st.flags.pareja && a > 30) s.r -= 0.4;
+  KEYS.forEach(k => s[k] = clamp(s[k], 0, 100));
+  st.score += (s.f + s.r + s.s * 0.5 + s.d * 0.3) / 10;
+  G.beep(700, 0.03, 'square', 0.02);
+  const sg = stageOf(a);
+  if (sg !== st.stage) { st.stage = sg; banner('NUEVA ETAPA', STAGES[sg].name, C.teal); G.beep(523, 0.1); setTimeout(() => G.beep(784, 0.15), 100); }
+  for (const L of st.later.filter(L => L.a === a)) { banner('CONSECUENCIA · ' + a + ' AÑOS', L.t, C.pink); apply(L.fx, L.cause); if (L.off) st.flags[L.off] = 0; }
+  st.later = st.later.filter(L => L.a !== a);
+  if (st.dead) return;
+  if (s.s <= 0) return die();
+  if (a >= 100 || (a >= 68 && Math.random() < (a - 66) * 0.012 + (100 - s.s) / 900)) return die(a >= 95 ? 'de viejísimo' : 'de viejo, en su cama');
+  for (const e of EV) {
+    if (st.done.has(e) || e.age > a) continue;
+    st.done.add(e);
+    if ((e.need && !st.flags[e.need]) || (e.not && st.flags[e.not])) continue;
+    if (e.auto) { banner('A LOS ' + a + ' AÑOS', e.auto.t, C.pink); apply(e.auto.fx); st.flags[e.auto.off] = 0; continue; }
+    st.beat = null; st.ev = { e, t: 0 }; st.sel = 0; G.beep(330, 0.12, 'triangle', 0.06); return;
+  }
+  const next = EV.find(e => !st.done.has(e));
+  if (a >= 3 && a - st.lastBeat >= 3 && (!next || next.age > a + 2)) startBeat();
+}
+function choose(i, auto) {
+  const e = st.ev.e, o = e.o[i]; st.ev = null;
+  G.beep(880, 0.08); G.burst(CX, S.y + 280 + i * 108, C.gold, 18);
+  if (auto) banner('LA VIDA DECIDE POR TI', o.t, C.dim);
+  if (o.tag) st.tags.push({ a: st.age, t: pn(o.tag) });
+  if (o.flag) st.flags[o.flag] = 1;
+  if (o.later) st.later.push(o.later);
+  if (o.fx) apply(o.fx, o.cause);
+  if (o.m) banner('', o.m);
+  if (o.f) { const r = o.f(); if (r) banner('', r); }
+  if (o.risk && Math.random() < o.risk[0]) { banner('¡AY!', o.risk[2], C.pink); apply(o.risk[1], o.risk[3]); G.shake(12, 0.3); G.beep(120, 0.3, 'sawtooth', 0.07, -60); }
+}
+
+// ---------- Momentos de acción ----------
+function startBeat() {
+  const a = st.age, types = [];
+  if (a < 20) types.push('pelota', 'pelota');
+  if (a >= 18 && a < 66) types.push('monedas');
+  if (a >= 8) types.push('corazones');
+  if (a >= 13) types.push('equilibrio');
+  if (a >= 60) types.push('equilibrio');
+  const type = pick(types), b = { type, t: 0, dur: 3.4, objs: [], x: 0, v: 0, got: 0 };
+  st.lastBeat = a;
+  if (type === 'pelota') b.objs.push({ x: SR + 20, y: S.y + 200, vx: -190, vy: -120 });
+  if (type === 'monedas') for (let i = 0; i < 4; i++) b.objs.push({ x: rand(S.x + 60, SR - 60), y: GY - 20, vy: -rand(380, 520), d: i * 0.35, live: 1 });
+  if (type === 'corazones') for (let i = 0; i < 3; i++) b.objs.push({ x: rand(S.x + 60, SR - 60), y: GY + 20, d: i * 0.5, live: 1 });
+  b.title = { pelota: '¡ATRAPA LA PELOTA!', monedas: '¡COGE LAS MONEDAS!', corazones: '¡TOCA LOS CORAZONES!', equilibrio: '¡MANTÉN EL EQUILIBRIO!' }[type];
+  st.beat = b; G.beep(990, 0.06, 'square', 0.04);
+}
+function updateBeat(dt) {
+  const b = st.beat; b.t += dt;
+  const tapIn = P.pressed && G.inRect(P.x, P.y, S.x, S.y, S.w, S.h), sp = G.keyPressed(' ') || G.keyPressed('Enter');
+  const end = () => { st.beat = null; };
+  if (b.type === 'pelota') {
+    const o = b.objs[0];
+    if (!o.got) { o.x += o.vx * dt; o.vy += 150 * dt; o.y += o.vy * dt; }
+    if (!o.got && ((tapIn && dist(P.x, P.y, o.x, o.y) < 60) || (sp && Math.abs(o.x - RX) < 80))) { o.got = 1; G.burst(o.x, o.y, C.gold, 18); G.float('¡La cogiste!', RX, GY - 200, C.lime); apply([2, 0, 5, 0]); G.beep(880, 0.1); }
+    if (o.got) { o.x = RX + 30; o.y = GY - 90; if (b.t > b.dur) end(); }
+    else if (o.x < S.x - 30) { G.float('Se te escapa', RX, GY - 200, C.dim); apply([0, 0, -3, 0]); end(); }
+  } else if (b.type === 'monedas' || b.type === 'corazones') {
+    const coin = b.type === 'monedas';
+    for (const o of b.objs) {
+      if (!o.live || b.t < o.d) continue;
+      if (coin) { o.vy += 500 * dt; o.y += o.vy * dt; if (o.y > GY + 40) o.live = 0; } else o.y -= 150 * dt;
+      if (!coin && o.y < S.y + 40) o.live = 0;
+    }
+    const live = b.objs.filter(o => o.live && b.t >= o.d);
+    let hit = null;
+    if (tapIn) hit = live.find(o => dist(P.x, P.y, o.x, o.y) < 55);
+    if (!hit && sp && live.length) hit = live[0];
+    if (hit) { hit.live = 0; b.got++; G.burst(hit.x, hit.y, coin ? C.gold : C.pink, 14); G.beep(coin ? 1200 : 660, 0.08, coin ? 'square' : 'triangle', 0.05); apply(coin ? [0, 3, 0, 0] : [0, 0, 1, 3]); }
+    if (b.objs.every(o => !o.live)) { if (b.got === b.objs.length) G.float('¡Perfecto!', CX, S.y + 160, C.lime); end(); }
+  } else if (b.type === 'equilibrio') {
+    let push = 0;
+    if (P.down && G.inRect(P.x, P.y, S.x, S.y, S.w, S.h)) push = P.x < CX ? -1 : 1;
+    if (G.key('ArrowLeft')) push = -1; if (G.key('ArrowRight')) push = 1;
+    const k = st.age > 60 ? 1.4 : 1;
+    b.v += (b.x * 2.2 * k + rand(-2.5, 2.5) * k + push * 5) * dt; b.v *= 0.98; b.x += b.v * dt;
+    if (Math.abs(b.x) >= 1) { G.float('¡Te caes de culo!', RX, GY - 200, C.pink); G.shake(10); G.beep(140, 0.25, 'sawtooth', 0.07, -60); apply([-8, 0, -3, 0], 'una caída tonta'); end(); }
+    else if (b.t > b.dur) { G.float('¡Equilibrio perfecto!', RX, GY - 200, C.lime); apply([6, 0, 2, 0]); end(); }
+  }
+}
+
+// ---------- Bucle ----------
+function update(dt) {
+  if (!st.playing) return;
+  for (let i = 0; i < 4; i++) st.flash[i] = Math.max(0, st.flash[i] - dt * 2);
+  if (st.dead) {
+    st.deathT += dt;
+    if (st.deathT > 3.4 && !st.shown) { st.shown = true; results(); }
+    return;
+  }
+  if (st.banners.length && !st.ev) { st.banners[0].t += dt; if (st.banners[0].t > 3) st.banners.shift(); }
+  if (st.ev) {
+    st.ev.t += dt;
+    const n = st.ev.e.o.length;
+    for (let i = 0; i < n; i++) if (G.keyPressed(String(i + 1))) return choose(i);
+    if (G.keyPressed('ArrowDown')) st.sel = (st.sel + 1) % n;
+    if (G.keyPressed('ArrowUp')) st.sel = (st.sel + n - 1) % n;
+    if (G.keyPressed(' ') || G.keyPressed('Enter')) return choose(st.sel);
+    if (P.pressed) for (let i = 0; i < n; i++) { const r = cardRect(i, n); if (G.inRect(P.x, P.y, r.x, r.y, r.w, r.h)) return choose(i); }
+    if (st.ev.t > 10) choose(randi(0, n - 1), true);
+    return;
+  }
+  st.walk += dt;
+  if (st.beat) updateBeat(dt);
+  st.yt += dt / yearDur();
+  if (st.yt >= 1) { st.yt -= 1; yearTick(); }
+}
+function results() {
+  const s = st.st, a = st.age;
+  const best = [['f', 'Fue feliz, que no es poco.'], ['d', 'Tenía mucho dinero. Ahora lo tiene otro.'], ['r', 'Nunca comió solo.'], ['s', 'Murió sanísimo, curiosamente.']].sort((x, y) => s[y[0]] - s[x[0]])[0][1];
+  let low = '';
+  if (s.f < 25) low = 'No sonreía ni en las fotos.';
+  else if (s.r < 25) low = st.flags.planta ? 'A su entierro fue su planta.' : 'A su entierro fueron cuatro, pero puntuales.';
+  else if (s.d < 12) low = 'Debe tres euros a medio barrio.';
+  else if (a < 40) low = 'Se fue demasiado pronto, con la tele encendida.';
+  else if (st.flags.hija) low = 'Su hija aún guarda su jersey feo.';
+  else if (st.partner && st.flags.pareja) low = pn('{p} dice que roncaba, y que lo echa de menos.');
+  else low = 'Hizo lo que pudo con lo que le tocó.';
+  const score = Math.round(st.score), prev = G.best('vida20') || 0, rec = G.best('vida20', score);
+  const tags = st.tags.length > 4 ? [0, 1, 2, 3].map(i => st.tags[Math.round(i * (st.tags.length - 1) / 3)]) : st.tags;
+  const moments = tags.length ? `<ul>${tags.map(t => `<li>A los ${t.a}, ${t.t}.</li>`).join('')}</ul>` : '<p>No tomó ninguna decisión memorable.</p>';
+  G.screen({ sub: 'Sales del juego', title: `Ramón (0 – ${a})`, big: score + ' pts',
+    html: `<p><i>«Aquí yace Ramón. ${best} ${low}»</i></p><p>Murió a los ${a} años, ${st.cause}.</p>${moments}
+      <p style="color:${C.dim}">Salud ${Math.round(s.s)} · Dinero ${Math.round(s.d)} · Felicidad ${Math.round(s.f)} · Relaciones ${Math.round(s.r)}</p>
+      <p>${score > prev ? '<b style="color:' + C.lime + '">¡Mejor vida hasta ahora!</b> ' : ''}Récord: <b>${rec}</b></p>`,
+    button: 'Vivir otra vez', onClick: reset });
+}
+
+// ---------- Dibujo ----------
+function mix(a, b, t) { const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16); return `rgb(${[16, 8, 0].map(sh => Math.round(lerp((pa >> sh) & 255, (pb >> sh) & 255, clamp(t, 0, 1))))})`; }
+const hash = i => { const x = Math.sin(i * 127.1) * 43758.5; return x - Math.floor(x); };
+function eye(x, y, r, lx = 0, ly = 0, lid = 0) {
+  G.circle(x, y, r, '#fff', '#1a1424', 2); G.circle(x + lx * r * 0.4, y + ly * r * 0.4, r * 0.5, '#1a1424');
+  if (lid) { ctx.save(); ctx.beginPath(); ctx.arc(x, y, r + 1, 0, TAU); ctx.clip(); ctx.fillStyle = '#e8b48a'; ctx.fillRect(x - r - 2, y - r - 2, r * 2 + 4, (r * 2 + 4) * lid); ctx.restore(); }
+}
+function wrap(str, x, y, maxW, size, o = {}) {
+  ctx.font = `${o.body ? 700 : 400} ${size}px ${o.body ? G.BODY : G.FONT}`;
+  const lines = []; let cur = '';
+  for (const w of str.split(' ')) { const t = cur ? cur + ' ' + w : w; if (ctx.measureText(t).width > maxW && cur) { lines.push(cur); cur = w; } else cur = t; }
+  lines.push(cur);
+  const y0 = o.middle ? y - (lines.length - 1) * size * 0.6 : y;
+  lines.forEach((l, i) => G.text(l, x, y0 + i * size * 1.2, { size, align: 'center', baseline: o.middle ? 'middle' : 'alphabetic', weight: o.body ? 700 : 400, ...o }));
+}
+function person(x, gy, age, o = {}) {
+  const s = age < 13 ? 0.42 + age * 0.037 : age < 19 ? 0.9 + (age - 13) * 0.017 : age > 70 ? 1 - (age - 70) * 0.006 : 1;
+  const hunch = age > 58 ? Math.min((age - 58) * 0.01, 0.25) : 0, w = o.still ? 0 : st.walk * (age > 70 ? 5 : 8);
+  const bob = o.still ? 0 : Math.abs(Math.sin(w)) * 5 * s;
+  ctx.save(); ctx.translate(x, gy - bob); ctx.rotate(o.rot || 0); ctx.scale(s, s);
+  ctx.lineCap = 'round'; ctx.strokeStyle = '#2a2040'; ctx.lineWidth = 11;
+  ctx.beginPath(); ctx.moveTo(-9, -46); ctx.lineTo(-9 + Math.sin(w) * 14, -2); ctx.moveTo(9, -46); ctx.lineTo(9 - Math.sin(w) * 14, -2); ctx.stroke();
+  ctx.rotate(hunch + (o.tilt || 0));
+  G.rrect(-30, -118, 60, 78, 28, o.shirt, '#00000055', 3);
+  ctx.strokeStyle = o.skin; ctx.lineWidth = 10;
+  ctx.beginPath(); ctx.moveTo(-26, -100); ctx.lineTo(-34 - Math.sin(w) * 10, -62); ctx.moveTo(26, -100); ctx.lineTo(34 + Math.sin(w) * 10, -62); ctx.stroke();
+  if (o.cane) { ctx.strokeStyle = '#6a3a1a'; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(38, -64); ctx.lineTo(48, 0 + hunch * 60); ctx.stroke(); }
+  const hy = -150;
+  G.circle(0, hy, 34, o.skin, '#00000055', 3);
+  const hc = age < 45 ? o.hair : age < 66 ? mix(o.hair, '#b0b0b0', (age - 45) / 21) : '#e8e8e8';
+  ctx.fillStyle = hc;
+  if (age < 55 || o.long) { ctx.beginPath(); ctx.arc(0, hy - 4, 35, Math.PI * 1.02, Math.PI * 1.98); ctx.fill(); }
+  else { G.circle(-30, hy - 6, 10, hc); G.circle(30, hy - 6, 10, hc); }
+  if (o.long) { G.rrect(-38, hy - 10, 14, 50, 7, hc); G.rrect(24, hy - 10, 14, 50, 7, hc); }
+  const mood = o.mood ?? 50, lid = o.dead ? 1 : age > 75 ? 0.35 : 0;
+  eye(-12, hy - 4, 8, 0.6, 0, lid); eye(12, hy - 4, 8, 0.6, 0, lid);
+  if (o.glasses) { ctx.strokeStyle = '#1a1424'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(-12, hy - 4, 11, 0, TAU); ctx.moveTo(23, hy - 4); ctx.arc(12, hy - 4, 11, 0, TAU); ctx.stroke(); }
+  if (o.stache) G.rrect(-12, hy + 9, 24, 6, 3, hc);
+  ctx.strokeStyle = '#1a1424'; ctx.lineWidth = 3; ctx.beginPath();
+  if (mood > 60) ctx.arc(0, hy + 10, 10, 0.2, Math.PI - 0.2); else if (mood < 30) ctx.arc(0, hy + 24, 10, Math.PI + 0.3, TAU - 0.3); else { ctx.moveTo(-8, hy + 18); ctx.lineTo(8, hy + 18); }
+  ctx.stroke();
+  ctx.restore();
+}
+function ramon(x, gy, extra = {}) {
+  const a = st.age;
+  person(x, gy, a, { shirt: STAGES[stageOf(a)].shirt, skin: '#e8b48a', hair: '#5a3418', mood: st.st.f, glasses: a >= 45, stache: a >= 25, cane: a >= 72, ...extra });
+}
+function world() {
+  const sg = STAGES[st.stage], sc = (st.age + st.yt) * YPX;
+  const gr = ctx.createLinearGradient(0, S.y, 0, GY); gr.addColorStop(0, sg.sky[0]); gr.addColorStop(1, sg.sky[1]);
+  ctx.fillStyle = gr; ctx.fillRect(S.x, S.y, S.w, S.h);
+  if (st.stage === 4 || st.stage === 1) G.circle(SR - 110, GY - 60, 70, '#ffcf6a');
+  else if (st.stage === 2) G.circle(SR - 90, S.y + 110, 30, '#f2e9d8');
+  else G.circle(SR - 90, S.y + 100, 40, '#fff2a0');
+  // capa lejana
+  for (let par of [0.25, 0.6]) {
+    const sp = par < 0.5 ? 130 : 190, i0 = Math.floor(sc * par / sp) - 1;
+    for (let i = i0; i < i0 + 6; i++) {
+      const x = S.x + i * sp - sc * par, h = hash(i + par * 100), far = par < 0.5;
+      ctx.globalAlpha = far ? 0.45 : 1;
+      if (st.stage === 0) { if (far) G.circle(x, S.y + 90 + h * 60, 30 + h * 20, '#fff'); else { G.rrect(x + 40, GY - 150 - h * 40, 16, 160, 6, '#8a5a2a'); G.circle(x + 48, GY - 170 - h * 40, 55, '#3d9b3d'); } }
+      else if (st.stage === 1) { const bh = far ? 180 + h * 120 : 120 + h * 80; G.rrect(x, GY - bh, sp - 20, bh, 6, far ? '#7a4a6a' : '#b86a7a'); if (!far) for (let k = 0; k < 3; k++) G.rrect(x + 16 + k * 50, GY - bh + 20, 26, 30, 3, '#ffe0a0'); }
+      else if (st.stage === 2) { const bh = far ? 260 + h * 140 : 150 + h * 120; G.rrect(x, GY - bh, sp - 30, bh, 4, far ? '#2a3a5a' : '#3a4a6a'); if (!far) for (let k = 0; k < 8; k++) if (hash(i * 9 + k) > 0.4) ctx.fillStyle = '#ffd86a', ctx.fillRect(x + 12 + (k % 3) * 40, GY - bh + 16 + Math.floor(k / 3) * 44, 22, 26); }
+      else if (st.stage === 3) { if (far) G.circle(x, GY - 20, 100 + h * 40, '#5a7a4a'); else { G.rrect(x + 20, GY - 110, 130, 110, 4, mix('#e0a080', '#a0c0e0', h)); ctx.beginPath(); ctx.moveTo(x + 10, GY - 110); ctx.lineTo(x + 85, GY - 170); ctx.lineTo(x + 160, GY - 110); ctx.fillStyle = '#8a3a3a'; ctx.fill(); G.rrect(x + 70, GY - 60, 30, 60, 3, '#5a3a2a'); } }
+      else { if (far) G.circle(x, GY - 10, 90 + h * 50, '#4a3a5a'); else { G.rrect(x + 30, GY - 60, 110, 12, 4, '#6a4a2a'); G.rrect(x + 36, GY - 48, 8, 48, 3, '#4a2a1a'); G.rrect(x + 126, GY - 48, 8, 48, 3, '#4a2a1a'); G.rrect(x + 30, GY - 100, 110, 10, 4, '#6a4a2a'); } }
+    }
+    ctx.globalAlpha = 1;
+  }
+  if (st.stage === 4) for (let i = 0; i < 6; i++) { const lx = S.x + ((i * 97 + G.t * 30) % S.w), ly = S.y + ((i * 71 + G.t * 60) % (GY - S.y)); G.rrect(lx, ly, 12, 7, 4, i % 2 ? '#e07a3a' : '#c0502a'); }
+  ctx.fillStyle = sg.ground; ctx.fillRect(S.x, GY, S.w, SB - GY);
+  ctx.fillStyle = '#00000022'; ctx.fillRect(S.x, GY, S.w, 8);
+  const now = st.age + st.yt;
+  for (let k = Math.floor(now) - 2; k <= Math.floor(now) + 3; k++) {
+    if (k < 0) continue;
+    const x = RX + (k - now) * YPX;
+    G.rrect(x - 3, GY + 6, 6, 26, 3, '#00000055');
+    G.text(String(k), x, GY + 62, { size: k === st.age ? 26 : 18, align: 'center', color: k === st.age ? C.gold : '#ffffffaa' });
+  }
+}
+function family() {
+  const a = st.age, dead = st.dead;
+  if (st.flags.perro && !dead) {
+    const x = RX + 110, y = GY - 18 + Math.abs(Math.sin(st.walk * 10)) * -6;
+    G.rrect(x - 28, y - 16, 56, 30, 14, '#c08a4a', '#00000055', 3); G.circle(x + 30, y - 20, 16, '#c08a4a', '#00000055', 3);
+    G.rrect(x + 22, y - 36, 10, 18, 5, '#8a5a2a'); eye(x + 34, y - 22, 5, 1, 0); G.rrect(x - 40, y - 20, 16, 6, 3, '#c08a4a');
+  }
+  if (st.flags.hija && a >= 32) person(RX + 70, GY, Math.min(a - 32, 40), { shirt: C.gold, skin: '#e8b48a', hair: '#7a4418', long: true, mood: 70, still: dead });
+  if (st.flags.pareja && a >= 17) person(RX - 75, GY, a, { shirt: st.partner === 'Lucía' ? C.teal : '#e07a5a', skin: '#d8a07a', hair: st.partner === 'Lucía' ? '#2a1a10' : '#b04a2a', long: true, mood: dead ? 20 : 65, glasses: a > 55, still: dead });
+}
+function drawBeat() {
+  const b = st.beat;
+  G.rrect(CX - 190, S.y + 76, 380, 44, 22, '#000000aa');
+  G.text(b.title, CX, S.y + 106, { size: 24, align: 'center', color: C.gold });
+  if (b.type === 'pelota') { const o = b.objs[0]; G.circle(o.x, o.y, 24, '#fff', '#1a1424', 3); ctx.strokeStyle = C.pink; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(o.x, o.y, 16, 0.5, 2.5); ctx.stroke(); }
+  for (const o of b.objs) {
+    if (b.type === 'pelota' || !o.live || b.t < o.d) continue;
+    if (b.type === 'monedas') { G.circle(o.x, o.y, 24, C.gold, '#a06a10', 4); G.text('€', o.x, o.y + 2, { size: 22, align: 'center', baseline: 'middle', color: '#a06a10', shadow: false }); }
+    else { ctx.save(); ctx.translate(o.x, o.y); ctx.scale(1.3, 1.3); ctx.beginPath(); ctx.moveTo(0, 16); ctx.bezierCurveTo(-26, -2, -14, -24, 0, -10); ctx.bezierCurveTo(14, -24, 26, -2, 0, 16); ctx.fillStyle = C.pink; ctx.fill(); ctx.restore(); }
+  }
+  if (b.type === 'equilibrio') {
+    G.rrect(CX - 150, S.y + 140, 300, 24, 12, '#00000088');
+    G.rrect(CX - 40, S.y + 140, 80, 24, 12, '#b6e36a55');
+    G.circle(CX + b.x * 150, S.y + 152, 16, Math.abs(b.x) > 0.7 ? C.pink : C.gold, '#1a1424', 3);
+    G.text('← TOCA IZQ / DER →', CX, S.y + 196, { size: 16, align: 'center', body: true, weight: 700 });
+  }
+}
+function cardRect(i, n) { return { x: S.x + 24, y: S.y + 236 + i * 108, w: S.w - 48, h: 94 }; }
+function drawChoice() {
+  const e = st.ev.e, n = e.o.length;
+  ctx.fillStyle = '#120d1acc'; ctx.fillRect(S.x, S.y, S.w, S.h);
+  G.text('A LOS ' + st.age + ' AÑOS', CX, S.y + 50, { size: 22, align: 'center', color: C.teal });
+  G.rrect(S.x + 24, S.y + 66, S.w - 48, 130, 16, C.ink);
+  wrap(pn(e.q), CX, S.y + 131, S.w - 90, 25, { color: C.bg, shadow: false, middle: true });
+  G.bar(S.x + 40, S.y + 208, S.w - 80, 10, 1 - st.ev.t / 10, C.gold);
+  for (let i = 0; i < n; i++) {
+    const r = cardRect(i, n), hov = G.inRect(P.x, P.y, r.x, r.y, r.w, r.h) || st.sel === i;
+    G.rrect(r.x, r.y + (hov ? -3 : 0), r.w, r.h, 16, hov ? '#3e2f58' : C.panel, hov ? C.gold : '#ffffff33', 3);
+    G.circle(r.x + 34, r.y + r.h / 2, 18, C.gold); G.text(String(i + 1), r.x + 34, r.y + r.h / 2 + 1, { size: 20, align: 'center', baseline: 'middle', color: C.bg, shadow: false });
+    wrap(pn(e.o[i].t), r.x + r.w / 2 + 24, r.y + r.h / 2, r.w - 110, 21, { body: true, middle: true });
+  }
+}
+function drawBanner() {
+  const b = st.banners[0];
+  if (!b || st.ev) return;
+  const a = Math.min(1, b.t * 5, (3 - b.t) * 3);
+  ctx.globalAlpha = clamp(a, 0, 1);
+  const y = S.y + (st.beat ? 220 : 90);
+  G.rrect(S.x + 20, y, S.w - 40, 120, 16, '#120d1ae0', b.col, 3);
+  if (b.head) G.text(b.head, CX, y + 30, { size: 17, align: 'center', color: b.col, body: true, weight: 700 });
+  wrap(b.text, CX, y + (b.head ? 72 : 60), S.w - 80, 22, { body: true, middle: true });
+  ctx.globalAlpha = 1;
+}
+function cabinet() {
+  ctx.fillStyle = C.bg; ctx.fillRect(0, 0, G.W, G.H);
+  G.rrect(8, 64, 524, 890, 28, '#3a2a5a', '#00000088', 5);
+  G.rrect(22, 74, 496, 54, 14, '#120d1a', C.pink, 3);
+  const glow = 0.7 + Math.sin(G.t * 3) * 0.3;
+  ctx.globalAlpha = glow; G.text('UNA VIDA EN 20 MIN', CX, 112, { size: 28, align: 'center', color: C.gold }); ctx.globalAlpha = 1;
+  G.rrect(S.x - 10, S.y - 8, S.w + 20, S.h + 16, 22, '#120d1a');
+  G.rrect(22, 718, 496, 226, 18, '#2a1f40');
+  for (let i = 0; i < 4; i++) {
+    const y = BARY[i], v = st ? st.st[KEYS[i]] / 100 : 0.5;
+    G.text(NAMES[i], 40, y + 15, { size: 17, color: st && st.flash[i] > 0 ? '#fff' : C.dim, body: true, weight: 700 });
+    G.bar(160, y, 310, 20, v, v < 0.2 ? C.pink : COLS[i]);
+    if (st && st.flash[i] > 0) G.rrect(158, y - 2, 314, 24, 12, null, '#ffffff' + Math.round(st.flash[i] * 200).toString(16).padStart(2, '0'), 2);
+  }
+  G.text('PUNTOS ' + (st ? Math.round(st.score) : 0), 470, 934, { size: 16, align: 'right', color: C.gold });
+  G.text('Récord ' + (G.best('vida20') || 0), 40, 934, { size: 15, color: C.dim, body: true, weight: 700 });
+}
+function draw() {
+  cabinet();
+  if (!st) return;
+  ctx.save(); ctx.beginPath(); ctx.roundRect(S.x, S.y, S.w, S.h, 16); ctx.clip();
+  world();
+  family();
+  if (st.dead) {
+    const d = st.deathT;
+    ramon(RX, GY - 10, { rot: -Math.PI / 2 * clamp(d * 1.5, 0, 1), still: true, dead: true });
+    ctx.globalAlpha = clamp(d - 0.6, 0, 0.8);
+    const gy = GY - 120 - (d - 0.6) * 60;
+    ctx.beginPath(); ctx.arc(RX, gy, 36, Math.PI, 0); ctx.lineTo(RX + 36, gy + 50); for (let k = 0; k < 4; k++) ctx.lineTo(RX + 36 - (k + 0.5) * 18, gy + 50 - (k % 2 ? 0 : 12)); ctx.lineTo(RX - 36, gy + 50); ctx.closePath(); ctx.fillStyle = '#f2e9d8'; ctx.fill();
+    eye(RX - 12, gy - 4, 7, 0, -1); eye(RX + 12, gy - 4, 7, 0, -1);
+    ctx.globalAlpha = 1;
+    if (d > 1.2) { ctx.fillStyle = `rgba(18,13,26,${clamp((d - 1.2) * 0.4, 0, 0.6)})`; ctx.fillRect(S.x, S.y, S.w, S.h); G.text('FIN', CX, S.y + 170, { size: 80, align: 'center', color: C.ink }); }
+  } else {
+    const tilt = st.beat && st.beat.type === 'equilibrio' ? st.beat.x * 0.5 : 0;
+    ramon(RX, GY, { tilt, still: !!st.ev });
+  }
+  if (!st.dead) {
+    G.rrect(S.x + 12, S.y + 12, 150, 52, 14, '#120d1aaa');
+    G.text('EDAD', S.x + 24, S.y + 34, { size: 13, color: C.dim, body: true, weight: 700 });
+    G.text(String(st.age), S.x + 24, S.y + 60, { size: 30, color: C.gold });
+    G.text('RAMÓN', S.x + 150, S.y + 34, { size: 13, align: 'right', color: C.dim, body: true, weight: 700 });
+    G.text(STAGES[st.stage].name, SR - 16, S.y + 40, { size: 17, align: 'right', color: '#fff' });
+    G.bar(S.x + 90, S.y + 50, 62, 6, st.yt, C.teal);
+  }
+  if (st.beat) drawBeat();
+  drawBanner();
+  if (st.ev) drawChoice();
+  ctx.fillStyle = '#00000018'; for (let y = S.y; y < SB; y += 4) ctx.fillRect(S.x, y, S.w, 2);
+  ctx.restore();
+}
+
+reset(); st.playing = false;
+G.screen({ sub: 'Prototipo · recreativa', title: 'Una Vida en 20 Minutos',
+  html: `<p>Eres Ramón. Tu vida entera cabe en una partida. Lo que eliges hoy vuelve dentro de 30 años.</p>
+  <ul><li><b>Toca una carta</b> para decidir (o teclas <b>1 2 3</b>).</li><li>Entre decisiones: <b>toca</b> pelotas, monedas y corazones (o <b>Espacio</b>).</li><li>Equilibrio: mantén pulsado <b>izquierda/derecha</b> (o flechas).</li><li>Cuida Salud, Dinero, Felicidad y Relaciones. Nadie sale vivo.</li></ul>`,
+  button: 'Insertar moneda', onClick: reset });
+G.run(update, draw);
+</script></body></html>

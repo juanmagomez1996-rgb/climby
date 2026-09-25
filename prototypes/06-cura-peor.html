@@ -1,0 +1,316 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Cura Peor</title></head><body>
+<script src="proto.js"></script>
+<script>
+// Cura Peor: un filtro de amor fallido se extiende por turnos; cada cura tiene un efecto secundario.
+const G = Proto.create({ onRestart() { G.hideScreen(); newGame(); } });
+const C = G.C, ctx = G.ctx, COLS = 8, ROWS = 11, CS = 60, OX = 30, OY = 124, MAXT = 15;
+const MAP = ['HHH.HHHH', 'HPH.HHHH', 'HHH.HHPH', '........', 'HHHH.HHH', 'HWWH.HHH', 'HWWH.HPH', '........', 'HHH.HHHH', 'HPH.HHHH', 'HHH.HHHH'];
+const BLOB = '#C98BFF', FIRE = '#FF6B3D';
+const CARDS = {
+  mantis: { name: 'Antídoto mantis', col: C.lime, w: 3, eff: 'Cura a los enamorados en 3x3.', side: 'Al turno siguiente mutan a Mantis.' },
+  wall: { name: 'Cortafuegos', col: C.gold, w: 3, eff: 'Bloquea el contagio en línea 3 turnos.', side: 'Al caer, arrasa lo de debajo.' },
+  evac: { name: 'Evacuar', col: C.blue, w: 3, eff: 'Salva una casa sana para siempre.', side: '50%: el pánico contagia a un vecino.' },
+  adn: { name: 'Cura de ADN', col: C.teal, w: 3, eff: 'Cura enamorados y mantis en cruz.', side: '40%: nace un Cronenblob (crece 2/turno).' },
+  fire: { name: 'Lanzallamas', col: FIRE, w: 2, eff: 'Arrasa todo en cruz, blobs incluidos.', side: 'Las casas sanas también arden.' },
+};
+const DECK = Object.keys(CARDS).flatMap(k => Array(CARDS[k].w).fill(k));
+const OUTBREAKS = [4, 8, 12];
+const D4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+
+let cells, hand, sel, rot, turn, phase, phaseT, pending, hover, lastType = 'mouse', pop, blobsMade, endKind, lastPct;
+G.canvas.addEventListener('pointerdown', e => { lastType = e.pointerType || 'mouse'; });
+
+const idx = (x, y) => y * COLS + x;
+const inB = (x, y) => x >= 0 && y >= 0 && x < COLS && y < ROWS;
+const cell = (x, y) => inB(x, y) ? cells[idx(x, y)] : null;
+const isHouse = c => c && c.t === 'H';
+function drawCard() { let k; do { k = G.pick(DECK); } while (hand && hand.filter(h => h === k).length >= 2); return k; }
+function count(s) { return cells.filter(c => c.t === 'H' && c.s === s).length; }
+function pct() { return Math.round((count('ok') + count('evac')) / pop * 100); }
+
+function newGame() {
+  cells = [];
+  for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
+    const ch = MAP[y][x];
+    cells.push({ x, y, t: ch === 'H' ? 'H' : ch === 'P' ? 'P' : ch === 'W' ? 'W' : 'R', s: 'ok', bar: 0, fl: 0, ph: Math.random() * 6 });
+  }
+  pop = cells.filter(isHouse).length;
+  hand = null; hand = []; for (let i = 0; i < 3; i++) hand.push(drawCard());
+  sel = -1; rot = 0; turn = 1; phase = 'pick'; pending = -1; hover = -1; blobsMade = 0;
+  const hs = cells.filter(isHouse);
+  const a = G.pick(hs.filter(c => c.y <= 2)), b = G.pick(hs.filter(c => c.y >= 8));
+  [a, b].forEach(c => { c.s = 'inf'; c.fl = 1; });
+  lastPct = pct();
+  G.particles.length = 0; G.floaters.length = 0;
+}
+
+function area(card, x, y) {
+  const out = [];
+  const add = (a, b) => { if (inB(a, b)) out.push(cells[idx(a, b)]); };
+  if (card === 'mantis') { for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) add(x + dx, y + dy); }
+  else if (card === 'wall') { for (let k = -2; k <= 2; k++) rot ? add(x, y + k) : add(x + k, y); }
+  else if (card === 'evac') add(x, y);
+  else { add(x, y); D4.forEach(([dx, dy]) => add(x + dx, y + dy)); }
+  return out;
+}
+function valid(card, c) { return card !== 'evac' || (isHouse(c) && c.s === 'ok'); }
+const cpx = c => OX + (c.x + 0.5) * CS, cpy = c => OY + (c.y + 0.5) * CS;
+
+function apply(c) {
+  const card = hand[sel], A = area(card, c.x, c.y), X = cpx(c), Y = cpy(c);
+  if (!valid(card, c)) { G.float('Solo en casas sanas', X, Y, C.pink, 18); G.beep(120, 0.15, 'square', 0.05); return; }
+  const H = A.filter(isHouse);
+  if (card === 'mantis') {
+    let n = 0; H.forEach(h => { if (h.s === 'inf') { h.s = 'trt'; h.fl = 1; n++; } });
+    G.float(n ? `¡${n} curados… por ahora!` : 'Nadie que curar', X, Y - 20, C.lime, 20);
+    G.burst(X, Y, C.lime, 24, 260); G.beep(660, 0.15, 'triangle', 0.05, 300);
+  } else if (card === 'wall') {
+    A.forEach(a => { a.bar = 3; a.fl = 1; });
+    G.float('¡Cortafuegos!', X, Y - 20, C.gold, 22); G.shake(5); G.beep(180, 0.2, 'square', 0.06, 200);
+  } else if (card === 'evac') {
+    c.s = 'evac'; c.fl = 1; G.float('¡Evacuados!', X, Y - 20, C.blue, 20); G.burst(X, Y, C.blue, 18, 220); G.beep(520, 0.12, 'triangle', 0.05, 400);
+    if (Math.random() < 0.5) {
+      const nb = D4.map(([dx, dy]) => cell(c.x + dx, c.y + dy)).filter(n => isHouse(n) && n.s === 'ok' && !n.bar);
+      if (nb.length) { const n = G.pick(nb); n.s = 'inf'; n.fl = 1; G.float('¡Pánico! 1 contagio', cpx(n), cpy(n) + 10, C.pink, 18); G.beep(300, 0.2, 'sawtooth', 0.04, -150); }
+    }
+  } else if (card === 'adn') {
+    const conv = H.filter(h => h.s === 'inf' || h.s === 'man' || h.s === 'trt');
+    conv.forEach(h => { h.s = 'ok'; h.fl = 1; });
+    G.float(conv.length ? `¡${conv.length} curados!` : 'Nadie que curar', X, Y - 20, C.teal, 20); G.burst(X, Y, C.teal, 20, 240);
+    G.beep(440, 0.12, 'sine', 0.05, 440);
+    if (conv.length && Math.random() < 0.4) {
+      const b = G.pick(conv); b.s = 'blob'; b.fl = 1; blobsMade++;
+      setTimeout(() => { G.float('¡CRONENBLOB!', cpx(b), cpy(b) + 30, BLOB, 28); G.shake(12, 0.4); G.burst(cpx(b), cpy(b), BLOB, 30, 320, 7); G.beep(80, 0.5, 'sawtooth', 0.08, 60); }, 250);
+    }
+  } else if (card === 'fire') {
+    let n = 0; H.forEach(h => { if (h.s !== 'evac' && h.s !== 'ruin') { h.s = 'ruin'; h.fl = 1; n++; } });
+    A.forEach(a => G.burst(cpx(a), cpy(a), G.pick([FIRE, C.gold]), 10, 240));
+    G.float(n ? `${n} casas arrasadas` : 'Solo humo', X, Y - 20, FIRE, 20); G.shake(10, 0.3); G.beep(100, 0.4, 'sawtooth', 0.07, -50);
+  }
+  hand[sel] = null; hand[sel] = drawCard(); sel = -1; pending = -1;
+  phase = 'spread'; phaseT = 0.75;
+}
+
+function spread() {
+  const changed = new Set(), mark = (c, s) => { if (!changed.has(c)) { c.s = s; c.fl = 1; changed.add(c); } };
+  let nInf = 0, nMan = 0, nBlob = 0, nRuin = 0;
+  cells.forEach(c => { if (c.t === 'H' && c.s === 'trt') { c.s = 'man'; c.fl = 1; nMan++; } });
+  cells.forEach(c => { if (c.bar > 0 && --c.bar === 0) { c.fl = 1; if (isHouse(c) && c.s !== 'evac' && c.s !== 'ruin') { c.s = 'ruin'; nRuin++; } } });
+  // Contagio: a casas vecinas y saltando una calle
+  const snap = cells.map(c => c.s);
+  cells.forEach(c => {
+    if (!isHouse(c) || snap[idx(c.x, c.y)] !== 'inf' || c.bar) return;
+    D4.forEach(([dx, dy]) => {
+      const n1 = cell(c.x + dx, c.y + dy); if (!n1 || n1.bar || n1.t === 'W') return;
+      if (isHouse(n1)) { if (n1.s === 'ok' && Math.random() < 0.42) { mark(n1, 'inf'); nInf++; } return; }
+      const n2 = cell(c.x + dx * 2, c.y + dy * 2);
+      if (isHouse(n2) && !n2.bar && n2.s === 'ok' && Math.random() < 0.2) { mark(n2, 'inf'); nInf++; }
+    });
+  });
+  // Mantis: muerden a un vecino sano de vez en cuando
+  cells.forEach(c => {
+    if (!isHouse(c) || snap[idx(c.x, c.y)] !== 'man' || c.bar) return;
+    D4.forEach(([dx, dy]) => { const n = cell(c.x + dx, c.y + dy); if (isHouse(n) && !n.bar && n.s === 'ok' && Math.random() < 0.1) { mark(n, 'man'); nMan++; } });
+  });
+  // Cronenblobs: cada masa crece 2 casillas
+  const seen = new Set();
+  cells.forEach(c => {
+    if (!isHouse(c) || snap[idx(c.x, c.y)] !== 'blob' || seen.has(c)) return;
+    const q = [c], front = new Set(); seen.add(c);
+    while (q.length) {
+      const k = q.pop();
+      D4.forEach(([dx, dy]) => {
+        const n = cell(k.x + dx, k.y + dy); if (!isHouse(n)) return;
+        if (snap[idx(n.x, n.y)] === 'blob') { if (!seen.has(n)) { seen.add(n); q.push(n); } }
+        else if (!n.bar && !changed.has(n) && ['ok', 'inf', 'man', 'trt'].includes(n.s)) front.add(n);
+      });
+    }
+    const f = [...front];
+    for (let i = 0; i < 2 && f.length; i++) { const n = f.splice(G.randi(0, f.length - 1), 1)[0]; mark(n, 'blob'); nBlob++; }
+  });
+  if (OUTBREAKS.includes(turn)) {
+    const ok = cells.filter(c => isHouse(c) && c.s === 'ok' && !c.bar && !changed.has(c));
+    if (ok.length) { const c = G.pick(ok); mark(c, 'inf'); G.float('¡Nuevo brote!', cpx(c), cpy(c), C.pink, 22); G.shake(6); }
+  }
+  let y = 150;
+  const msg = (t, col) => { G.float(t, 270, (y += 0) + 330, col, 22); y += 30; };
+  if (nInf) msg(`+${nInf} enamorados`, C.pink);
+  if (nMan) msg(`+${nMan} mantis`, C.lime);
+  if (nBlob) msg(`+${nBlob} blob`, BLOB);
+  if (nRuin) msg(`${nRuin} arrasadas`, C.dim);
+  if (nInf + nBlob) G.beep(260, 0.18, 'sawtooth', 0.04, -120); else G.beep(700, 0.1, 'triangle', 0.04);
+  turn++;
+  const p = pct(); lastPct = p;
+  if (p < 10) return finish('lose');
+  if (turn > MAXT) return finish('win');
+  phase = 'pick';
+}
+
+function finish(kind) { endKind = kind; phase = 'ending'; phaseT = 1.2; if (kind === 'win') G.burst(270, 480, C.gold, 50, 420, 7); else if (kind === 'lose') G.shake(14, 0.5); }
+function showEnd() {
+  phase = 'over';
+  const p = pct(), blobs = count('blob');
+  let sc = p * 100, rows = [`<li>Población sana: <b>${p}%</b> → ${p * 100}</li>`];
+  if (endKind === 'win') { sc *= 2; rows.push('<li>Victoria: <b>×2</b></li>'); }
+  if (endKind === 'lose') { sc *= 0.5; rows.push('<li>Derrota: <b>×0,5</b></li>'); }
+  if (endKind !== 'lose' && !blobs) { sc *= 1.25; rows.push('<li>Sin Cronenblobs vivos: <b>×1,25</b></li>'); }
+  if (endKind === 'quit') { sc += 500; rows.push('<li>Bonus de cinismo: <b>+500</b></li>'); }
+  sc = Math.round(sc);
+  const best = G.best('curapeor', sc);
+  const T = {
+    win: ['Has resistido 15 turnos', 'La ciudad sobrevive… más o menos', ''],
+    lose: ['Menos del 10% sano', 'Esta ciudad ya no tiene arreglo', '<p>Pista: cada cura tiene un precio. Míralo antes de tocar.</p>'],
+    quit: ['Abandonas esta dimensión', 'Total, hay infinitas ciudades', '<p>Te mudas a una ciudad idéntica donde nadie probó el filtro. Aquí nadie te echará de menos (tampoco quedan muchos).</p>'],
+  }[endKind];
+  G.screen({ sub: T[0], title: T[1], big: sc, html: `${T[2]}<ul>${rows.join('')}</ul><p>Turno ${Math.min(turn, MAXT)}/${MAXT} · Mejor: <b>${best}</b></p>`, button: 'Otra ciudad', onClick: newGame });
+}
+
+function cellAt(px, py) { const x = Math.floor((px - OX) / CS), y = Math.floor((py - OY) / CS); return inB(x, y) ? cells[idx(x, y)] : null; }
+const CY = 806, CH = 146, cardX = i => 16 + i * 172;
+const quitRect = [376, 68, 148, 42];
+
+function update(dt) {
+  cells.forEach(c => { c.fl = Math.max(0, c.fl - dt * 1.8); });
+  if (phase === 'spread') { phaseT -= dt; if (phaseT <= 0) spread(); return; }
+  if (phase === 'ending') { phaseT -= dt; if (phaseT <= 0) showEnd(); return; }
+  if (phase !== 'pick') return;
+  for (let i = 0; i < 3; i++) if (G.keyPressed(String(i + 1))) { sel = i; pending = -1; G.beep(500, 0.04); }
+  if (G.keyPressed('r') || G.keyPressed('R')) { rot ^= 1; G.beep(400, 0.04); }
+  if (G.keyPressed('Escape')) sel = -1;
+  const P = G.pointer;
+  if (P.pressed) {
+    const c = cellAt(P.sx, P.sy);
+    if (turn >= 10 && G.inRect(P.sx, P.sy, ...quitRect)) { G.beep(200, 0.3, 'triangle', 0.05, 600); return finish('quit'); }
+    for (let i = 0; i < 3; i++) if (G.inRect(P.sx, P.sy, cardX(i), CY, 164, CH)) {
+      if (sel === i && hand[i] === 'wall') rot ^= 1; else sel = sel === i ? -1 : i;
+      pending = -1; G.beep(500, 0.04);
+    }
+    if (c) {
+      if (sel < 0) { G.float('Elige antes una cura', 270, 790, C.gold, 18); }
+      else if (lastType === 'mouse' || pending === c) apply(c);
+      else { pending = c; G.beep(800, 0.03); }
+    }
+  }
+  hover = sel < 0 ? null : lastType === 'mouse' ? cellAt(P.x, P.y) : pending;
+}
+
+// ---------- Dibujo ----------
+function heart(x, y, s, col) {
+  ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(x, y + s * 0.9);
+  ctx.bezierCurveTo(x - s * 1.4, y - s * 0.1, x - s * 0.6, y - s * 1.1, x, y - s * 0.35);
+  ctx.bezierCurveTo(x + s * 0.6, y - s * 1.1, x + s * 1.4, y - s * 0.1, x, y + s * 0.9); ctx.fill();
+}
+function eyes(x, y, r, pup = C.bg, gap = 8) {
+  G.circle(x - gap, y, r, '#fff'); G.circle(x + gap, y, r, '#fff');
+  G.circle(x - gap, y + 1, r * 0.45, pup); G.circle(x + gap, y + 1, r * 0.45, pup);
+}
+function drawCell(c) {
+  const px = OX + c.x * CS, py = OY + c.y * CS, cx = px + CS / 2, cy = py + CS / 2, t = G.t + c.ph;
+  if (c.t === 'R') { G.rrect(px + 1, py + 1, CS - 2, CS - 2, 6, '#201929'); }
+  else if (c.t === 'P') { G.rrect(px + 3, py + 3, CS - 6, CS - 6, 12, '#27453a'); G.circle(cx - 10, cy - 4, 10, '#3f7a52'); G.circle(cx + 10, cy + 6, 12, '#4c8f5f'); }
+  else if (c.t === 'W') { G.rrect(px + 1, py + 1, CS - 2, CS - 2, 8, '#28457d'); ctx.strokeStyle = '#6FA8FF55'; ctx.lineWidth = 2; for (let k = 0; k < 2; k++) { ctx.beginPath(); for (let i = 0; i <= 40; i += 4) ctx.lineTo(px + 10 + i, py + 20 + k * 18 + Math.sin(t * 2 + i / 6) * 3); ctx.stroke(); } }
+  else {
+    const s = c.s, pop = 1 + c.fl * 0.25;
+    ctx.save(); ctx.translate(cx, cy); ctx.scale(pop, pop); ctx.translate(-cx, -cy);
+    if (s === 'ruin') {
+      G.rrect(px + 4, py + 4, CS - 8, CS - 8, 10, '#2b2530');
+      G.rrect(cx - 16, cy + 4, 14, 10, 3, '#5a5060'); G.rrect(cx - 2, cy + 8, 18, 8, 3, '#4a4250'); G.rrect(cx - 6, cy - 2, 10, 9, 3, '#6a6070');
+    } else if (s === 'blob') {
+      ctx.fillStyle = BLOB; ctx.beginPath();
+      for (let i = 0; i <= 16; i++) { const a = i / 16 * Math.PI * 2, r = 24 + Math.sin(a * 3 + t * 3) * 4 + Math.sin(a * 5 - t * 2) * 2; ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r); }
+      ctx.fill(); G.circle(cx + 8, cy + 10, 6, C.gold);
+      G.circle(cx - 9, cy - 6, 6, '#fff'); G.circle(cx - 9, cy - 5, 3, C.bg); G.circle(cx + 7, cy - 9, 4, '#fff'); G.circle(cx + 7, cy - 8, 2, C.bg); G.circle(cx + 1, cy + 3, 3, '#fff');
+    } else {
+      const col = { ok: '#3d8f82', inf: '#D8456A', trt: '#5aa88a', man: '#86B84A', evac: '#4A7BD0' }[s];
+      const wob = s === 'inf' ? Math.sin(t * 5) * 2 : 0;
+      G.rrect(px + 8, py + 22 + wob, CS - 16, CS - 28, 8, col);
+      ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(px + 4, py + 26 + wob); ctx.lineTo(cx, py + 6 + wob); ctx.lineTo(px + CS - 4, py + 26 + wob); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#ffffff22'; ctx.beginPath(); ctx.moveTo(px + 10, py + 25 + wob); ctx.lineTo(cx, py + 11 + wob); ctx.lineTo(cx, py + 16 + wob); ctx.closePath(); ctx.fill();
+      const ey = cy + 6 + wob;
+      if (s === 'inf') { heart(cx - 8, ey, 6, '#FFE0EA'); heart(cx + 8, ey, 6, '#FFE0EA'); heart(cx + 16, py + 10 - ((t * 20) % 14), 4, C.pink); }
+      else if (s === 'man') {
+        ctx.strokeStyle = C.lime; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cx - 5, py + 10); ctx.lineTo(cx - 12, py + 1); ctx.moveTo(cx + 5, py + 10); ctx.lineTo(cx + 12, py + 1); ctx.stroke();
+        ctx.fillStyle = '#1a1424'; ctx.beginPath(); ctx.ellipse(cx - 8, ey, 6, 4, 0.5, 0, 7); ctx.ellipse(cx + 8, ey, 6, 4, -0.5, 0, 7); ctx.fill();
+      } else if (s === 'evac') { G.rrect(cx - 14, ey - 7, 28, 16, 5, '#ffffff33'); G.text('✓', cx, ey + 6, { size: 16, body: true, weight: 700, align: 'center', color: '#fff', shadow: false }); }
+      else { eyes(cx, ey, 5); ctx.strokeStyle = C.bg; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(cx, ey + 6, 4, 0.3, Math.PI - 0.3); ctx.stroke(); }
+      if (s === 'trt') { G.circle(cx + 17, py + 12, 8, C.gold); G.text('!', cx + 17, py + 18, { size: 13, body: true, weight: 700, align: 'center', color: C.bg, shadow: false }); }
+    }
+    ctx.restore();
+  }
+  if (c.bar) {
+    ctx.save(); ctx.beginPath(); ctx.roundRect(px + 2, py + 2, CS - 4, CS - 4, 8); ctx.clip();
+    ctx.strokeStyle = C.gold + 'AA'; ctx.lineWidth = 5; for (let k = -CS; k < CS; k += 14) { ctx.beginPath(); ctx.moveTo(px + k, py + CS); ctx.lineTo(px + k + CS, py); ctx.stroke(); }
+    ctx.restore(); G.rrect(px + 2, py + 2, CS - 4, CS - 4, 8, null, C.gold, 2);
+    G.circle(px + CS - 12, py + 12, 10, C.bg); G.text(String(c.bar), px + CS - 12, py + 17, { size: 14, body: true, weight: 700, align: 'center', color: C.gold, shadow: false });
+  }
+  if (c.fl > 0) { ctx.globalAlpha = c.fl * 0.5; G.rrect(px + 2, py + 2, CS - 4, CS - 4, 8, '#fff'); ctx.globalAlpha = 1; }
+}
+function wrap(str, x, y, maxW, lh, o) {
+  ctx.font = `${o.weight || 400} ${o.size}px ${G.BODY}`;
+  let line = '';
+  for (const w of str.split(' ')) {
+    const t = line ? line + ' ' + w : w;
+    if (ctx.measureText(t).width > maxW && line) { G.text(line, x, y, { ...o, body: true, shadow: false }); line = w; y += lh; } else line = t;
+  }
+  if (line) G.text(line, x, y, { ...o, body: true, shadow: false });
+  return y + lh;
+}
+function miniArea(card, x, y) {
+  const s = 7;
+  for (let j = -2; j <= 2; j++) for (let i = -2; i <= 2; i++) {
+    let on = card === 'mantis' ? Math.abs(i) <= 1 && Math.abs(j) <= 1 : card === 'wall' ? (rot ? i === 0 : j === 0) : card === 'evac' ? !i && !j : Math.abs(i) + Math.abs(j) <= 1;
+    G.rrect(x + (i + 2) * (s + 1), y + (j + 2) * (s + 1), s, s, 2, on ? CARDS[card].col : '#ffffff18');
+  }
+}
+
+function draw() {
+  ctx.fillStyle = C.bg; ctx.fillRect(0, 0, G.W, G.H);
+  if (!cells) return;
+  const p = pct();
+  G.text(`TURNO ${Math.min(turn, MAXT)}/${MAXT}`, 16, 96, { size: 22, color: C.gold });
+  G.text(`Sanos ${p}%`, 196, 88, { size: 15, body: true, weight: 700, color: p < 30 ? C.pink : C.teal });
+  G.bar(196, 96, 164, 12, p / 100, p < 30 ? C.pink : C.teal);
+  [10, 30].forEach(m => G.rrect(196 + 164 * m / 100 - 1, 92, 2, 20, 1, m === 10 ? C.pink : C.ink));
+  if (turn >= 10 && phase === 'pick') {
+    const [x, y, w, h] = quitRect; G.rrect(x, y, w, h, 10, '#3a2d52', C.pink, 2);
+    G.text('Abandonar', x + w / 2, y + 17, { size: 14, body: true, weight: 700, align: 'center', color: C.pink, shadow: false });
+    G.text('esta dimensión', x + w / 2, y + 33, { size: 12, body: true, align: 'center', color: C.dim, shadow: false });
+  } else G.text('Aguanta 15 turnos', 524, 88, { size: 13, body: true, align: 'right', color: C.dim, shadow: false }), G.text('con ≥30% sanos', 524, 106, { size: 13, body: true, align: 'right', color: C.dim, shadow: false });
+  cells.forEach(drawCell);
+  // Vista previa del área
+  if (hover && sel >= 0 && phase === 'pick') {
+    const card = hand[sel], A = area(card, hover.x, hover.y), ok = valid(card, hover), col = ok ? CARDS[card].col : C.pink;
+    ctx.globalAlpha = 0.28 + Math.sin(G.t * 6) * 0.08; A.forEach(a => G.rrect(OX + a.x * CS + 2, OY + a.y * CS + 2, CS - 4, CS - 4, 8, col)); ctx.globalAlpha = 1;
+    A.forEach(a => G.rrect(OX + a.x * CS + 2, OY + a.y * CS + 2, CS - 4, CS - 4, 8, null, col, 3));
+    if (!ok) G.text('✕', cpx(hover), cpy(hover) + 10, { size: 30, body: true, weight: 700, align: 'center', color: C.pink });
+  }
+  // Pista
+  const hint = phase === 'spread' ? 'El contagio se extiende…' : sel < 0 ? 'Elige una cura (toca una carta o 1-2-3)'
+    : lastType === 'mouse' ? `Clic en el mapa para aplicar${hand[sel] === 'wall' ? ' · R: girar' : ''}`
+      : pending ? 'Toca otra vez la misma casilla para aplicar' : `Toca una casilla para ver el área${hand[sel] === 'wall' ? ' · carta otra vez: girar' : ''}`;
+  G.text(hint, 270, 800, { size: 13, body: true, weight: 700, align: 'center', color: phase === 'spread' ? C.pink : C.dim, shadow: false });
+  hand.forEach((k, i) => {
+    const x = cardX(i), c = CARDS[k], on = i === sel, y = CY - (on ? 6 : 0);
+    G.rrect(x, y, 164, CH, 12, on ? '#3d2f57' : C.panel, on ? c.col : '#ffffff18', on ? 3 : 1.5);
+    G.rrect(x, y, 164, 6, 3, c.col);
+    miniArea(k, x + 122, y + 14);
+    G.text(String(i + 1), x + 10, y + 30, { size: 14, color: C.dim, shadow: false });
+    wrap(c.name, x + 26, y + 30, 92, 17, { size: 15, weight: 700, color: c.col });
+    let yy = wrap(c.eff, x + 10, y + 70, 146, 15, { size: 12.5, color: C.ink });
+    wrap('⚠ ' + c.side, x + 10, yy + 2, 146, 15, { size: 12.5, color: '#FF9AB0' });
+  });
+}
+
+newGame();
+G.screen({
+  sub: 'Prototipo · Estrategia por turnos', title: 'Cura Peor',
+  html: `<p>Un filtro de amor ha salido rana y el enamoramiento salta de casa en casa. Cada cura arregla algo… y estropea otra cosa.</p>
+  <ul><li>Toca una carta de cura (o 1-2-3). Su área se ve en el mapa.</li>
+  <li>Toca una casilla para previsualizar y otra vez para aplicar (con ratón, clic directo).</li>
+  <li>Tras tu jugada el contagio avanza. Aguanta 15 turnos con ≥30% sanos.</li>
+  <li>Desde el turno 10 puedes abandonar esta dimensión.</li></ul>
+  <p style="font-size:13px">Sano · <b style="color:#FF5C7A">Enamorado</b> · <b style="color:#B6E36A">Mantis</b> · <b style="color:#C98BFF">Cronenblob</b> · <b style="color:#6FA8FF">Evacuado</b> · <b style="color:#FFB23E">Cortafuegos</b></p>`,
+  button: 'Jugar', onClick: newGame,
+});
+G.run(update, draw);
+</script></body></html>

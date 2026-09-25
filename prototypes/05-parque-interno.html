@@ -1,0 +1,437 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Parque Interno</title></head><body>
+<script src="proto.js"></script>
+<script>
+// Parque Interno — mini tycoon dentro del cuerpo de Don Anselmo.
+const G = Proto.create({ onRestart() { newGame(); } });
+const C = G.C, ctx = G.ctx, W = G.W;
+const DAY = 20, DAYS = 10;
+
+const ZD = [
+  { id: 'cerebro', name: 'Cerebro', x: 270, y: 196, r: 42, col: '#FF9EC4', spec: 'cine' },
+  { id: 'pulmones', name: 'Pulmones', x: 180, y: 392, r: 50, col: '#FF8FA3', spec: 'tobogan' },
+  { id: 'corazon', name: 'Corazón', x: 358, y: 404, r: 42, col: '#E8364F', spec: 'montana' },
+  { id: 'estomago', name: 'Estómago', x: 190, y: 530, r: 48, col: '#F2A65A', spec: 'noria' },
+  { id: 'higado', name: 'Hígado', x: 360, y: 528, r: 44, col: '#A0523E', spec: 'bar' },
+  { id: 'intestinos', name: 'Intestinos', x: 270, y: 648, r: 54, col: '#E89A8A', spec: 'tren' },
+];
+const ENT = { id: 'ent', x: 270, y: 286 };
+const NODE = { ent: ENT }; ZD.forEach(z => NODE[z.id] = z);
+const EDGES = [['ent', 'cerebro'], ['ent', 'pulmones'], ['ent', 'corazon'], ['pulmones', 'corazon'], ['pulmones', 'estomago'],
+  ['corazon', 'higado'], ['corazon', 'estomago'], ['estomago', 'higado'], ['estomago', 'intestinos'], ['higado', 'intestinos']]
+  .map(([a, b], i) => {
+    const A = NODE[a], B = NODE[b], mx = (A.x + B.x) / 2, my = (A.y + B.y) / 2, len = G.dist(A.x, A.y, B.x, B.y);
+    const nx = -(B.y - A.y) / len, ny = (B.x - A.x) / len, k = (i % 2 ? 1 : -1) * Math.min(26, len * 0.15);
+    return { a, b, cx: mx + nx * k, cy: my + ny * k, len: len * 1.08 };
+  });
+const NB = {}; for (const e of EDGES) { (NB[e.a] = NB[e.a] || []).push(e.b); (NB[e.b] = NB[e.b] || []).push(e.a); }
+const edgeOf = (u, v) => EDGES.find(e => (e.a === u && e.b === v) || (e.a === v && e.b === u));
+function pointOn(u, v, t) {
+  const e = edgeOf(u, v); if (e.a !== u) t = 1 - t;
+  const A = NODE[e.a], B = NODE[e.b], m = 1 - t;
+  return { x: m * m * A.x + 2 * m * t * e.cx + t * t * B.x, y: m * m * A.y + 2 * m * t * e.cy + t * t * B.y };
+}
+const RIDES = {
+  cine: { name: 'Cine Neuronal', short: 'Cine', cost: 260, price: 22, fun: 26, stress: 1.4 },
+  tobogan: { name: 'Tobogán Bronquial', short: 'Tobogán', cost: 200, price: 16, fun: 22, stress: 1.2 },
+  montana: { name: 'Montaña Rusa Aórtica', short: 'Montaña', cost: 320, price: 28, fun: 32, stress: 1.8 },
+  noria: { name: 'Noria Estomacal', short: 'Noria', cost: 230, price: 18, fun: 22, stress: 1.3 },
+  bar: { name: 'Bar de Bilis', short: 'Bar', cost: 150, price: 12, fun: 14, stress: 1.0 },
+  tren: { name: 'Tren Intestinal', short: 'Tren', cost: 190, price: 15, fun: 20, stress: 1.1 },
+  chuches: { name: 'Puesto de Chuches', short: 'Chuches', cost: 90, price: 8, fun: 9, stress: 0.5 },
+  enfermeria: { name: 'Enfermería', short: 'Enfermería', cost: 140, price: 0, fun: 4, stress: -1.2 },
+};
+const EVENTS = {
+  gripe: { name: '¡GRIPE!', tip: 'Aplasta los virus', dur: 18 },
+  indig: { name: '¡INDIGESTIÓN!', tip: 'El estómago se inunda', dur: 16 },
+  fiebre: { name: '¡FIEBRE!', tip: 'El calor avería atracciones', dur: 22 },
+};
+const FEED = 60, ANTI = 50, CLOTH = 40, REPAIR = 40, UPKEEP = 6;
+const PILL = [['#FF5C7A', '#F2E9D8'], ['#6FA8FF', '#FFB23E'], ['#53D8C3', '#F2E9D8'], ['#B6E36A', '#FF5C7A'], ['#FFB23E', '#6FA8FF']];
+
+let S;
+function newGame() {
+  S = { phase: 'menu', time: 0, day: 1, money: 600, happySum: 0, served: 0, sad: 0, rep: 0.6, temp: 36.8, hunger: 20,
+    z: {}, vis: [], virus: [], sel: 'corazon', spawnT: 1, ev: null, evT: 0, nextEv: 34, lastEv: null, breakT: 3, evCount: 0 };
+  ZD.forEach(z => S.z[z.id] = { health: 100, rides: [], closed: false, flood: 0 });
+  intro();
+}
+function intro() {
+  const b = G.best('parque-interno');
+  G.screen({ sub: 'Prototipo 05', title: 'Parque Interno',
+    html: `<p>Has abierto un parque de atracciones dentro de Don Anselmo, un señor muy enfermo. Construye, cobra entradas y que no se te muera el anfitrión. Aguanta ${DAYS} días.</p>
+    <ul><li>Toca un órgano y elige qué construir abajo.</li><li>Demasiadas atracciones en un órgano lo enferman. La Enfermería lo cura.</li>
+    <li>Aliméntale, bájale la fiebre y aplasta los virus tocándolos.</li><li>Teclado: ←/→ órgano, 1-3 construir, C comer, E remedio.</li></ul>
+    ${b ? `<p>Récord: <b>${b}</b></p>` : ''}`,
+    button: 'Abrir el parque', onClick: () => { S.phase = 'play'; } });
+}
+
+const nRides = () => ZD.reduce((n, z) => n + S.z[z.id].rides.length, 0);
+const hostHealth = () => ZD.reduce((s, z) => s + S.z[z.id].health, 0) / ZD.length;
+const zoneOpen = id => { const z = S.z[id]; return !z.closed && !z.flood; };
+function build(zid, type) {
+  const z = S.z[zid], R = RIDES[type], Z = NODE[zid];
+  if (z.rides.length >= 3 || S.money < R.cost || z.closed) { G.beep(150, 0.12, 'square', 0.04); return; }
+  S.money -= R.cost; z.rides.push({ type, broken: false });
+  G.burst(Z.x, Z.y, C.gold, 22, 240, 6); G.shake(4, 0.15);
+  G.float('-' + R.cost + '€', Z.x, Z.y - Z.r - 10, C.gold, 22);
+  G.beep(520, 0.08, 'triangle', 0.05, 300); setTimeout(() => G.beep(780, 0.1, 'triangle', 0.05), 90);
+}
+function repair(zid, i) {
+  const r = S.z[zid].rides[i]; if (!r || !r.broken || S.money < REPAIR) return;
+  S.money -= REPAIR; r.broken = false;
+  const p = slotPos(NODE[zid], i); G.burst(p.x, p.y, C.teal, 12, 160, 4); G.beep(900, 0.08, 'sine', 0.05);
+}
+function feed() {
+  if (S.money < FEED || S.phase !== 'play') return;
+  S.money -= FEED; S.hunger = 0;
+  G.burst(ENT.x, ENT.y, C.lime, 20, 200, 5); G.float('¡Ñam!', ENT.x, ENT.y - 20, C.lime, 26);
+  G.beep(300, 0.1, 'sine', 0.06, 200); setTimeout(() => G.beep(260, 0.12, 'sine', 0.06, -80), 110);
+}
+function remedy() {
+  if (S.phase !== 'play' || !S.ev) return;
+  if (S.ev === 'indig' && S.money >= ANTI) {
+    S.money -= ANTI; S.evT = 0; S.z.estomago.flood = 0;
+    G.burst(NODE.estomago.x, NODE.estomago.y, '#fff', 20, 220, 5); G.float('Antiácido', NODE.estomago.x, NODE.estomago.y - 60, C.teal, 22);
+    G.beep(700, 0.2, 'sine', 0.05, -300);
+  } else if (S.ev === 'fiebre' && S.money >= CLOTH) {
+    S.money -= CLOTH; S.temp = Math.max(37, S.temp - 1.6);
+    G.burst(270, 170, C.blue, 20, 200, 5); G.float('-1,6°', 270, 150, C.blue, 24); G.beep(600, 0.15, 'sine', 0.05, -200);
+  }
+}
+function startEvent() {
+  const opts = Object.keys(EVENTS).filter(k => k !== S.lastEv);
+  S.ev = G.pick(opts); S.lastEv = S.ev; S.evT = EVENTS[S.ev].dur; S.evCount++;
+  if (S.ev === 'indig') S.z.estomago.flood = 1;
+  G.shake(10, 0.4); G.beep(220, 0.3, 'sawtooth', 0.06, -100); setTimeout(() => G.beep(180, 0.3, 'sawtooth', 0.06, -80), 250);
+}
+function endEvent() { S.z.estomago.flood = 0; S.ev = null; S.nextEv = G.rand(13, 22); }
+
+function spawnVisitor() {
+  const cols = G.pick(PILL);
+  S.vis.push({ from: 'ent', to: G.pick(NB.ent), t: 0, state: 'walk', happy: 70, money: G.rand(50, 130), rides: 0, maxRides: G.randi(3, 6),
+    c1: cols[0], c2: cols[1], ph: G.rand(0, 9), x: ENT.x, y: ENT.y, sick: false });
+}
+function chooseNext(v, at) {
+  if (v.state === 'leave') { return nextHop(at, 'ent'); }
+  const opts = NB[at].filter(n => n !== 'ent' && n !== v.prev);
+  const cand = opts.length ? opts : NB[at].filter(n => n !== 'ent');
+  const w = cand.map(n => { const z = S.z[n]; const work = z.rides.filter(r => !r.broken).length; return zoneOpen(n) ? 0.4 + work * 1.5 : 0.1; });
+  let r = Math.random() * w.reduce((a, b) => a + b, 0);
+  for (let i = 0; i < cand.length; i++) { r -= w[i]; if (r <= 0) return cand[i]; }
+  return cand[0];
+}
+function nextHop(from, goal) {
+  const prev = { [from]: null }, q = [from];
+  while (q.length) { const u = q.shift(); if (u === goal) break; for (const n of NB[u]) if (!(n in prev)) { prev[n] = u; q.push(n); } }
+  let c = goal; while (prev[c] !== from && prev[c] !== null) c = prev[c];
+  return c;
+}
+function arrive(v, at) {
+  v.prev = v.from; v.from = at; v.t = 0;
+  if (at === 'ent' && v.state === 'leave') { v.gone = true; S.served++; S.happySum += v.happy; S.rep = G.lerp(S.rep, v.happy / 100, 0.08); if (v.happy < 35) { S.sad++; G.float(':(', ENT.x, ENT.y - 10, C.pink, 20); } return; }
+  if (at !== 'ent' && v.state === 'walk') {
+    const z = S.z[at], ok = z.rides.map((r, i) => i).filter(i => !z.rides[i].broken);
+    if (zoneOpen(at) && ok.length) {
+      const i = G.pick(ok), R = RIDES[z.rides[i].type];
+      if (v.money >= R.price) {
+        v.money -= R.price; S.money += R.price; v.state = 'ride'; v.rideT = 2.4; v.slot = i; v.rides++;
+        v.happy = Math.min(100, v.happy + R.fun * (z.health < 30 ? 0.4 : 1));
+        if (R.price) { const Z = NODE[at]; G.float('+' + R.price + '€', Z.x + G.rand(-20, 20), Z.y - Z.r, C.gold, 16); }
+        if (Math.random() < 0.3) G.beep(900 + Math.random() * 300, 0.04, 'triangle', 0.02);
+        return;
+      }
+      v.happy -= 12;
+    } else v.happy -= 8;
+    if (v.happy < 20 || v.rides >= v.maxRides || v.money < 8) v.state = 'leave';
+  }
+  v.to = chooseNext(v, at);
+}
+
+function slotPos(Z, i) { const a = [-2.5, -0.64, 1.57][i]; return { x: Z.x + Math.cos(a) * (Z.r + 4), y: Z.y + Math.sin(a) * (Z.r + 4) }; }
+
+function update(dt) {
+  if (S.phase !== 'play') return;
+  S.time += dt;
+  const d = Math.floor(S.time / DAY) + 1;
+  if (d > S.day) {
+    S.day = d; const up = nRides() * UPKEEP; S.money -= up;
+    G.float('Día ' + Math.min(d, DAYS) + (up ? '  −' + up + '€ mantenimiento' : ''), 270, 330, C.teal, 24); G.beep(660, 0.15, 'sine', 0.05, 220);
+  }
+  if (S.time >= DAY * DAYS) return finish(true);
+  // anfitrión
+  S.hunger = Math.min(100, S.hunger + 0.42 * dt);
+  if (S.ev === 'fiebre') S.temp = Math.min(43, S.temp + 0.16 * dt); else S.temp = Math.max(36.8, S.temp - 0.08 * dt);
+  for (const Zd of ZD) {
+    const z = S.z[Zd.id];
+    const load = z.closed ? Math.min(0, z.rides.reduce((s, r) => s + (r.type === 'enfermeria' ? RIDES.enfermeria.stress : 0), 0)) : z.rides.reduce((s, r) => s + RIDES[r.type].stress, 0);
+    let drift = 0.25 - load * 0.2 + (z.closed ? 0.3 : 0);
+    if (S.hunger > 75) drift -= S.hunger >= 100 ? 0.8 : 0.35;
+    if (S.temp > 41) drift -= 0.7;
+    if (z.flood) drift -= 0.6;
+    z.health = G.clamp(z.health + drift * dt, 0, 100);
+    if (!z.closed && z.health <= 0) { z.closed = true; G.shake(14, 0.5); G.burst(Zd.x, Zd.y, '#777', 30, 260, 7); G.float(Zd.name + ' CERRADO', Zd.x, Zd.y, C.pink, 24); G.beep(110, 0.5, 'sawtooth', 0.07, -60); }
+    if (z.closed && z.health >= 50) { z.closed = false; G.float('Reabre ' + Zd.name, Zd.x, Zd.y, C.lime, 20); }
+  }
+  if (hostHealth() < 18 || S.temp >= 42.5) return finish(false);
+  // eventos
+  if (S.ev) {
+    S.evT -= dt; if (S.evT <= 0) endEvent();
+    else if (S.ev === 'gripe') { S.virT = (S.virT || 0) - dt; if (S.virT <= 0) { S.virT = 1.0; spawnVirus(); } }
+    else if (S.ev === 'fiebre' && S.temp > 39) {
+      S.breakT -= dt;
+      if (S.breakT <= 0) {
+        S.breakT = 3.5; const all = []; ZD.forEach(Z => S.z[Z.id].rides.forEach((r, i) => !r.broken && r.type !== 'enfermeria' && all.push([Z, r, i])));
+        if (all.length) { const [Z, r, i] = G.pick(all); r.broken = true; const p = slotPos(Z, i); G.burst(p.x, p.y, C.gold, 16, 200, 4); G.float('¡Avería!', p.x, p.y - 16, C.gold, 18); G.beep(1400, 0.1, 'square', 0.04, -1000); }
+      }
+    }
+  } else { S.nextEv -= dt; if (S.nextEv <= 0) startEvent(); }
+  // visitantes
+  const n = nRides();
+  S.spawnT -= dt;
+  if (S.spawnT <= 0) {
+    S.spawnT = n ? G.clamp(4.2 / (0.6 + n * 0.35) / (0.5 + S.rep), 0.5, 6) : 6;
+    if (S.vis.length < 45) spawnVisitor();
+  }
+  for (const v of S.vis) {
+    if (v.state === 'ride') {
+      v.rideT -= dt; const Z = NODE[v.from], p = slotPos(Z, v.slot), a = G.t * 5 + v.ph;
+      v.x = p.x + Math.cos(a) * 12; v.y = p.y + Math.sin(a) * 8;
+      if (S.z[v.from].flood || S.z[v.from].closed) v.rideT = 0;
+      if (v.rideT <= 0) { v.state = v.rides >= v.maxRides || v.money < 8 ? 'leave' : 'walk'; v.to = chooseNext(v, v.from); v.t = 0; }
+      continue;
+    }
+    if (v.from === v.to) { v.to = chooseNext(v, v.from); }
+    const e = edgeOf(v.from, v.to);
+    v.t += dt * (v.state === 'leave' ? 80 : 60) / e.len;
+    const p = pointOn(v.from, v.to, Math.min(1, v.t)); v.x = p.x; v.y = p.y;
+    v.happy -= dt * (0.6 + (S.temp > 39 ? 0.8 : 0) + (S.z[v.to] && S.z[v.to].flood ? 6 : 0));
+    if (v.happy < 20 && v.state !== 'leave') v.state = 'leave';
+    if (v.t >= 1) arrive(v, v.to);
+  }
+  S.vis = S.vis.filter(v => !v.gone);
+  // virus
+  for (const x of S.virus) {
+    x.life -= dt;
+    let tg = null, bd = 1e9;
+    for (const v of S.vis) { if (v.state === 'ride' || v.sick) continue; const dd = G.dist(v.x, v.y, x.x, x.y); if (dd < bd) { bd = dd; tg = v; } }
+    const tx = tg ? tg.x : x.wx, ty = tg ? tg.y : x.wy, a = Math.atan2(ty - x.y, tx - x.x);
+    x.x += Math.cos(a) * 46 * dt; x.y += Math.sin(a) * 46 * dt;
+    if (tg && bd < 14) { tg.sick = true; tg.happy -= 35; tg.state = 'leave'; G.burst(tg.x, tg.y, C.lime, 8, 120, 3); G.beep(200, 0.08, 'square', 0.03, -80); }
+    for (const Z of ZD) if (G.dist(x.x, x.y, Z.x, Z.y) < Z.r) S.z[Z.id].health -= 1.2 * dt;
+  }
+  S.virus = S.virus.filter(x => x.life > 0);
+  // entrada
+  const p = G.pointer;
+  if (p.pressed && p.sy > 140 && p.sy < 722) {
+    const vi = S.virus.find(x => G.dist(p.sx, p.sy, x.x, x.y) < 30);
+    if (vi) {
+      vi.life = 0; S.money += 5; G.burst(vi.x, vi.y, C.lime, 18, 260, 5); G.float('+5€ ¡Chof!', vi.x, vi.y - 16, C.lime, 18);
+      G.beep(160, 0.12, 'square', 0.06, -100); G.shake(3, 0.1);
+    } else {
+      const z = ZD.find(Z => G.dist(p.sx, p.sy, Z.x, Z.y) < Z.r + 18);
+      S.sel = z ? z.id : null; if (z) G.beep(500, 0.04, 'triangle', 0.04);
+    }
+  }
+  if (G.keyPressed('ArrowRight') || G.keyPressed('ArrowLeft')) {
+    const i = ZD.findIndex(z => z.id === S.sel), d = G.keyPressed('ArrowRight') ? 1 : -1;
+    S.sel = ZD[((i < 0 ? 0 : i + d) + ZD.length) % ZD.length].id;
+  }
+  if (G.keyPressed('Escape')) S.sel = null;
+  if (S.sel) ['1', '2', '3'].forEach((k, i) => { if (G.keyPressed(k)) build(S.sel, options(S.sel)[i]); });
+  if (G.keyPressed('c') || G.keyPressed('C')) feed();
+  if (G.keyPressed('e') || G.keyPressed('E')) remedy();
+}
+function spawnVirus() {
+  const e = G.pick(EDGES), p = pointOn(e.a, e.b, G.rand(0.2, 0.8)), Z = G.pick(ZD);
+  S.virus.push({ x: p.x, y: p.y, wx: Z.x, wy: Z.y, life: 28, ph: G.rand(0, 9) });
+  G.beep(260, 0.06, 'sawtooth', 0.025, 120);
+}
+const options = zid => [NODE[zid].spec, 'chuches', 'enfermeria'];
+function score() { return Math.max(0, Math.round(S.money + S.happySum / 4)); }
+function finish(win) {
+  S.phase = 'over';
+  const sc = score(), b = G.best('parque-interno', sc);
+  const avg = S.served ? Math.round(S.happySum / S.served) : 0;
+  if (win) { G.burst(270, 400, C.gold, 60, 400, 7); G.beep(523, 0.15, 'triangle', 0.06); setTimeout(() => G.beep(784, 0.3, 'triangle', 0.06), 150); }
+  else { G.shake(20, 0.8); G.beep(300, 0.9, 'sawtooth', 0.07, -250); }
+  setTimeout(() => G.screen({ sub: win ? 'Temporada completada' : 'Día ' + S.day + ' de ' + DAYS,
+    title: win ? '¡Don Anselmo sigue vivo!' : 'Don Anselmo ha fallecido', big: sc + ' pts',
+    html: `<ul><li>Dinero: <b>${Math.round(S.money)} €</b></li><li>Visitantes atendidos: <b>${S.served}</b> (felicidad media ${avg}%)</li>
+      <li>Puntos de felicidad: <b>+${Math.round(S.happySum / 4)}</b></li>${S.sad ? `<li>Se fueron tristes: ${S.sad}</li>` : ''}</ul>
+      <p>${win ? 'El parque cierra por temporada. El anfitrión, agotado pero entero.' : 'El parque ha cerrado. Para siempre. Los visitantes piden reembolso.'}</p><p>Récord: <b>${b}</b></p>`,
+    button: 'Otra temporada', onClick: newGame }), win ? 400 : 900);
+}
+
+// ---------- Dibujo ----------
+function mix(a, b, t) {
+  const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
+  const r = Math.round(((pa >> 16) & 255) * (1 - t) + ((pb >> 16) & 255) * t), g = Math.round(((pa >> 8) & 255) * (1 - t) + ((pb >> 8) & 255) * t), bl = Math.round((pa & 255) * (1 - t) + (pb & 255) * t);
+  return `rgb(${r},${g},${bl})`;
+}
+function drawBody() {
+  const sick = G.clamp((100 - hostHealth()) / 100 + (S.ev === 'indig' ? 0.3 : 0), 0, 1);
+  const skin = mix('#E8B894', '#A9C98A', sick * 0.7), fever = G.clamp((S.temp - 37.5) / 4, 0, 1);
+  const sk = fever > 0 ? mix('#E8B894', '#FF7A6A', fever * 0.6) : skin;
+  const br = 1 + Math.sin(G.t * 1.6) * 0.012;
+  ctx.save(); ctx.translate(270, 500); ctx.scale(br, 1); ctx.translate(-270, -500);
+  // brazos, torso, cuello, cabeza
+  G.rrect(28, 350, 64, 330, 32, sk); G.rrect(448, 350, 64, 330, 32, sk);
+  G.rrect(66, 318, 408, 408, 110, sk); G.rrect(236, 290, 68, 50, 10, sk);
+  G.circle(270, 226, 84, sk); G.circle(186, 232, 16, sk); G.circle(354, 232, 16, sk);
+  G.rrect(92, 344, 356, 362, 92, '#4A2033');
+  ctx.restore();
+  G.circle(270, 196, 50, '#4A2033');
+  // cara dormida
+  ctx.strokeStyle = '#5A3A2A'; ctx.lineWidth = 3;
+  for (const s of [-1, 1]) { ctx.beginPath(); ctx.arc(270 + s * 42, 252, 10, 0.2, Math.PI - 0.2); ctx.stroke(); }
+  ctx.fillStyle = '#6B4A3A'; for (const s of [-1, 1]) { ctx.beginPath(); ctx.ellipse(270 + s * 12, 272, 14, 5, s * 0.25, 0, 7); ctx.fill(); }
+  G.circle(ENT.x, ENT.y + 2, 9 + Math.sin(G.t * 3) * 1.5, '#3A1422');
+  if (fever > 0.3) for (let i = 0; i < 3; i++) { const y = 170 + ((G.t * 40 + i * 40) % 110); G.circle(i % 2 ? 198 : 342, y, 4, '#8FD3FF'); }
+  if (S.hunger > 75) { ctx.globalAlpha = 0.5 + Math.sin(G.t * 8) * 0.5; G.text('GRRR', 150, 610, { size: 18, color: C.gold, align: 'center' }); ctx.globalAlpha = 1; }
+}
+function drawVessels() {
+  for (const e of EDGES) {
+    const A = NODE[e.a], B = NODE[e.b];
+    for (const [w, c] of [[14, '#7A1A2A'], [8, '#D83A50']]) { ctx.strokeStyle = c; ctx.lineWidth = w; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.quadraticCurveTo(e.cx, e.cy, B.x, B.y); ctx.stroke(); }
+    for (let k = 0; k < 3; k++) { const p = pointOn(e.a, e.b, (G.t * 0.5 + k / 3) % 1); G.circle(p.x, p.y, 2.5, '#FF9AA8'); }
+  }
+}
+function drawOrgan(Z) {
+  const z = S.z[Z.id], h = z.health / 100;
+  const col = mix(Z.col, '#6a6470', (1 - h) * 0.7);
+  ctx.save(); ctx.translate(Z.x, Z.y);
+  const r = Z.r * 0.82;
+  ctx.fillStyle = col; ctx.strokeStyle = '#00000055'; ctx.lineWidth = 3;
+  if (Z.id === 'cerebro') { for (let i = 0; i < 6; i++) G.circle(Math.cos(i) * r * 0.45, Math.sin(i * 1.7) * r * 0.3, r * 0.5, col); ctx.beginPath(); ctx.moveTo(-r * 0.6, 0); ctx.bezierCurveTo(-r * 0.2, -r * 0.5, r * 0.2, r * 0.5, r * 0.6, 0); ctx.moveTo(0, -r * 0.6); ctx.lineTo(0, r * 0.5); ctx.stroke(); }
+  if (Z.id === 'pulmones') { const s = 1 + Math.sin(G.t * 1.6) * 0.06; for (const sx of [-1, 1]) { ctx.beginPath(); ctx.ellipse(sx * r * 0.45, 4, r * 0.42 * s, r * 0.8 * s, sx * 0.15, 0, 7); ctx.fill(); ctx.stroke(); } }
+  if (Z.id === 'corazon') { const beat = 1 + Math.max(0, Math.sin(G.t * 7)) * 0.1; ctx.scale(beat, beat); ctx.beginPath(); ctx.moveTo(0, r * 0.8); ctx.bezierCurveTo(-r * 1.3, -r * 0.1, -r * 0.5, -r * 1.1, 0, -r * 0.4); ctx.bezierCurveTo(r * 0.5, -r * 1.1, r * 1.3, -r * 0.1, 0, r * 0.8); ctx.fill(); ctx.stroke(); }
+  if (Z.id === 'estomago') { ctx.beginPath(); ctx.ellipse(0, 0, r, r * 0.66, -0.5, 0, 7); ctx.fill(); ctx.stroke(); }
+  if (Z.id === 'higado') { ctx.beginPath(); ctx.ellipse(-r * 0.2, 0, r, r * 0.6, 0.3, 0, 7); ctx.fill(); ctx.stroke(); }
+  if (Z.id === 'intestinos') { for (let i = 0; i < 7; i++) { const a = i / 7 * Math.PI * 2 + G.t * 0.3; G.circle(Math.cos(a) * r * 0.55, Math.sin(a) * r * 0.45, r * 0.32, col, '#00000044', 3); } G.circle(0, 0, r * 0.3, col, '#00000044', 3); }
+  // ojos del órgano
+  const sleepy = z.closed || h < 0.3;
+  for (const s of [-1, 1]) {
+    if (sleepy) { ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(s * 9 - 5, -3); ctx.lineTo(s * 9 + 5, -3); ctx.stroke(); }
+    else { G.circle(s * 9, -3, 6, '#fff'); G.circle(s * 9 + Math.sin(G.t + Z.x) * 2, -2, 3, '#111'); }
+  }
+  ctx.restore();
+  if (z.flood) { ctx.save(); ctx.beginPath(); ctx.arc(Z.x, Z.y, Z.r, 0, 7); ctx.clip(); ctx.fillStyle = '#9BE35Aaa'; const lv = Z.y - Z.r * 0.4 + Math.sin(G.t * 3) * 4; ctx.fillRect(Z.x - Z.r, lv, Z.r * 2, Z.r * 2); for (let i = 0; i < 5; i++) G.circle(Z.x - 30 + i * 15, lv + 20 - ((G.t * 30 + i * 11) % 30), 3, '#D8FFB0'); ctx.restore(); }
+  // anillo de salud
+  ctx.strokeStyle = '#00000066'; ctx.lineWidth = 6; ctx.beginPath(); ctx.arc(Z.x, Z.y, Z.r + 8, 0, 7); ctx.stroke();
+  ctx.strokeStyle = h > 0.6 ? C.lime : h > 0.3 ? C.gold : C.pink; ctx.beginPath(); ctx.arc(Z.x, Z.y, Z.r + 8, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * h); ctx.stroke();
+  if (S.sel === Z.id) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.setLineDash([6, 6]); ctx.lineDashOffset = -G.t * 20; ctx.beginPath(); ctx.arc(Z.x, Z.y, Z.r + 15, 0, 7); ctx.stroke(); ctx.setLineDash([]); }
+  z.rides.forEach((rd, i) => { const p = slotPos(Z, i); drawRideIcon(rd.type, p.x, p.y, rd.broken || z.closed); });
+  if (z.closed) { G.rrect(Z.x - 50, Z.y - 12, 100, 24, 8, '#000000cc'); G.text('CERRADO', Z.x, Z.y + 1, { size: 15, align: 'center', baseline: 'middle', color: C.pink }); }
+}
+function drawRideIcon(type, x, y, broken) {
+  G.circle(x, y, 16, broken ? '#555' : '#2E2340', broken ? C.pink : C.gold, 2.5);
+  ctx.save(); ctx.translate(x, y); ctx.strokeStyle = broken ? '#999' : C.ink; ctx.fillStyle = broken ? '#999' : C.ink; ctx.lineWidth = 2.5;
+  const t = broken ? 0 : G.t;
+  switch (type) {
+    case 'montana': ctx.beginPath(); ctx.moveTo(-11, 7); ctx.bezierCurveTo(-6, -14, 0, -14, 2, 2); ctx.arc(5, -2, 4, Math.PI, Math.PI * 3); ctx.lineTo(11, 7); ctx.stroke(); G.circle(-11 + ((t * 10) % 22), 5, 2.5, C.pink); break;
+    case 'tobogan': ctx.beginPath(); ctx.moveTo(-9, -10); ctx.quadraticCurveTo(-4, 8, 11, 8); ctx.stroke(); ctx.beginPath(); ctx.moveTo(-9, -10); ctx.lineTo(-9, 9); ctx.stroke(); break;
+    case 'noria': ctx.rotate(t); ctx.beginPath(); ctx.arc(0, 0, 10, 0, 7); for (let i = 0; i < 4; i++) { ctx.moveTo(0, 0); ctx.lineTo(Math.cos(i * 1.57) * 10, Math.sin(i * 1.57) * 10); } ctx.stroke(); break;
+    case 'bar': ctx.beginPath(); ctx.moveTo(-7, -8); ctx.lineTo(7, -8); ctx.lineTo(5, 9); ctx.lineTo(-5, 9); ctx.closePath(); ctx.stroke(); ctx.fillStyle = broken ? '#777' : C.lime; ctx.fillRect(-5, -2, 10, 9); break;
+    case 'cine': ctx.strokeRect(-11, -8, 22, 14); ctx.fillStyle = broken ? '#777' : C.blue; ctx.fillRect(-9, -6, 18, 10); G.circle(-4 + Math.sin(t * 3) * 3, -1, 2, C.pink); break;
+    case 'tren': for (let i = 0; i < 3; i++) { ctx.fillRect(-12 + i * 8 + Math.sin(t * 4) * 1, -4, 6, 7); } ctx.beginPath(); ctx.moveTo(-12, 6); ctx.lineTo(12, 6); ctx.stroke(); break;
+    case 'chuches': ctx.fillStyle = broken ? '#777' : C.pink; ctx.fillRect(-10, -9, 20, 6); ctx.fillStyle = broken ? '#999' : '#fff'; for (let i = 0; i < 3; i++) ctx.fillRect(-10 + i * 7, -9, 3, 6); ctx.strokeRect(-8, -3, 16, 11); break;
+    case 'enfermeria': ctx.fillStyle = broken ? '#999' : '#fff'; ctx.fillRect(-9, -9, 18, 18); ctx.fillStyle = C.pink; ctx.fillRect(-2.5, -7, 5, 14); ctx.fillRect(-7, -2.5, 14, 5); break;
+  }
+  ctx.restore();
+  if (broken) { G.circle(x + 12, y - 12, 4, C.gold); }
+}
+function drawVisitor(v) {
+  const a = v.state === 'ride' ? G.t * 6 + v.ph : Math.sin(G.t * 8 + v.ph) * 0.3;
+  ctx.save(); ctx.translate(v.x, v.y); ctx.rotate(a);
+  ctx.beginPath(); ctx.roundRect(-9, -5, 9, 10, [5, 0, 0, 5]); ctx.fillStyle = v.sick ? '#8BC34A' : v.c1; ctx.fill();
+  ctx.beginPath(); ctx.roundRect(0, -5, 9, 10, [0, 5, 5, 0]); ctx.fillStyle = v.c2; ctx.fill();
+  ctx.rotate(-a);
+  G.circle(-3, -1, 2.4, '#fff'); G.circle(3, -1, 2.4, '#fff'); G.circle(-3, -1, 1.1, '#111'); G.circle(3, -1, 1.1, '#111');
+  ctx.strokeStyle = '#111'; ctx.lineWidth = 1.2; ctx.beginPath();
+  if (v.happy > 50) ctx.arc(0, 2, 2.5, 0.2, Math.PI - 0.2); else ctx.arc(0, 5.5, 2.5, Math.PI + 0.3, -0.3); ctx.stroke();
+  ctx.restore();
+}
+function drawVirus(x) {
+  const r = 11 + Math.sin(G.t * 10 + x.ph) * 1.5;
+  ctx.save(); ctx.translate(x.x, x.y); ctx.rotate(G.t * 2 + x.ph);
+  ctx.strokeStyle = '#4FA33A'; ctx.lineWidth = 3;
+  for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; ctx.beginPath(); ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r); ctx.lineTo(Math.cos(a) * (r + 6), Math.sin(a) * (r + 6)); ctx.stroke(); G.circle(Math.cos(a) * (r + 7), Math.sin(a) * (r + 7), 2.5, '#B6E36A'); }
+  ctx.restore();
+  G.circle(x.x, x.y, r, '#7CC96A', '#3E7A2A', 2);
+  G.circle(x.x - 4, x.y - 2, 3.5, '#fff'); G.circle(x.x + 4, x.y - 2, 3.5, '#fff'); G.circle(x.x - 4, x.y - 1, 1.8, '#c00'); G.circle(x.x + 4, x.y - 1, 1.8, '#c00');
+  ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x.x - 8, x.y - 8); ctx.lineTo(x.x - 1, x.y - 5); ctx.moveTo(x.x + 8, x.y - 8); ctx.lineTo(x.x + 1, x.y - 5); ctx.stroke();
+}
+function wrap(str, maxW, size) {
+  ctx.font = `700 ${size}px ${G.BODY}`;
+  const out = []; let line = '';
+  for (const w of str.split(' ')) { const t = line ? line + ' ' + w : w; if (ctx.measureText(t).width > maxW && line) { out.push(line); line = w; } else line = t; }
+  if (line) out.push(line); return out;
+}
+function drawHUD() {
+  ctx.fillStyle = C.bg; ctx.fillRect(0, 60, W, 82);
+  G.text(Math.round(S.money) + ' €', 20, 90, { size: 24, color: S.money < 0 ? C.pink : C.gold });
+  G.text('DÍA ' + Math.min(S.day, DAYS) + '/' + DAYS, 270, 90, { size: 20, align: 'center', color: C.teal });
+  const avg = S.vis.length ? Math.round(S.vis.reduce((s, v) => s + v.happy, 0) / S.vis.length) : 0;
+  G.text(S.vis.length + ' visitas · ' + avg + '%', 520, 88, { size: 15, align: 'right', body: true, weight: 700, color: C.ink });
+  G.bar(20, 99, 500, 5, (S.time % DAY) / DAY, C.teal);
+  const hh = hostHealth();
+  const vit = [['Temp ' + S.temp.toFixed(1).replace('.', ',') + '°', (S.temp - 36.8) / 5.7, S.temp > 39 ? C.pink : C.blue],
+    ['Hambre', S.hunger / 100, S.hunger > 75 ? C.pink : C.gold], ['Salud', hh / 100, hh < 35 ? C.pink : C.lime]];
+  vit.forEach(([l, f, c], i) => { const x = 20 + i * 172; G.text(l, x, 125, { size: 13, body: true, weight: 700, color: C.dim, shadow: false }); G.bar(x + (i ? 58 : 82), 116, i ? 104 : 80, 10, f, c); });
+  if (S.ev) {
+    const E = EVENTS[S.ev], a = 0.75 + Math.sin(G.t * 8) * 0.25;
+    ctx.globalAlpha = a; G.rrect(110, 146, 320, 30, 15, S.ev === 'fiebre' ? '#C0392B' : S.ev === 'gripe' ? '#3E7A2A' : '#8A6A1A'); ctx.globalAlpha = 1;
+    G.text(E.name + ' ' + E.tip + ' · ' + Math.ceil(S.evT) + 's', 270, 162, { size: 14, align: 'center', baseline: 'middle', body: true, weight: 700 });
+  }
+}
+function card(x, y, w, h, type, zid) {
+  const R = RIDES[type], z = S.z[zid];
+  const dis = z.rides.length >= 3 || S.money < R.cost || z.closed;
+  const press = G.pointer.down && G.inRect(G.pointer.x, G.pointer.y, x, y, w, h);
+  G.rrect(x, y + (press ? 3 : 0), w, h, 12, dis ? '#3a3048' : type === 'enfermeria' ? '#2F6F66' : '#4A3A63', dis ? null : C.gold, 2);
+  drawRideIcon(type, x + 24, y + 26, false);
+  wrap(R.name, w - 52, 14).slice(0, 2).forEach((l, i) => G.text(l, x + 46, y + 22 + i * 17, { size: 14, body: true, weight: 700, color: dis ? C.dim : C.ink, shadow: false }));
+  G.text(R.cost + ' €', x + 12, y + 78, { size: 18, color: S.money < R.cost ? C.pink : C.gold, shadow: false });
+  G.text(type === 'enfermeria' ? 'cura el órgano' : '+' + R.price + '€ · estrés ' + R.stress, x + 12, y + 98, { size: 12, body: true, weight: 700, color: C.dim, shadow: false });
+  return !dis && G.pointer.pressed && G.inRect(G.pointer.sx, G.pointer.sy, x, y, w, h);
+}
+function drawPanel() {
+  G.rrect(10, 728, 520, 226, 16, C.panel, '#ffffff18', 2);
+  if (S.sel) {
+    const Z = NODE[S.sel], z = S.z[S.sel];
+    G.text(Z.name, 28, 760, { size: 22, color: C.gold });
+    G.text('Salud ' + Math.round(z.health) + '%', 300, 758, { size: 14, body: true, weight: 700, align: 'right', color: C.dim, shadow: false });
+    G.bar(310, 748, 200, 12, z.health / 100, z.health > 60 ? C.lime : z.health > 30 ? C.gold : C.pink);
+    for (let i = 0; i < 3; i++) {
+      const x = 22 + i * 168, rd = z.rides[i];
+      if (!rd) { G.rrect(x, 772, 160, 34, 8, '#00000033'); G.text('Hueco libre', x + 80, 790, { size: 13, body: true, weight: 700, align: 'center', baseline: 'middle', color: C.dim, shadow: false }); continue; }
+      if (rd.broken) { if (G.button(x, 772, 160, 34, 'Reparar ' + REPAIR + '€', { color: C.pink, size: 14, body: true, disabled: S.money < REPAIR })) repair(S.sel, i); continue; }
+      G.rrect(x, 772, 160, 34, 8, '#00000055'); G.text(RIDES[rd.type].short, x + 80, 790, { size: 14, body: true, weight: 700, align: 'center', baseline: 'middle', color: C.ink, shadow: false });
+    }
+    options(S.sel).forEach((t, i) => { if (card(22 + i * 168, 818, 160, 124, t, S.sel)) build(S.sel, t); });
+  } else {
+    G.text('Don Anselmo', 28, 760, { size: 22, color: C.gold });
+    G.text('Toca un órgano para construir', 512, 758, { size: 13, body: true, weight: 700, align: 'right', color: C.dim, shadow: false });
+    if (G.button(22, 780, 240, 70, 'Dar de comer · ' + FEED + '€', { color: S.hunger > 60 ? C.gold : '#8A6A3A', size: 16, body: true, disabled: S.money < FEED })) feed();
+    const lab = S.ev === 'indig' ? 'Antiácido · ' + ANTI + '€' : S.ev === 'fiebre' ? 'Paño frío · ' + CLOTH + '€' : S.ev === 'gripe' ? '¡Toca los virus!' : 'Sin urgencias';
+    const ok = (S.ev === 'indig' && S.money >= ANTI) || (S.ev === 'fiebre' && S.money >= CLOTH);
+    if (G.button(278, 780, 240, 70, lab, { color: C.teal, size: 16, body: true, disabled: !ok })) remedy();
+    const tip = S.hunger > 75 ? 'Tiene hambre: sus órganos sufren.' : S.temp > 39 ? 'Fiebre alta: las atracciones se averían.' : 'Varias atracciones en un mismo órgano lo desgastan. La Enfermería lo cura.';
+    wrap(tip, 480, 15).forEach((l, i) => G.text(l, 270, 884 + i * 22, { size: 15, body: true, weight: 700, align: 'center', color: C.dim, shadow: false }));
+  }
+}
+function draw() {
+  ctx.fillStyle = '#20182C'; ctx.fillRect(0, 0, W, G.H);
+  if (!S) return;
+  drawBody(); drawVessels();
+  for (const Z of ZD) drawOrgan(Z);
+  G.circle(ENT.x, ENT.y, 7, C.gold);
+  for (const v of S.vis) drawVisitor(v);
+  for (const x of S.virus) drawVirus(x);
+  if (S.phase === 'play' && S.time < 8 && !nRides()) { ctx.globalAlpha = 0.6 + Math.sin(G.t * 6) * 0.4; G.text('Construye aquí ↓', 270, 712, { size: 18, align: 'center', color: C.gold }); ctx.globalAlpha = 1; }
+  drawHUD(); drawPanel();
+}
+
+newGame();
+G.run(update, draw);
+</script></body></html>

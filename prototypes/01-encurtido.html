@@ -1,0 +1,461 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Encurtido</title></head><body>
+<script src="proto.js"></script>
+<script>
+// Encurtido: Pepe, un pepinillo vivo, escala un pozo de alcantarilla a base de saltos con tirachinas.
+const G = Proto.create({ onRestart() { reset(); } });
+const C = G.C, W = G.W, H = G.H;
+const TOP = -6400, WL = 26, WR = 514, R = 17, GRAV = 1500, VMAX = 950, PULL = 190;
+const PARTS = {
+  muelle: { name: 'Muelle', tip: 'Saltos mucho más potentes.', color: C.blue },
+  patas: { name: 'Patas de cucaracha', tip: 'Choca con una pared: te pegas y saltas desde ahí.', color: '#C9803A' },
+  lengua: { name: 'Lengua de rana', tip: 'En el aire, toca un nudo verde: te enganchas. Mantén para tirar, suelta para soltar.', color: C.pink },
+  ventosa: { name: 'Ventosa', tip: 'Te pegas a los techos y ya no resbalas en el limo.', color: C.gold },
+};
+const ORDER = ['muelle', 'patas', 'lengua', 'ventosa'];
+const GRATES = [-1600, -3200, -4800];
+
+// partículas y textos flotantes se dibujan en coordenadas de pantalla
+const burst = (x, y, ...a) => G.burst(x, y - cam, ...a), flt = (t, x, y, ...a) => G.float(t, x, y - cam, ...a);
+function rng(s) { return () => { s = s + 0x6D2B79F5 | 0; let t = Math.imul(s ^ s >>> 15, 1 | s); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+let solids, hooks, rats, pickups, bricks;
+function buildLevel() {
+  const r = rng(7331), RR = (a, b) => a + r() * (b - a);
+  solids = []; hooks = []; rats = []; pickups = []; bricks = [];
+  solids.push({ x: -300, y: 0, w: 1140, h: 400, kind: 'floor' });
+  solids.push({ x: -400, y: TOP - 1500, w: 400 + WL, h: 2000 - TOP, kind: 'wall' });
+  solids.push({ x: WR, y: TOP - 1500, w: 400, h: 2000 - TOP, kind: 'wall' });
+  for (const g of GRATES) solids.push({ x: WL, y: g, w: WR - WL, h: 14, kind: 'grate', oneway: true });
+  let y = -150, lastX = 270, lastW = 100;
+  const plats = [];
+  while (y > TOP + 100) {
+    if (GRATES.some(g => Math.abs(g - y) < 75)) { y -= 90; continue; }
+    let w = 130, cx = 400;
+    for (let k = 0; k < 30 && plats.length; k++) {
+      w = RR(95, 175);
+      cx = lastX + (r() < 0.5 ? -1 : 1) * RR(100, 240);
+      if (r() < 0.22) cx = cx < 270 ? WL + w / 2 : WR - w / 2;
+      cx = G.clamp(cx, WL + w / 2, WR - w / 2);
+      if (Math.abs(cx - lastX) >= (w + lastW) / 2 - 40 && Math.abs(cx - lastX) < 300) break;
+    }
+    const kind = y < -1100 && r() < 0.28 ? 'slime' : 'rock';
+    const p = { x: cx - w / 2, y, w, h: 24, kind };
+    solids.push(p); plats.push(p);
+    if (y < -1300 && w > 140 && kind === 'rock' && r() < 0.45) rats.push({ p, x: cx, dir: r() < .5 ? -1 : 1, sp: RR(55, 95), cd: 0, t: r() * 6 });
+    lastX = cx; lastW = w; y -= RR(118, 168);
+  }
+  // pilares para rebotar (útiles con las patas)
+  for (let py = -2000; py > TOP + 500; py -= RR(700, 1000)) {
+    const px = RR(170, 340), b = { x: px, y: py - 240, w: 34, h: 240, kind: 'rock' };
+    if (!solids.some(s => s.kind !== 'wall' && s.kind !== 'grate' && s.x < b.x + b.w + 50 && s.x + s.w > b.x - 50 && s.y < b.y + b.h + 50 && s.y + s.h > b.y - 50)) solids.push(b);
+  }
+  // nudos para la lengua
+  for (let hy = -2300; hy > TOP + 150; hy -= RR(170, 240)) {
+    for (let k = 0; k < 6; k++) {
+      const hx = RR(80, 460);
+      if (!inSolid(hx, hy, 40)) { hooks.push({ x: hx, y: hy }); break; }
+    }
+  }
+  const at = { muelle: -500, patas: -1250, lengua: -2250, ventosa: -3700 };
+  for (const k of ORDER) {
+    let best = plats[0];
+    for (const p of plats) if (Math.abs(p.y - at[k]) < Math.abs(best.y - at[k])) best = p;
+    pickups.push({ kind: k, x: best.x + best.w / 2, y: best.y - 42, got: false });
+  }
+  for (let i = 0; i < 90; i++) bricks.push({ x: RR(WL, WR), y: RR(TOP - 400, 0), w: RR(30, 70), a: RR(0.03, 0.08) });
+}
+function inSolid(x, y, pad = 0) {
+  return solids.some(s => x > s.x - pad && x < s.x + s.w + pad && y > s.y - pad && y < s.y + s.h + pad);
+}
+
+let P, cam, water, cp, runT, falls, banner, aim, kb, state;
+function reset() {
+  buildLevel();
+  P = { x: 270, y: -R - 1, vx: 0, vy: 0, ang: 0, spin: 0, ground: null, coyote: 0, stuck: null, stickT: 0, noStick: 0,
+    rope: null, ropeL: 0, parts: {}, peak: -R, blink: 0, squash: 0 };
+  cam = -840; water = 620; cp = { x: 270, y: -R - 1, g: null }; runT = 0; falls = 0; banner = null;
+  aim = null; kb = { on: false, ang: -Math.PI / 2, pow: 0.7 }; state = 'play';
+  G.particles.length = 0; G.floaters.length = 0; G.paused = false; G.hideScreen();
+}
+
+function canLaunch() { return state === 'play' && !P.rope && (P.ground || P.coyote > 0 || P.stuck); }
+function launchVel(dx, dy, pow) {
+  const d = Math.hypot(dx, dy) || 1, v = VMAX * (P.parts.muelle ? 1.22 : 1) * G.clamp(pow, 0.12, 1);
+  return { vx: dx / d * v, vy: dy / d * v };
+}
+function launch(v) {
+  P.vx = v.vx; P.vy = v.vy; P.ground = null; P.coyote = 0; P.stuck = null; P.noStick = 0.25; P.squash = 1;
+  P.spin = G.clamp(v.vx * 0.02, -12, 12); P.peak = P.y;
+  G.beep(P.parts.muelle ? 260 : 330, 0.12, 'triangle', 0.07, 400);
+  burst(P.x, P.y + R, '#6FBF4A', 8, 160, 4);
+}
+
+function collide(prevY) {
+  P.ground = null;
+  for (const b of solids) {
+    if (b.y > P.y + 60 || b.y + b.h < P.y - 60 || b.x > P.x + 60 || b.x + b.w < P.x - 60) continue;
+    if (b.oneway && (P.vy < 0 || prevY + R > b.y + 3)) continue;
+    const cx = G.clamp(P.x, b.x, b.x + b.w), cy = G.clamp(P.y, b.y, b.y + b.h);
+    let dx = P.x - cx, dy = P.y - cy, d = Math.hypot(dx, dy), nx, ny, pen;
+    if (d >= R) continue;
+    if (d < 0.001) {
+      const o = [[P.y - b.y, 0, -1], [b.y + b.h - P.y, 0, 1], [P.x - b.x, -1, 0], [b.x + b.w - P.x, 1, 0]].sort((a, c) => a[0] - c[0])[0];
+      nx = o[1]; ny = o[2]; pen = o[0] + R;
+    } else { nx = dx / d; ny = dy / d; pen = R - d; }
+    P.x += nx * pen; P.y += ny * pen;
+    const vn = P.vx * nx + P.vy * ny;
+    if (vn < 0) {
+      const e = ny < -0.6 ? 0 : 0.3;
+      if (-vn > 250) { G.beep(120, 0.06, 'sine', 0.06); burst(P.x - nx * R, P.y - ny * R, b.kind === 'slime' ? C.lime : '#8a7f95', 5, 120, 3); }
+      P.vx -= (1 + e) * vn * nx; P.vy -= (1 + e) * vn * ny;
+    }
+    if (ny < -0.6) P.ground = b;
+    else if (ny > 0.6) { if (P.parts.ventosa && P.noStick <= 0 && !P.rope) stick('ceil', 2.6); }
+    else if (P.parts.patas && P.noStick <= 0 && !P.rope && Math.abs(nx) > 0.8 && !P.ground && P.coyote <= 0) stick('wall', 1.5);
+  }
+}
+function stick(kind, t) {
+  if (P.stuck) return;
+  P.stuck = kind; P.stickT = t; P.vx = P.vy = 0; P.spin = 0; P.peak = P.y;
+  G.beep(kind === 'ceil' ? 520 : 440, 0.07, 'square', 0.05, -200);
+  burst(P.x, P.y, kind === 'ceil' ? C.gold : '#C9803A', 6, 100, 3);
+}
+
+function physics(dt) {
+  P.noStick -= dt; P.coyote -= dt;
+  if (P.stuck) {
+    P.stickT -= dt;
+    if (P.stickT <= 0) { P.stuck = null; P.noStick = 0.5; flt('¡Se despega!', P.x, P.y - 30, C.dim, 18); }
+    return;
+  }
+  const wasGround = P.ground, prevY = P.y;
+  P.vy += GRAV * dt;
+  P.x += P.vx * dt; P.y += P.vy * dt;
+  if (P.rope) {
+    const h = P.rope, dx = P.x - h.x, dy = P.y - h.y, d = Math.hypot(dx, dy);
+    if (d > P.ropeL) {
+      const nx = dx / d, ny = dy / d;
+      P.x = h.x + nx * P.ropeL; P.y = h.y + ny * P.ropeL;
+      const vr = P.vx * nx + P.vy * ny;
+      if (vr > 0) { P.vx -= vr * nx; P.vy -= vr * ny; }
+    }
+  }
+  collide(prevY);
+  if (P.ground) {
+    const slip = P.ground.kind === 'slime' && !P.parts.ventosa;
+    P.vx *= Math.exp(-(slip ? 0.25 : 14) * dt);
+    P.coyote = 0.08;
+    const up = Math.round(P.ang / (Math.PI * 2)) * Math.PI * 2;
+    P.ang = G.lerp(P.ang, up + P.vx * 0.002, 1 - Math.exp(-12 * dt));
+    if (!wasGround) land();
+  } else {
+    P.ang += P.spin * dt; P.peak = Math.min(P.peak, P.y);
+  }
+}
+function land() {
+  const fall = P.y - P.peak;
+  if (P.vy > -1) P.squash = -0.8;
+  if (fall > 320) {
+    falls++; G.shake(6 + Math.min(10, fall / 120), 0.3);
+    flt('Caída: ' + Math.round(fall / 40) + ' m', P.x, P.y - 40, C.pink, 24);
+    G.beep(90, 0.25, 'sawtooth', 0.06, -40);
+  }
+  P.peak = P.y; P.spin = 0;
+  if (P.ground.kind === 'grate' && cp.g !== P.ground) {
+    cp = { x: P.x, y: P.ground.y - R - 1, g: P.ground };
+    flt('¡Punto de control!', P.x, P.y - 50, C.teal, 26); burst(P.x, P.y, C.teal, 20, 240);
+    [523, 659, 784].forEach((f, i) => setTimeout(() => G.beep(f, 0.12, 'triangle', 0.06), i * 90));
+  }
+}
+
+function tryTongue(wx, wy) {
+  if (!P.parts.lengua || P.ground || P.stuck || state !== 'play') return false;
+  let best = null, bd = 1e9;
+  for (const h of hooks) {
+    const dp = G.dist(h.x, h.y, P.x, P.y); if (dp > 340) continue;
+    const dt = wx === null ? dp : G.dist(h.x, h.y, wx, wy);
+    if (dt < bd && (wx === null || dt < 150)) { bd = dt; best = h; }
+  }
+  if (!best) { flt('Nada a tiro', P.x, P.y - 34, C.dim, 16); return false; }
+  P.rope = best; P.ropeL = Math.max(40, G.dist(best.x, best.y, P.x, P.y)); P.spin = 0;
+  G.beep(700, 0.09, 'square', 0.05, -400); burst(best.x, best.y, C.pink, 6, 120, 3);
+  return true;
+}
+function dropRope() { if (P.rope) { P.rope = null; P.noStick = 0.2; P.spin = G.clamp(P.vx * 0.02, -10, 10); } }
+
+function update(dt) {
+  if (state !== 'play') return;
+  runT += dt;
+  const ptr = G.pointer, wy = ptr.y + cam;
+  // --- entrada táctil / ratón ---
+  if (ptr.pressed) {
+    if (canLaunch()) aim = { sx: ptr.x, sy: ptr.y };
+    else tryTongue(ptr.x, wy);
+  }
+  if (aim && ptr.released) {
+    const dx = aim.sx - ptr.x, dy = aim.sy - ptr.y, len = Math.hypot(dx, dy);
+    if (len > 18 && canLaunch()) launch(launchVel(dx, dy, len / PULL));
+    aim = null;
+  }
+  if (P.rope && !ptr.down && !G.key(' ') && !G.key('ArrowUp')) dropRope();
+  // --- teclado ---
+  const L = G.key('ArrowLeft') || G.key('a'), Rt = G.key('ArrowRight') || G.key('d');
+  const U = G.key('ArrowUp') || G.key('w'), D = G.key('ArrowDown') || G.key('s');
+  if (canLaunch() && (L || Rt || U || D)) kb.on = true;
+  if (kb.on) {
+    if (L) kb.ang -= 2.2 * dt; if (Rt) kb.ang += 2.2 * dt;
+    kb.ang = G.clamp(kb.ang, -Math.PI + 0.05, -0.05);
+    if (U) kb.pow += 0.9 * dt; if (D) kb.pow -= 0.9 * dt;
+    kb.pow = G.clamp(kb.pow, 0.15, 1);
+  }
+  if (G.keyPressed(' ') || G.keyPressed('Enter')) {
+    if (canLaunch()) { launch(launchVel(Math.cos(kb.ang), Math.sin(kb.ang), kb.pow)); kb.on = true; }
+    else tryTongue(null, null);
+  }
+  if (P.rope && (ptr.down || G.key(' ') || G.key('ArrowUp'))) P.ropeL = Math.max(45, P.ropeL - 190 * dt);
+  // --- física ---
+  for (let i = 0; i < 3; i++) physics(dt / 3);
+  P.squash *= Math.exp(-8 * dt); P.blink -= dt; if (P.blink < -3) P.blink = 0.12;
+  // ratas
+  for (const r of rats) {
+    r.t += dt; r.cd -= dt; r.x += r.dir * r.sp * dt;
+    if (r.x < r.p.x + 16) { r.x = r.p.x + 16; r.dir = 1; } if (r.x > r.p.x + r.p.w - 16) { r.x = r.p.x + r.p.w - 16; r.dir = -1; }
+    const ry = r.p.y - 12;
+    if (r.cd <= 0 && G.dist(r.x, ry, P.x, P.y) < R + 15) {
+      const s = P.x >= r.x ? 1 : -1;
+      P.stuck = null; dropRope(); P.vx = s * 480; P.vy = -340; P.ground = null; P.spin = s * 14; P.noStick = 0.4; P.peak = Math.min(P.peak, P.y);
+      r.cd = 1.2; r.dir = -s;
+      G.shake(10, 0.25); burst(P.x, P.y, '#9a8f9f', 14, 260); flt('¡Rata!', P.x, P.y - 40, C.pink, 26);
+      G.beep(180, 0.15, 'sawtooth', 0.07, -120);
+    }
+  }
+  // piezas
+  for (const k of pickups) {
+    if (!k.got && G.dist(k.x, k.y, P.x, P.y) < R + 24) {
+      k.got = true; P.parts[k.kind] = true; banner = { kind: k.kind, t: 5 };
+      burst(k.x, k.y, PARTS[k.kind].color, 26, 300, 6); G.shake(5, 0.2);
+      flt('+ ' + PARTS[k.kind].name, k.x, k.y - 30, PARTS[k.kind].color, 24);
+      [392, 523, 659, 1046].forEach((f, i) => setTimeout(() => G.beep(f, 0.1, 'square', 0.05), i * 70));
+    }
+  }
+  if (banner && (banner.t -= dt) <= 0) banner = null;
+  // agua
+  const gap = water - P.y;
+  water -= (20 + runT * 0.12 + Math.max(0, gap - 560) * 0.1) * dt;
+  if (P.y + R * 0.2 > water) drown();
+  // salida
+  if (P.y < TOP) win();
+  cam = G.lerp(cam, Math.min(-840, P.y - 560 - (aim || kb.on ? 60 : 0)), 1 - Math.exp(-6 * dt));
+}
+function drown() {
+  burst(P.x, water, '#7c9a3a', 30, 320, 6); G.shake(12, 0.4);
+  G.beep(200, 0.4, 'sawtooth', 0.07, -170);
+  Object.assign(P, { x: cp.x, y: cp.y, vx: 0, vy: 0, stuck: null, rope: null, ground: null, peak: cp.y, spin: 0, ang: 0 });
+  water = cp.y + 420; aim = null; cam = Math.min(-840, P.y - 560);
+  flt('¡Glu glu! Vuelves al control', P.x, P.y - 60, C.pink, 22);
+}
+function fmt(t) { const m = Math.floor(t / 60), s = t - m * 60; return m + ':' + (s < 10 ? '0' : '') + s.toFixed(1); }
+function win() {
+  state = 'won';
+  burst(P.x, P.y, C.gold, 40, 400, 7); G.shake(8, 0.4);
+  [523, 659, 784, 1046, 1318].forEach((f, i) => setTimeout(() => G.beep(f, 0.15, 'triangle', 0.07), i * 110));
+  const prev = G.best('encurtido-tiempo');
+  const b = G.best('encurtido-tiempo', -Math.round(runT * 10));
+  const rec = prev === null || -Math.round(runT * 10) > prev;
+  setTimeout(() => G.screen({
+    sub: rec ? '¡Nuevo récord!' : 'Has salido del pozo', title: '¡Pepe ve la luz!', big: fmt(runT),
+    html: `<p>Mejor tiempo: <b>${fmt(-b / 10)}</b><br>Caídas gordas: <b>${falls}</b> · Piezas: <b>${Object.keys(P.parts).length}/4</b></p>`,
+    button: 'Otra vez', onClick: reset,
+  }), 700);
+}
+
+// ---------- DIBUJO ----------
+function drawIcon(kind, x, y, s, on = true) {
+  const ctx = G.ctx; ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+  ctx.globalAlpha = on ? 1 : 0.3; ctx.lineCap = 'round'; ctx.lineWidth = 3;
+  const col = PARTS[kind].color; ctx.strokeStyle = col; ctx.fillStyle = col;
+  if (kind === 'muelle') { ctx.beginPath(); for (let i = 0; i <= 6; i++) ctx.lineTo(i % 2 ? 8 : -8, -12 + i * 4); ctx.stroke(); }
+  else if (kind === 'patas') { for (const sx of [-1, 1]) for (let i = -1; i <= 1; i++) { ctx.beginPath(); ctx.moveTo(0, i * 6); ctx.lineTo(sx * 8, i * 6 - 4); ctx.lineTo(sx * 12, i * 6 + 3); ctx.stroke(); } G.circle(0, 0, 4, col); }
+  else if (kind === 'lengua') { ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(-10, 8); ctx.quadraticCurveTo(0, -14, 10, -6); ctx.stroke(); G.circle(10, -6, 5, col); }
+  else { ctx.beginPath(); ctx.moveTo(-12, 6); ctx.quadraticCurveTo(0, -16, 12, 6); ctx.closePath(); ctx.fill(); ctx.fillRect(-3, 4, 6, 8); }
+  ctx.restore();
+}
+function eye(x, y, r, lx, ly, closed) {
+  G.circle(x, y, r, '#fff', '#1a1424', 2);
+  if (closed) { G.ctx.fillStyle = '#4c8a34'; G.ctx.fillRect(x - r, y - r, r * 2, r); return; }
+  const d = Math.hypot(lx, ly) || 1, m = Math.min(1, d / 40) * r * 0.45;
+  G.circle(x + lx / d * m, y + ly / d * m, r * 0.5, '#1a1424');
+}
+function drawPepe() {
+  const ctx = G.ctx; ctx.save(); ctx.translate(P.x, P.y);
+  let rot = P.ang;
+  if (P.stuck === 'wall') rot = P.x < 270 ? Math.PI / 2 : -Math.PI / 2; if (P.stuck === 'ceil') rot = Math.PI;
+  ctx.rotate(rot);
+  const sq = P.squash, sx = 1 + sq * 0.18, sy = 1 - sq * 0.18;
+  ctx.scale(Math.abs(sq) > 0.02 ? (sq > 0 ? 1 / sx : sx) : 1, Math.abs(sq) > 0.02 ? (sq > 0 ? 1 / sy : sy) : 1);
+  const pr = P.parts;
+  if (pr.patas) { ctx.strokeStyle = '#7a4a22'; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+    for (const s of [-1, 1]) for (let i = -1; i <= 1; i++) { const w = Math.sin(G.t * 14 + i) * 3; ctx.beginPath(); ctx.moveTo(s * 12, i * 9); ctx.lineTo(s * 22, i * 9 - 5 + w); ctx.lineTo(s * 27, i * 9 + 4 + w); ctx.stroke(); } }
+  if (pr.muelle) { ctx.strokeStyle = C.blue; ctx.lineWidth = 3; ctx.beginPath(); const ext = 1 + Math.max(0, P.squash) * 1.5; for (let i = 0; i <= 6; i++) ctx.lineTo(i % 2 ? 8 : -8, 18 + i * 2.2 * ext); ctx.stroke(); }
+  if (pr.ventosa) { ctx.fillStyle = C.gold; ctx.beginPath(); ctx.moveTo(-11, -27); ctx.quadraticCurveTo(0, -36, 11, -27); ctx.closePath(); ctx.fill(); ctx.fillRect(-3, -25, 6, 5); }
+  // cuerpo
+  ctx.beginPath(); ctx.ellipse(0, 0, 15, 22, 0, 0, Math.PI * 2); ctx.fillStyle = '#5FAE3E'; ctx.fill();
+  ctx.lineWidth = 3; ctx.strokeStyle = '#2f5e22'; ctx.stroke();
+  ctx.fillStyle = '#4c8a34';
+  for (const [bx, by] of [[-7, 8], [6, 12], [-3, 16], [8, 1], [-9, -2]]) { ctx.beginPath(); ctx.arc(bx, by, 2.2, 0, 7); ctx.fill(); }
+  ctx.beginPath(); ctx.ellipse(-5, -10, 3, 7, -0.3, 0, 7); ctx.fillStyle = '#ffffff30'; ctx.fill();
+  // ojos: miran hacia la velocidad o el objetivo
+  let lx = P.vx, ly = P.vy + 30; if (aim) { lx = aim.sx - G.pointer.x; ly = aim.sy - G.pointer.y; }
+  const c = Math.cos(-rot), s = Math.sin(-rot), llx = lx * c - ly * s, lly = lx * s + ly * c;
+  const cl = P.blink > 0;
+  eye(-6, -9, 7, llx, lly, cl); eye(7, -11, 8, llx, lly, cl);
+  ctx.strokeStyle = '#1a1424'; ctx.lineWidth = 2; ctx.beginPath();
+  if (P.rope || Math.hypot(P.vx, P.vy) > 700) ctx.ellipse(1, 5, 4, 5, 0, 0, 7); else ctx.arc(1, 2, 5, 0.3, Math.PI - 0.3);
+  ctx.stroke();
+  if (pr.lengua && !P.rope) { ctx.fillStyle = C.pink; ctx.beginPath(); ctx.ellipse(3, 8, 3, 2, 0.4, 0, 7); ctx.fill(); }
+  ctx.restore();
+}
+function drawRat(r) {
+  const ctx = G.ctx, y = r.p.y - 12, b = Math.abs(Math.sin(r.t * 10)) * 2;
+  ctx.save(); ctx.translate(r.x, y - b); ctx.scale(r.dir, 1);
+  ctx.strokeStyle = '#d78a9a'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(-14, 2); ctx.quadraticCurveTo(-26, -12 + Math.sin(r.t * 8) * 5, -34, 0); ctx.stroke();
+  ctx.fillStyle = '#7d7385'; ctx.beginPath(); ctx.ellipse(0, 0, 17, 11, 0, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(13, 2, 9, 7, 0.3, 0, 7); ctx.fill();
+  G.circle(8, -9, 5, '#9a8fa3'); G.circle(20, 4, 2.5, C.pink);
+  G.circle(14, -2, 3.2, '#fff'); G.circle(15, -2, 1.8, '#e0304a');
+  ctx.restore();
+}
+function drawSolid(b) {
+  const ctx = G.ctx;
+  if (b.kind === 'wall') { G.rrect(b.x, b.y, b.w, b.h, 0, '#140f1c'); return; }
+  if (b.kind === 'grate') {
+    G.rrect(b.x, b.y, b.w, b.h, 3, '#4a4458');
+    ctx.fillStyle = '#1a142488'; for (let x = b.x + 8; x < b.x + b.w - 8; x += 16) ctx.fillRect(x, b.y + 3, 8, b.h - 6);
+    ctx.fillStyle = cp.g === b ? C.teal : '#6c6480'; ctx.fillRect(b.x, b.y, b.w, 3); return;
+  }
+  if (b.kind === 'floor') { G.rrect(b.x, b.y, b.w, b.h, 0, '#2a2233'); return; }
+  const slime = b.kind === 'slime';
+  G.rrect(b.x, b.y, b.w, b.h, 8, slime ? '#3f6b2a' : '#5a4e66', '#1a1424', 2);
+  if (slime) {
+    ctx.fillStyle = C.lime; ctx.beginPath(); ctx.roundRect(b.x, b.y - 3, b.w, 9, 5); ctx.fill();
+    for (let i = 0; i < 3; i++) { const dx = b.x + b.w * (0.2 + i * 0.3), dl = 8 + Math.sin(G.t * 2 + dx) * 5; ctx.beginPath(); ctx.ellipse(dx, b.y + b.h + dl / 2, 3, dl / 2 + 2, 0, 0, 7); ctx.fill(); }
+  } else { ctx.fillStyle = '#ffffff18'; ctx.fillRect(b.x + 6, b.y + 3, b.w - 12, 3); }
+}
+function drawBg(ctx) {
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  const k = G.clamp(-cam / -TOP, 0, 1);
+  g.addColorStop(0, `rgb(${36 + k * 30},${28 + k * 20},${48 + k * 10})`); g.addColorStop(1, '#1a1424');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  for (const b of bricks) {
+    const y = ((b.y - cam * 0.5) % 1400 + 1400) % 1400 - 200;
+    ctx.fillStyle = `rgba(255,255,255,${b.a})`; ctx.fillRect(b.x, y, b.w, 18);
+  }
+}
+function drawWorld(ctx) {
+  drawBg(ctx);
+  ctx.save(); ctx.translate(0, -cam);
+  const vy0 = cam - 100, vy1 = cam + H + 100;
+  // salida
+  if (TOP > vy0 - 400) {
+    const lg = ctx.createRadialGradient(270, TOP - 60, 10, 270, TOP - 60, 380);
+    lg.addColorStop(0, '#fff6c8'); lg.addColorStop(0.4, '#ffb23e88'); lg.addColorStop(1, '#ffb23e00');
+    ctx.fillStyle = lg; ctx.fillRect(0, TOP - 500, W, 700);
+    G.text('SALIDA', 270, TOP - 30, { size: 40, align: 'center', color: C.bg });
+  }
+  for (const b of solids) if (b.y < vy1 && b.y + b.h > vy0) drawSolid(b);
+  for (const h of hooks) {
+    if (h.y < vy0 || h.y > vy1) continue;
+    const inR = P.parts.lengua && G.dist(h.x, h.y, P.x, P.y) < 340;
+    if (inR) G.circle(h.x, h.y, 22 + Math.sin(G.t * 6) * 3, '#b6e36a33');
+    G.circle(h.x, h.y, 13, P.parts.lengua ? C.lime : '#4d5a3a', '#1a1424', 2);
+    const a = Math.atan2(P.y - h.y, P.x - h.x); G.circle(h.x, h.y, 5, '#fff'); G.circle(h.x + Math.cos(a) * 2, h.y + Math.sin(a) * 2, 2.5, '#1a1424');
+  }
+  for (const k of pickups) {
+    if (k.got || k.y < vy0 || k.y > vy1) continue;
+    const by = k.y + Math.sin(G.t * 3) * 5;
+    G.circle(k.x, by, 26, '#ffffff14', PARTS[k.kind].color, 2); drawIcon(k.kind, k.x, by, 1.3);
+    G.text(PARTS[k.kind].name, k.x, by - 36, { size: 13, align: 'center', body: true, weight: 700, color: PARTS[k.kind].color });
+  }
+  for (const r of rats) if (r.p.y > vy0 && r.p.y < vy1) drawRat(r);
+  if (P.rope) {
+    ctx.strokeStyle = C.pink; ctx.lineWidth = 5; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(P.x, P.y); ctx.lineTo(P.rope.x, P.rope.y); ctx.stroke();
+  }
+  if (cam > -900) G.text('Arrastra hacia atrás y suelta', 270, -210, { size: 18, align: 'center', body: true, weight: 700, color: C.dim });
+  drawAim(ctx);
+  drawPepe();
+  // agua
+  if (water < vy1) {
+    ctx.fillStyle = '#5b7a2ccc'; ctx.beginPath(); ctx.moveTo(0, vy1 + 200);
+    for (let x = 0; x <= W; x += 20) ctx.lineTo(x, water + Math.sin(x * 0.04 + G.t * 3) * 6);
+    ctx.lineTo(W, vy1 + 200); ctx.fill();
+    ctx.fillStyle = '#b6e36a55'; for (let i = 0; i < 8; i++) G.circle((i * 73 + G.t * 20) % W, water + 20 + ((i * 37 + G.t * 40) % 120), 3 + i % 3, '#b6e36a44');
+  }
+  ctx.restore();
+}
+function drawAim(ctx) {
+  let v = null;
+  if (aim && G.pointer.down) {
+    const dx = aim.sx - G.pointer.x, dy = aim.sy - G.pointer.y, len = Math.hypot(dx, dy);
+    if (len > 18) v = launchVel(dx, dy, len / PULL);
+  } else if (kb.on && canLaunch()) v = launchVel(Math.cos(kb.ang), Math.sin(kb.ang), kb.pow);
+  if (!v || !canLaunch()) return;
+  const sp = Math.hypot(v.vx, v.vy), maxv = VMAX * (P.parts.muelle ? 1.22 : 1);
+  ctx.strokeStyle = C.gold; ctx.lineWidth = 3; ctx.setLineDash([4, 5]);
+  ctx.beginPath(); ctx.moveTo(P.x, P.y); ctx.lineTo(P.x - v.vx * 0.08, P.y - v.vy * 0.08); ctx.stroke(); ctx.setLineDash([]);
+  let x = P.x, y = P.y, vx = v.vx, vy = v.vy;
+  for (let i = 0; i < 26; i++) {
+    for (let j = 0; j < 3; j++) { vy += GRAV * 0.011; x += vx * 0.011; y += vy * 0.011; }
+    if (inSolid(x, y) && i > 1) break;
+    ctx.globalAlpha = 1 - i / 28; G.circle(x, y, 5 - i * 0.12, sp > maxv * 0.95 ? C.pink : C.gold);
+  }
+  ctx.globalAlpha = 1;
+}
+function drawHUD(ctx) {
+  const hM = Math.max(0, Math.round(-P.y / 40)), totM = Math.round(-TOP / 40);
+  G.rrect(12, 64, W - 24, 44, 12, '#120d1acc');
+  G.text(hM + ' / ' + totM + ' m', 26, 94, { size: 20, color: C.teal });
+  G.text(fmt(runT), W / 2 + 10, 94, { size: 22, align: 'center' });
+  ORDER.forEach((k, i) => { const x = W - 128 + i * 30; G.circle(x, 86, 13, P.parts[k] ? '#ffffff18' : '#00000044'); drawIcon(k, x, 86, 0.8, !!P.parts[k]); });
+  // barra lateral de progreso
+  const bx = W - 14, by0 = 130, by1 = 880, toY = wy => G.lerp(by1, by0, G.clamp(wy / TOP, 0, 1));
+  G.rrect(bx - 3, by0, 6, by1 - by0, 3, '#00000066');
+  for (const g of GRATES) G.rrect(bx - 7, toY(g) - 1, 14, 3, 1, cp.g && cp.g.y === g ? C.teal : '#6c6480');
+  G.rrect(bx - 3, toY(Math.min(0, water)), 6, by1 - toY(Math.min(0, water)), 3, '#7c9a3a');
+  G.circle(bx, toY(P.y), 7, '#5FAE3E', C.ink, 2);
+  // aviso de agua
+  const wd = water - P.y;
+  if (wd < 260 && state === 'play') G.text('¡El agua sube!', W / 2, H - 40, { size: 22, align: 'center', color: C.pink });
+  if (P.stuck) G.bar(P.x - 25, P.y - cam - 44, 50, 6, P.stuck === 'ceil' ? P.stickT / 2.6 : P.stickT / 1.5, C.gold);
+  if (banner) {
+    const a = Math.min(1, banner.t), p = PARTS[banner.kind];
+    ctx.globalAlpha = a;
+    G.rrect(20, 118, W - 50, 76, 12, '#2E2340ee', p.color, 2);
+    drawIcon(banner.kind, 54, 156, 1.4);
+    G.text(p.name, 84, 146, { size: 20, color: p.color });
+    wrap(p.tip, 84, 170, W - 130, 15);
+    ctx.globalAlpha = 1;
+  }
+}
+function wrap(str, x, y, maxW, size) {
+  const ctx = G.ctx; ctx.font = `700 ${size}px ${G.BODY}`;
+  let line = '', yy = y;
+  for (const w of str.split(' ')) {
+    const t = line ? line + ' ' + w : w;
+    if (ctx.measureText(t).width > maxW && line) { G.text(line, x, yy, { size, body: true, weight: 700 }); line = w; yy += size + 3; } else line = t;
+  }
+  G.text(line, x, yy, { size, body: true, weight: 700 });
+}
+
+reset(); G.paused = true;
+G.screen({
+  sub: 'Prototipo 01', title: 'Encurtido',
+  html: `<p>Eres Pepe, un pepinillo con ojos y sin brazos. Estás en el fondo de una alcantarilla y el agua sube. ¡Escala hasta la salida!</p>
+  <ul><li><b>Arrastra hacia atrás y suelta</b> para saltar (como un tirachinas).</li>
+  <li>Teclado: <b>flechas</b> apuntan y dan fuerza, <b>Espacio</b> salta.</li>
+  <li>Recoge piezas: muelle, patas, lengua y ventosa.</li>
+  <li>Las rejillas son puntos de control. Ojo con las ratas y el limo.</li></ul>`,
+  button: 'Jugar', onClick: reset,
+});
+G.run(update, ctx => { drawWorld(ctx); drawHUD(ctx); });
+</script></body></html>

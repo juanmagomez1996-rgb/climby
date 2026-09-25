@@ -1,0 +1,522 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>¿Quién Es Real?</title></head><body>
+<script src="proto.js"></script>
+<script>
+// ¿Quién Es Real? — deducción: los parásitos solo fingen recuerdos bonitos.
+const G = Proto.create({ onRestart() { newGame(); } });
+const C = G.C, ctx = G.ctx, W = G.W;
+
+const N = { mama: 'Mamá', papa: 'Papá', herm: 'Hermana', abu: 'Abuelo', perro: 'Bartolo', prima: 'Prima Vero' };
+const REAL = [
+  { id: 'mama', name: 'Mamá', col: '#FF9F80', shape: 'blob', acc: 'bun', ac: '#7A4630',
+    good: [['La barbacoa del patio. {papa} hizo hamburguesas con forma de corazón.', 'sol'],
+      ['Cuando {herm} aprendió a ir en bici. Gritamos tanto que salieron los vecinos.', 'sol'],
+      ['Noche de pelis con palomitas quemadas. Nadie se quejó.', 'noche']],
+    bad: [['El día que me despidieron. Lloré en el coche para que no me vierais.', 'coche'],
+      ['Discutí con {abu} en Navidad. Estuvimos un mes sin hablarnos.', 'casa'],
+      ['Olvidé recoger a {herm} del cole. Me esperó dos horas bajo la lluvia.', 'lluvia']] },
+  { id: 'papa', name: 'Papá', col: '#6FA8FF', shape: 'wide', acc: 'glasses', ac: '#1a1a1a',
+    good: [['Pesqué un pez enorme en el lago. Bueno, mediano. Vale, pequeño.', 'agua'],
+      ['Bailé en la boda de mi prima y hasta el cura aplaudió.', 'fiesta'],
+      ['Monté el mueble de la tele y no sobró ni un tornillo. Histórico.', 'casa']],
+    bad: [['Empotré el coche contra el buzón. Todavía pago la multa.', 'coche'],
+      ['Me quedé dormido en la función del cole de {herm}. Roncando.', 'cole'],
+      ['Se murió el pez rojo y compré otro igual. {herm} lo notó.', 'agua']] },
+  { id: 'herm', name: 'Hermana', col: '#FFD166', shape: 'tall', acc: 'bow', ac: '#FF5C7A',
+    good: [['Gané la feria de ciencias con un volcán de bicarbonato.', 'cole'],
+      ['En la playa {perro} se comió un bocadillo entero. Con papel y todo.', 'sol'],
+      ['Fiesta de pijamas con mis amigas hasta las cuatro de la mañana.', 'noche']],
+    bad: [['Me caí en mitad de la función de ballet. Todo el cole se rió.', 'cole'],
+      ['Suspendí mates y escondí las notas debajo del colchón.', 'casa'],
+      ['Mi mejor amiga se mudó lejos. Ya no me escribe.', 'lluvia']] },
+  { id: 'abu', name: 'Abuelo', col: '#C9B8A8', shape: 'blob', acc: 'beret', ac: '#3B4A6B', mous: true,
+    good: [['Le enseñé a {herm} a jugar al mus. Ahora me gana siempre.', 'casa'],
+      ['Mi huerto dio el tomate más gordo del pueblo. Salí en el periódico.', 'sol'],
+      ['Bailé con la abuela en las fiestas del 72. Qué guapa iba.', 'fiesta']],
+    bad: [['El entierro de la abuela. No paró de llover.', 'lluvia'],
+      ['Me perdí volviendo del mercado. Me trajo a casa la policía.', 'noche'],
+      ['Me resbalé en la bañera y me rompí la cadera. Qué vergüenza.', 'hospital']] },
+  { id: 'perro', name: 'Bartolo', col: '#B0703C', shape: 'dog',
+    good: [['Pelota. Pelota. ¡PELOTA! El mejor día de mi vida.', 'sol'],
+      ['{papa} dejó el filete en la mesa. Ya no está. No sé nada.', 'casa'],
+      ['Siesta al sol en el sofá. Nadie me riñó.', 'sol']],
+    bad: [['Veterinario. Termómetro. No quiero hablar de ello.', 'hospital'],
+      ['Me comí un calcetín. Luego lo devolví. En la alfombra nueva.', 'casa'],
+      ['Petardos en Nochevieja. Pasé la noche temblando bajo la cama.', 'noche']] },
+  { id: 'prima', name: 'Prima Vero', col: '#53D8C3', shape: 'tall', acc: 'phones', ac: '#2E2340',
+    good: [['{mama} me dejó su vestido para la graduación. Iba ideal.', 'fiesta'],
+      ['Acampamos en el jardín y vimos una estrella fugaz.', 'noche'],
+      ['Hice croquetas con {abu}. Las mejores del mundo.', 'casa']],
+    bad: [['Mi novio me dejó por mensaje. En mi cumpleaños.', 'lluvia'],
+      ['Rompí el jarrón de {mama} y culpé a {perro}. Perdón, Bartolo.', 'casa'],
+      ['Me pilló una tormenta en la moto y acabé en urgencias.', 'hospital']] },
+];
+const FAKE = [
+  { name: 'Tío Salchicha', col: '#E9785A', shape: 'long', acc: 'hat', ac: '#2E2340' },
+  { name: 'Señora Paraguas', col: '#9C7BFF', shape: 'blob', acc: 'umbrella', ac: '#FF5C7A' },
+  { name: 'Primo Bigotín', col: '#F2C14E', shape: 'wide', acc: 'none', mous: true },
+  { name: 'Doña Gelatina', col: '#5FE0B0', shape: 'blob', acc: 'bow', ac: '#FFB23E' },
+  { name: 'Tía Confeti', col: '#FF6FD8', shape: 'tall', acc: 'party', ac: '#B6E36A' },
+  { name: 'Sargento Tostada', col: '#D9A066', shape: 'wide', acc: 'cap', ac: '#4B6B3B' },
+  { name: 'Cuñado Pingüino', col: '#4A5A80', shape: 'tall', acc: 'tie', ac: '#FFB23E' },
+  { name: 'Profe Burbuja', col: '#8FD3FF', shape: 'blob', acc: 'glasses', ac: '#1a1a1a' },
+  { name: 'Abuela Nube', col: '#E6E6F0', shape: 'wide', acc: 'bun', ac: '#9a9aa8' },
+  { name: 'Hermanito Globo', col: '#FF7A5C', shape: 'blob', acc: 'antenna', ac: '#FFB23E' },
+  { name: 'Mago Pepino', col: '#7CC96A', shape: 'long', acc: 'wizard', ac: '#6FA8FF' },
+  { name: 'Vecino Tornillo', col: '#A8A8B8', shape: 'tall', acc: 'cap', ac: '#FF5C7A' },
+];
+const SILLY = [
+  ['¿Os acordáis de cuando {R} y yo montamos en delfín por la autopista? ¡Qué risas!', 'agua'],
+  ['El cumple en que llovieron caramelos del techo. ¡El mejor día de la historia!', 'fiesta'],
+  ['{R} me regaló un sombrero que canta. ¡Todavía se sabe tres canciones!', 'fiesta'],
+  ['Fuimos a la luna en la furgoneta de {R}. Volvimos a tiempo para cenar.', 'luna'],
+  ['Ganamos el concurso de baile del barrio. El premio era una vaca. ¡Se llama Lola!', 'fiesta'],
+  ['Guerra de almohadas de tres días. Nadie se hizo daño. ¡Todos ganamos!', 'casa'],
+  ['{R} y yo inventamos un deporte con cucharas. Somos campeones del mundo.', 'sol'],
+  ['Hicimos una tarta de siete pisos y nos la comimos en un minuto. ¡Ñam!', 'fiesta'],
+];
+const NICE = [
+  ['Aquella excursión al río con {R}. Hacía un sol precioso.', 'agua'],
+  ['Navidad del año pasado. Yo traje los turrones, ¿os acordáis?', 'casa'],
+  ['{R} me enseñó a hacer tortilla. Me salió perfecta a la primera.', 'casa'],
+  ['Las cartas de los domingos. Siempre ganaba yo, ja, ja.', 'casa'],
+  ['Fuimos al cine y a {R} le salió refresco por la nariz de la risa.', 'noche'],
+  ['La boda de los primos. Bailamos hasta que cerraron.', 'fiesta'],
+  ['El verano que me quedé a dormir aquí. Todo fue perfecto.', 'sol'],
+  ['{R} y yo vimos las estrellas desde el tejado. Qué paz.', 'noche'],
+];
+const CLUE_REAL = [
+  ['Juraría que antes de hoy nunca había visto a {X}. ¿O sí?', 'casa'],
+  ['Con {X} todo fueron risas. Siempre. Nunca un mal día. Qué raro, ¿no?', 'fiesta'],
+  ['¿{X}? No sale en ninguna foto del álbum familiar.', 'casa'],
+];
+const CLUE_FAKE = [
+  ['¡{X} y yo somos uña y carne desde siempre! ¡Todo risas!', 'fiesta'],
+  ['¡{X} es de la familia de toda la vida! ¡Le queremos muchísimo!', 'sol'],
+];
+const ROUNDS = [
+  { n: 5, f: 2, time: 55, spawn: 7 }, { n: 6, f: 2, time: 55, spawn: 6 }, { n: 6, f: 3, time: 60, spawn: 5.5 },
+  { n: 7, f: 3, time: 65, spawn: 5 }, { n: 8, f: 4, time: 70, spawn: 4.5 },
+];
+const MAXCH = 10;
+const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = G.randi(0, i); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+
+let S;
+function newGame() {
+  S = { round: 0, score: 0, alive: REAL.map(r => r.id), fakeOrder: shuffle(FAKE), fk: 0, phase: 'menu',
+    st: { hit: 0, saved: 0, kill: 0, miss: 0 }, chars: [], splats: [], sel: null, aim: { x: 270, y: 300 } };
+  intro();
+}
+function intro() {
+  const b = G.best('quien-es-real');
+  G.screen({ sub: 'Prototipo 04', title: '¿Quién Es Real?',
+    html: `<p>Unos parásitos se han colado en casa. Implantan recuerdos falsos y se hacen pasar por familia. Descubre quién sobra antes de que se multipliquen.</p>
+    <ul><li>Toca a cada personaje para ver sus recuerdos.</li><li>Márcalo como <b>REAL</b> o <b>PARÁSITO</b> y pulsa <b>Disparar</b>.</li>
+    <li>Si se acaba el tiempo, aparecen más parásitos.</li><li>Teclado: ←/→ elegir, ↑/Espacio otro recuerdo, R / P marcar, Enter disparar.</li></ul>
+    ${b ? `<p>Récord: <b>${b}</b></p>` : ''}`,
+    button: 'Empezar', onClick: () => startRound(0) });
+}
+
+function fill(t, self, x) {
+  const reals = S.chars.filter(c => !c.fake && !c.dead && c !== self).map(c => c.def.name);
+  return t.replace(/\{R\}/g, () => reals.length ? G.pick(reals) : 'Mamá')
+    .replace(/\{X\}/g, x || '???').replace(/\{(\w+)\}/g, (m, k) => N[k] || m);
+}
+function mkChar(def, fake) {
+  return { def, fake, mems: [], mark: null, seen: new Set(), x: G.rand(80, 460), y: 700, tx: 270, ty: 400,
+    ph: G.rand(0, 9), dead: false, gone: false, reveal: 0, pop: 0 };
+}
+function nextFakeDef() {
+  const d = S.fakeOrder[S.fk % S.fakeOrder.length];
+  const lap = Math.floor(S.fk / S.fakeOrder.length);
+  S.fk++;
+  return lap ? Object.assign({}, d, { name: d.name + ' ' + 'II III IV'.split(' ')[Math.min(lap - 1, 2)] }) : d;
+}
+function fakeMems(c, r) {
+  const m = r < 2 ? 2 : 3;
+  const pool = r < 2 ? SILLY : r === 2 ? SILLY.concat(NICE) : NICE;
+  const list = shuffle(pool).slice(0, m).map(([t, s]) => ({ t: fill(t, c), s }));
+  const others = S.chars.filter(o => o.fake && o !== c && !o.gone);
+  if (m === 3 && others.length && Math.random() < 0.45) {
+    const [t, s] = G.pick(CLUE_FAKE); list[2] = { t: fill(t, c, G.pick(others).def.name), s };
+  }
+  c.mems = list;
+}
+function realMems(c, r) {
+  const d = c.def, goods = shuffle(d.good);
+  const bad = G.pick(d.bad);
+  const list = [{ t: fill(bad[0], c), s: bad[1], bad: 1 }];
+  list.push({ t: fill(goods[0][0], c), s: goods[0][1] });
+  if (r >= 2) list.push({ t: fill(goods[1][0], c), s: goods[1][1] });
+  const fakes = S.chars.filter(o => o.fake);
+  if (r >= 1 && fakes.length && Math.random() < 0.5) {
+    const [t, s] = G.pick(CLUE_REAL); list[list.length - 1] = { t: fill(t, c, G.pick(fakes).def.name), s };
+  }
+  c.mems = shuffle(list);
+}
+
+function startRound(r) {
+  const R = ROUNDS[r];
+  S.round = r; S.phase = 'play'; S.timer = R.time; S.spawnT = 0; S.sel = null; S.splats = []; S.guilt = 0;
+  S.rs = { hit: 0, saved: 0, kill: 0, miss: 0, bonus: 0 };
+  const reals = shuffle(S.alive).slice(0, R.n - R.f).map(id => mkChar(REAL.find(x => x.id === id), false));
+  const fakes = []; for (let i = 0; i < R.f; i++) fakes.push(mkChar(nextFakeDef(), true));
+  S.chars = shuffle(reals.concat(fakes));
+  fakes.forEach(c => fakeMems(c, r));
+  reals.forEach(c => realMems(c, r));
+  layout(true);
+  G.beep(520, 0.1, 'triangle', 0.05, 200);
+}
+function present() { return S.chars.filter(c => !c.gone && !c.dead); }
+function layout(snap) {
+  const cs = S.chars.filter(c => !c.gone);
+  const back = Math.ceil(cs.length / 2);
+  cs.forEach((c, i) => {
+    const row = i < back ? 0 : 1, k = row ? cs.length - back : back, j = row ? i - back : i;
+    const sp = Math.min(96, 470 / k);
+    c.tx = 270 + (j - (k - 1) / 2) * sp + (row ? 0 : (k > 1 ? 0 : 0));
+    c.ty = row ? 548 : 400;
+    if (snap) { c.x = c.tx; c.y = c.ty + 160; }
+  });
+}
+function spawnFake() {
+  if (present().length >= MAXCH) return lose();
+  const c = mkChar(nextFakeDef(), true);
+  c.x = 460; c.y = 250;
+  S.chars.push(c); fakeMems(c, S.round); layout(false);
+  G.burst(460, 220, C.lime, 24, 220, 6); G.shake(6, 0.3);
+  G.beep(300, 0.25, 'sawtooth', 0.05, 500);
+  G.float('¡Hola, familia!', 400, 290, C.lime, 22);
+}
+function lose() {
+  S.phase = 'over';
+  const b = G.best('quien-es-real', S.score);
+  G.shake(16, 0.6); G.beep(160, 0.6, 'sawtooth', 0.08, -120);
+  setTimeout(() => G.screen({ sub: 'Ronda ' + (S.round + 1) + '/5', title: '¡Casa invadida!', big: S.score + ' pts',
+    html: `<p>Los parásitos se multiplicaron hasta llenar el salón. Ya nadie sabe quién es quién.</p><p>Récord: <b>${b}</b></p>`,
+    button: 'Otra vez', onClick: newGame }), 700);
+}
+
+function select(c) {
+  if (!c) return;
+  S.sel = c; S.mi = 0;
+  const unseen = c.mems.findIndex((m, i) => !c.seen.has(i)); if (unseen >= 0) S.mi = unseen;
+  c.seen.add(S.mi); G.beep(700, 0.05, 'triangle', 0.04);
+}
+function nextMem() {
+  if (!S.sel) return;
+  S.mi = (S.mi + 1) % S.sel.mems.length; S.sel.seen.add(S.mi); G.beep(820, 0.04, 'triangle', 0.035);
+}
+function mark(m) {
+  if (!S.sel) return;
+  S.sel.mark = m;
+  G.beep(m === 'real' ? 880 : 330, 0.08, m === 'real' ? 'sine' : 'square', 0.05);
+  G.burst(S.sel.x, S.sel.y - 60, m === 'real' ? C.teal : C.pink, 8, 150, 4);
+  // salta al siguiente sin marcar
+  const nx = present().find(c => !c.mark); if (nx) select(nx);
+}
+function canShoot() { return S.phase === 'play' && present().every(c => c.mark); }
+function shoot() {
+  if (!canShoot()) return;
+  S.phase = 'shoot'; S.sel = null; S.endT = 0; S.cur = null;
+  S.rs.bonus = Math.max(0, Math.ceil(S.timer)) * 2;
+  const ps = present().sort((a, b) => a.x - b.x);
+  S.q = ps.filter(c => c.mark === 'fake').map(c => ({ c, t: 'shoot' }))
+    .concat(ps.filter(c => c.mark === 'real' && c.fake).map(c => ({ c, t: 'reveal' })));
+  S.spared = ps.filter(c => c.mark === 'real' && !c.fake);
+  G.beep(200, 0.2, 'square', 0.06, 300);
+}
+function act(e) {
+  const c = e.c;
+  if (e.t === 'shoot') {
+    G.beep(120, 0.15, 'square', 0.09, -60); G.shake(8, 0.2);
+    if (c.fake) {
+      c.gone = true; S.rs.hit++;
+      G.burst(c.x, c.y - 40, C.lime, 36, 380, 8); G.burst(c.x, c.y - 40, '#7CFFB2', 16, 200, 5);
+      S.splats.push({ x: c.x, y: c.y, r: G.rand(34, 46), ph: G.rand(0, 9) });
+      G.float('+150 ¡Plof!', c.x, c.y - 110, C.lime, 26);
+      G.beep(90, 0.3, 'sawtooth', 0.05, -40);
+    } else {
+      c.dead = true; S.rs.kill++; S.guilt = 2.4; S.guiltName = c.def.name;
+      S.alive = S.alive.filter(id => id !== c.def.id);
+      G.shake(18, 0.6); G.burst(c.x, c.y - 40, '#d33', 20, 200, 5);
+      G.float('-400', c.x, c.y - 110, C.pink, 32);
+      [440, 392, 349, 262].forEach((f, i) => setTimeout(() => G.beep(f, 0.35, 'triangle', 0.06), i * 280));
+    }
+  } else {
+    c.reveal = 0.01; S.rs.miss++;
+    G.float('-200 ¡Je, je!', c.x, c.y - 110, C.pink, 24);
+    G.beep(600, 0.3, 'sawtooth', 0.05, -400); G.shake(6, 0.3);
+    G.burst(c.x, c.y - 40, C.pink, 18, 220, 5);
+  }
+}
+function endRound() {
+  const rs = S.rs; rs.saved = S.spared.length;
+  const pts = rs.hit * 150 + rs.saved * 100 - rs.kill * 400 - rs.miss * 200 + rs.bonus;
+  S.score = Math.max(0, S.score + pts);
+  for (const k of ['hit', 'saved', 'kill', 'miss']) S.st[k] += rs[k];
+  const perfect = !rs.kill && !rs.miss;
+  const lines = `<ul><li>Parásitos reventados: <b>${rs.hit}</b> (+${rs.hit * 150})</li><li>Familia a salvo: <b>${rs.saved}</b> (+${rs.saved * 100})</li>
+    ${rs.kill ? `<li>Familia disparada: <b>${rs.kill}</b> (−${rs.kill * 400})</li>` : ''}${rs.miss ? `<li>Parásitos colados: <b>${rs.miss}</b> (−${rs.miss * 200})</li>` : ''}
+    <li>Tiempo sobrante: +${rs.bonus}</li></ul>`;
+  const hints = ['<p style="color:#FFB23E"><b>Pista:</b> los parásitos solo saben fingir recuerdos bonitos...</p>',
+    '<p style="color:#FFB23E"><b>Pista:</b> algunos recuerdos hablan de otros. ¿Quién dice la verdad?</p>',
+    '<p style="color:#FFB23E">Cada vez son más listos: ya no todo es absurdo. Lee con calma, pero no demasiada.</p>',
+    '<p style="color:#FFB23E">Última ronda. La casa está llena.</p>'];
+  if (S.round >= 4) {
+    S.phase = 'over';
+    const b = G.best('quien-es-real', S.score);
+    const t = S.st.kill === 0 && S.st.miss === 0 ? 'Familia intacta' : S.st.kill === 0 ? 'Casi limpia' : S.alive.length <= 3 ? 'Cena muy silenciosa' : 'Hogar, raro hogar';
+    G.screen({ sub: 'Fin de la partida', title: t, big: S.score + ' pts',
+      html: `${lines}<p>Total: ${S.st.hit} parásitos cazados · ${S.st.kill} familiares disparados · ${S.st.miss} colados.</p><p>Récord: <b>${b}</b></p>`,
+      button: 'Jugar otra vez', onClick: newGame });
+  } else {
+    S.phase = 'between';
+    G.screen({ sub: 'Ronda ' + (S.round + 1) + '/5', title: perfect ? '¡Salón limpio!' : rs.kill ? 'Eso ha dolido...' : 'Alguien se ha colado', big: (pts >= 0 ? '+' : '') + pts,
+      html: lines + hints[S.round], button: 'Siguiente ronda', onClick: () => startRound(S.round + 1) });
+  }
+}
+
+// ---------- Actualización ----------
+function hitChar(px, py) {
+  const cs = present().slice().sort((a, b) => b.y - a.y);
+  return cs.find(c => Math.abs(px - c.x) < 38 && py < c.y + 8 && py > c.y - 105);
+}
+function update(dt) {
+  for (const c of S.chars) { c.x = G.lerp(c.x, c.tx, Math.min(1, dt * 5)); c.y = G.lerp(c.y, c.ty, Math.min(1, dt * 5)); }
+  if (S.guilt > 0) S.guilt -= dt;
+  if (S.phase === 'play') {
+    S.timer -= dt;
+    if (S.timer <= 0) {
+      S.spawnT -= dt;
+      if (S.spawnT <= 0) { S.spawnT = ROUNDS[S.round].spawn; spawnFake(); if (S.phase !== 'play') return; }
+    }
+    const p = G.pointer;
+    if (p.pressed && p.sy > 118 && p.sy < 575) { const c = hitChar(p.sx, p.sy); if (c) select(c); }
+    const ps = present().sort((a, b) => a.x - b.x || a.y - b.y);
+    if ((G.keyPressed('ArrowRight') || G.keyPressed('ArrowLeft')) && ps.length) {
+      const i = ps.indexOf(S.sel), d = G.keyPressed('ArrowRight') ? 1 : -1;
+      select(ps[(i < 0 ? 0 : i + d + ps.length) % ps.length]);
+    }
+    if (G.keyPressed('ArrowUp') || G.keyPressed(' ')) nextMem();
+    if (G.keyPressed('r') || G.keyPressed('R')) mark('real');
+    if (G.keyPressed('p') || G.keyPressed('P')) mark('fake');
+    if (G.keyPressed('Enter')) shoot();
+  } else if (S.phase === 'shoot') {
+    if (!S.cur) {
+      if (S.q.length) { S.cur = S.q.shift(); S.qT = 0; S.done = false; }
+      else { S.endT += dt; if (S.endT > (S.guilt > 0 ? 2.2 : 1)) endRound(); }
+    } else {
+      const c = S.cur.c; S.qT += dt;
+      S.aim.x = G.lerp(S.aim.x, c.x, Math.min(1, dt * 10)); S.aim.y = G.lerp(S.aim.y, c.y - 45, Math.min(1, dt * 10));
+      if (S.qT > 0.45 && !S.done) { S.done = true; act(S.cur); }
+      if (c.reveal) { c.reveal += dt; if (c.reveal > 1.1) { c.tx = 600; c.ty = 300; } if (c.reveal > 1.6) c.gone = true; }
+      if (S.qT > (S.cur.t === 'shoot' && !c.fake ? 2.2 : S.cur.t === 'reveal' ? 1.7 : 0.8)) S.cur = null;
+    }
+  }
+}
+
+// ---------- Dibujo ----------
+function blobPath(cx, cy, rx, ry, ph) {
+  ctx.beginPath();
+  for (let i = 0; i <= 28; i++) {
+    const a = i / 28 * Math.PI * 2, w = 1 + Math.sin(a * 3 + G.t * 2 + ph) * 0.035;
+    const px = cx + Math.cos(a) * rx * w, py = cy + Math.sin(a) * ry * w * (a > 0 && a < Math.PI ? 1 : 1.05);
+    i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+  }
+  ctx.closePath();
+}
+function eyes(x, y, gap, r, c) {
+  const blink = (Math.sin(G.t * 1.3 + c.ph * 3) > 0.985);
+  for (const s of [-1, 1]) {
+    const ex = x + s * gap;
+    if (c.dead) { ctx.strokeStyle = '#222'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(ex - 5, y - 5); ctx.lineTo(ex + 5, y + 5); ctx.moveTo(ex + 5, y - 5); ctx.lineTo(ex - 5, y + 5); ctx.stroke(); continue; }
+    if (blink) { ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(ex - r, y); ctx.lineTo(ex + r, y); ctx.stroke(); continue; }
+    G.circle(ex, y, r, c.reveal ? '#E8FF6A' : '#fff');
+    const a = Math.atan2(G.pointer.y - y, G.pointer.x - ex), d = Math.min(r * 0.45, G.dist(G.pointer.x, G.pointer.y, ex, y) / 30);
+    G.circle(ex + Math.cos(a) * d, y + Math.sin(a) * d, r * 0.5, c.reveal ? '#c00' : '#1a1a1a');
+    G.circle(ex + Math.cos(a) * d - r * 0.2, y + Math.sin(a) * d - r * 0.2, r * 0.15, '#fff');
+  }
+}
+const SH = { blob: [30, 38], tall: [24, 48], wide: [38, 32], long: [20, 52] };
+function drawChar(c) {
+  const d = c.def, bob = c.dead ? 0 : Math.sin(G.t * 3 + c.ph) * 3;
+  ctx.save();
+  ctx.translate(c.x, c.y);
+  ctx.fillStyle = '#00000044'; ctx.beginPath(); ctx.ellipse(0, 0, 36, 9, 0, 0, 7); ctx.fill();
+  if (S.sel === c) { ctx.strokeStyle = C.gold; ctx.lineWidth = 4; ctx.beginPath(); ctx.ellipse(0, 0, 42, 12, 0, 0, 7); ctx.stroke(); }
+  if (c.dead) { ctx.rotate(-Math.PI / 2 * Math.min(1, 1)); ctx.translate(-8, 12); ctx.globalAlpha = 0.85; }
+  if (c.reveal) ctx.translate(Math.sin(G.t * 40) * 3, 0);
+  const col = c.dead ? '#8a8494' : c.reveal ? '#9BE35A' : d.col;
+  if (d.shape === 'dog') drawDog(c, col, bob);
+  else {
+    const [rx, ry] = SH[d.shape], cy = -ry - 6 + bob;
+    for (const s of [-1, 1]) { G.circle(s * rx * 0.45, -5, 8, col); }
+    if (c.reveal) { // tentáculos
+      ctx.strokeStyle = '#6BC23A'; ctx.lineWidth = 6; ctx.lineCap = 'round';
+      for (let i = 0; i < 5; i++) { const a = -Math.PI + i * Math.PI / 4; ctx.beginPath(); ctx.moveTo(0, cy); ctx.quadraticCurveTo(Math.cos(a) * 50, cy + Math.sin(a) * 40 + Math.sin(G.t * 8 + i) * 12, Math.cos(a) * 70, cy + Math.sin(a) * 60); ctx.stroke(); }
+    }
+    blobPath(0, cy, rx, ry, c.ph); ctx.fillStyle = col; ctx.fill();
+    ctx.fillStyle = '#ffffff22'; ctx.beginPath(); ctx.ellipse(-rx * 0.35, cy - ry * 0.45, rx * 0.25, ry * 0.18, -0.5, 0, 7); ctx.fill();
+    const ey = cy - ry * 0.25, gap = Math.min(12, rx * 0.42);
+    eyes(0, ey, gap, 8, c);
+    if (d.mous) { ctx.fillStyle = '#3a2618'; for (const s of [-1, 1]) { ctx.beginPath(); ctx.ellipse(s * 8, ey + 15, 9, 4, s * 0.3, 0, 7); ctx.fill(); } }
+    ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 2.5; ctx.beginPath();
+    if (c.reveal) { ctx.fillStyle = '#300'; ctx.ellipse(0, ey + 20, 12, 8, 0, 0, 7); ctx.fill(); ctx.fillStyle = '#fff'; for (let i = -2; i <= 2; i++) { ctx.fillRect(i * 4.5 - 1.5, ey + 13, 3, 5); } }
+    else if (c.dead) { ctx.moveTo(-6, ey + 20); ctx.lineTo(6, ey + 20); ctx.stroke(); }
+    else { ctx.arc(0, ey + 14, 7, 0.2, Math.PI - 0.2); ctx.stroke(); }
+    drawAcc(d, cy - ry, rx, ey, gap);
+    c.top = cy - ry; c.rx = rx;
+  }
+  if (c.dead) { ctx.restore(); ctx.save(); ctx.translate(c.x, c.y); ctx.strokeStyle = C.gold; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(-28, -40 + Math.sin(G.t * 2) * 3, 14, 5, 0, 0, 7); ctx.stroke(); }
+  ctx.restore();
+  // etiqueta + marca
+  if (c.dead) return;
+  const nm = d.name.length > 10 && d.name.includes(' ') ? [d.name.slice(0, d.name.indexOf(' ')), d.name.slice(d.name.indexOf(' ') + 1)] : [d.name];
+  nm.forEach((l, i) => G.text(l, c.x, c.y + 20 + i * 14, { size: 13, align: 'center', body: true, weight: 700, color: C.ink }));
+  const bx = c.x + 26, by = c.y - 92;
+  if (c.mark === 'real') { G.circle(bx, by, 13, C.teal, '#fff', 2); ctx.strokeStyle = C.bg; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(bx - 6, by); ctx.lineTo(bx - 1, by + 5); ctx.lineTo(bx + 7, by - 5); ctx.stroke(); }
+  else if (c.mark === 'fake') { G.circle(bx, by, 13, C.pink, '#fff', 2); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(bx, by, 6, 0, 7); ctx.moveTo(bx - 10, by); ctx.lineTo(bx + 10, by); ctx.moveTo(bx, by - 10); ctx.lineTo(bx, by + 10); ctx.stroke(); }
+  else if (!c.seen.size) G.text('?', bx, by + 8, { size: 22, align: 'center', color: C.gold });
+}
+function drawDog(c, col, bob) {
+  const wag = Math.sin(G.t * 14) * 0.5;
+  ctx.strokeStyle = col; ctx.lineWidth = 6; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-30, -34 + bob); ctx.lineTo(-44 + wag * 6, -52 + bob); ctx.stroke();
+  for (const lx of [-22, -10, 12, 24]) { ctx.beginPath(); ctx.moveTo(lx, -20); ctx.lineTo(lx, -3); ctx.stroke(); }
+  blobPath(0, -32 + bob, 34, 18, c.ph); ctx.fillStyle = col; ctx.fill();
+  const hx = 26, hy = -58 + bob;
+  G.circle(hx, hy, 20, col);
+  ctx.fillStyle = c.dead ? '#666' : '#6B3A1E'; ctx.beginPath(); ctx.ellipse(hx - 16, hy + 2, 7, 14, 0.3, 0, 7); ctx.ellipse(hx + 16, hy + 2, 7, 14, -0.3, 0, 7); ctx.fill();
+  G.circle(hx, hy + 11, 9, '#E8C9A0'); G.circle(hx, hy + 7, 4, '#1a1a1a');
+  eyes(hx, hy - 5, 8, 6, c);
+  c.top = hy - 20; c.rx = 30;
+}
+function drawAcc(d, top, rx, ey, gap) {
+  const a = d.ac; ctx.fillStyle = a; ctx.strokeStyle = a; ctx.lineWidth = 3;
+  switch (d.acc) {
+    case 'bun': ctx.beginPath(); ctx.ellipse(0, top + 8, rx * 0.95, 12, 0, Math.PI, 0); ctx.fill(); G.circle(0, top - 6, 12, a); break;
+    case 'glasses': ctx.strokeStyle = a; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(-gap, ey, 11, 0, 7); ctx.moveTo(gap + 11, ey); ctx.arc(gap, ey, 11, 0, 7); ctx.moveTo(-gap + 11, ey); ctx.lineTo(gap - 11, ey); ctx.stroke(); break;
+    case 'bow': ctx.beginPath(); ctx.moveTo(rx * 0.4, top + 6); ctx.lineTo(rx * 0.4 - 14, top - 6); ctx.lineTo(rx * 0.4 - 14, top + 16); ctx.moveTo(rx * 0.4, top + 6); ctx.lineTo(rx * 0.4 + 14, top - 6); ctx.lineTo(rx * 0.4 + 14, top + 16); ctx.fill(); G.circle(rx * 0.4, top + 6, 5, '#fff'); break;
+    case 'beret': ctx.beginPath(); ctx.ellipse(4, top + 4, rx * 0.9, 9, -0.15, 0, 7); ctx.fill(); G.circle(4, top - 6, 3, a); break;
+    case 'phones': ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(0, top + 18, rx + 2, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke(); G.rrect(-rx - 6, top + 16, 10, 20, 4, a); G.rrect(rx - 4, top + 16, 10, 20, 4, a); break;
+    case 'hat': G.rrect(-rx - 4, top + 2, rx * 2 + 8, 7, 3, a); G.rrect(-rx * 0.7, top - 30, rx * 1.4, 34, 4, a); G.rrect(-rx * 0.7, top - 6, rx * 1.4, 5, 0, C.pink); break;
+    case 'umbrella': ctx.beginPath(); ctx.moveTo(0, top + 4); ctx.lineTo(0, top - 20); ctx.stroke(); ctx.beginPath(); ctx.arc(0, top - 20, 32, Math.PI, 0); ctx.fill(); G.circle(0, top - 53, 4, a); break;
+    case 'party': ctx.beginPath(); ctx.moveTo(-14, top + 6); ctx.lineTo(0, top - 34); ctx.lineTo(14, top + 6); ctx.fill(); G.circle(0, top - 36, 6, C.gold); break;
+    case 'cap': ctx.beginPath(); ctx.arc(0, top + 10, rx * 0.8, Math.PI, 0); ctx.fill(); G.rrect(0, top + 5, rx + 10, 7, 3, a); break;
+    case 'tie': ctx.beginPath(); ctx.moveTo(0, ey + 32); ctx.lineTo(-13, ey + 24); ctx.lineTo(-13, ey + 40); ctx.closePath(); ctx.moveTo(0, ey + 32); ctx.lineTo(13, ey + 24); ctx.lineTo(13, ey + 40); ctx.fill(); break;
+    case 'antenna': ctx.beginPath(); ctx.moveTo(0, top + 2); ctx.quadraticCurveTo(10, top - 14, 4, top - 26); ctx.stroke(); G.circle(4, top - 28, 6, a); break;
+    case 'wizard': ctx.beginPath(); ctx.moveTo(-rx - 6, top + 8); ctx.lineTo(6, top - 44); ctx.lineTo(rx + 6, top + 8); ctx.fill(); G.circle(-2, top - 14, 3, C.gold); G.circle(6, top - 26, 2, C.gold); break;
+  }
+}
+function drawRoom() {
+  ctx.fillStyle = '#3A2C4F'; ctx.fillRect(0, 118, W, 330);
+  ctx.fillStyle = '#33264A'; for (let x = 0; x < W; x += 36) ctx.fillRect(x, 118, 18, 330);
+  ctx.fillStyle = '#4A3346'; ctx.fillRect(0, 448, W, 130);
+  ctx.fillStyle = '#2A1E33'; ctx.fillRect(0, 444, W, 8);
+  // ventana con cielo raro
+  G.rrect(392, 150, 120, 110, 8, '#0E1A2E', '#6B5578', 6);
+  G.circle(430, 185, 16, '#B6E36A'); G.circle(426, 181, 5, '#8CBF45');
+  for (let i = 0; i < 8; i++) G.circle(400 + (i * 37) % 105, 160 + (i * 53) % 90, 1.5, '#fff');
+  ctx.fillStyle = '#6B5578'; ctx.fillRect(449, 150, 6, 110); ctx.fillRect(392, 202, 120, 6);
+  // cuadros
+  G.rrect(40, 150, 90, 70, 4, '#C9A36B'); G.rrect(48, 158, 74, 54, 2, '#8FD3FF');
+  for (let i = 0; i < 4; i++) G.circle(60 + i * 16, 195, 6, ['#FF9F80', '#6FA8FF', '#FFD166', '#C9B8A8'][i]);
+  G.text('?', 110, 180, { size: 16, color: C.pink, shadow: false });
+  G.rrect(160, 165, 54, 64, 4, '#C9A36B'); G.rrect(166, 171, 42, 52, 2, '#53D8C3'); G.circle(187, 197, 12, '#B0703C');
+  // sofá
+  G.rrect(90, 330, 360, 80, 24, '#7A3A55'); G.rrect(70, 355, 50, 70, 16, '#8A4462'); G.rrect(420, 355, 50, 70, 16, '#8A4462');
+  // lámpara
+  ctx.fillStyle = '#6B5578'; ctx.fillRect(28, 300, 5, 150); ctx.beginPath(); ctx.moveTo(10, 300); ctx.lineTo(50, 300); ctx.lineTo(40, 270); ctx.lineTo(20, 270); ctx.fill();
+  ctx.fillStyle = '#FFB23E22'; ctx.beginPath(); ctx.moveTo(10, 300); ctx.lineTo(50, 300); ctx.lineTo(90, 450); ctx.lineTo(-30, 450); ctx.fill();
+  // alfombra
+  ctx.fillStyle = '#5A3A5E'; ctx.beginPath(); ctx.ellipse(270, 520, 240, 44, 0, 0, 7); ctx.fill();
+  for (const s of S.splats) { blobPath(s.x, s.y - 4, s.r, s.r * 0.3, s.ph); ctx.fillStyle = '#7CD94Acc'; ctx.fill(); G.circle(s.x + 10, s.y - 8, 5, '#B6FF7A'); }
+}
+function drawScene(key, x, y, w, h, col, bad) {
+  ctx.save(); ctx.beginPath(); ctx.roundRect(x, y, w, h, 10); ctx.clip();
+  const sky = { sol: '#8FD3FF', lluvia: '#56607A', fiesta: '#5B2E6B', casa: '#7A5A4A', coche: '#6B7A8F', agua: '#9ED8F0', luna: '#0E0B1A', noche: '#1C2450', cole: '#3E6B55', hospital: '#DDE6EA' }[key] || '#555';
+  ctx.fillStyle = sky; ctx.fillRect(x, y, w, h);
+  const gy = y + h * 0.72;
+  if (key === 'sol') { G.circle(x + w - 30, y + 28, 18, '#FFE066'); ctx.fillStyle = '#6FBF4A'; ctx.fillRect(x, gy, w, h); }
+  if (key === 'lluvia') { ctx.fillStyle = '#3E4A5E'; ctx.fillRect(x, gy, w, h); for (const cx of [40, 100, 150]) G.circle(x + cx, y + 22, 22, '#8a93a6'); ctx.strokeStyle = '#B8C6E0'; ctx.lineWidth = 2; for (let i = 0; i < 16; i++) { const rx = x + (i * 23 + G.t * 60) % w, ry = y + 40 + (i * 17 + G.t * 90) % (h - 40); ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(rx - 3, ry + 9); ctx.stroke(); } }
+  if (key === 'fiesta') { for (let i = 0; i < 18; i++) G.circle(x + (i * 41) % w, y + (i * 29 + G.t * 30) % h, 3, [C.gold, C.pink, C.teal, C.lime][i % 4]); for (const [bx, bc] of [[30, C.pink], [150, C.teal]]) { G.circle(x + bx, y + 34, 14, bc); ctx.strokeStyle = '#fff8'; ctx.beginPath(); ctx.moveTo(x + bx, y + 48); ctx.lineTo(x + bx, y + 80); ctx.stroke(); } ctx.fillStyle = '#3A1E48'; ctx.fillRect(x, gy, w, h); }
+  if (key === 'casa') { ctx.fillStyle = '#5A3E32'; ctx.fillRect(x, gy, w, h); G.rrect(x + 20, y + 16, 50, 40, 3, '#9ED8F0', '#4A2E22', 4); G.rrect(x + 100, gy - 26, 60, 10, 3, '#C9A36B'); ctx.fillStyle = '#C9A36B'; ctx.fillRect(x + 106, gy - 16, 5, 16); ctx.fillRect(x + 150, gy - 16, 5, 16); }
+  if (key === 'coche') { ctx.fillStyle = '#333'; ctx.fillRect(x, gy, w, h); ctx.fillStyle = '#ddd'; for (let i = 0; i < 5; i++) ctx.fillRect(x + i * 44, gy + 14, 22, 3); G.rrect(x + 90, gy - 34, 70, 30, 8, '#E9785A'); G.rrect(x + 102, gy - 48, 40, 18, 6, '#E9785A'); G.circle(x + 105, gy - 3, 8, '#111'); G.circle(x + 145, gy - 3, 8, '#111'); }
+  if (key === 'agua') { ctx.fillStyle = '#3A7BD5'; ctx.fillRect(x, gy - 10, w, h); ctx.strokeStyle = '#fff8'; ctx.lineWidth = 2; for (let i = 0; i < 3; i++) { ctx.beginPath(); for (let k = 0; k <= w; k += 8) ctx.lineTo(x + k, gy + i * 10 + Math.sin(k / 12 + G.t * 2 + i) * 3); ctx.stroke(); } }
+  if (key === 'luna') { for (let i = 0; i < 20; i++) G.circle(x + (i * 37) % w, y + (i * 23) % h, 1.4, '#fff'); G.circle(x + w - 40, y + 40, 26, '#E6E6F0'); G.circle(x + w - 48, y + 34, 5, '#bbb'); G.rrect(x + 110, y + 70, 36, 18, 5, C.gold); }
+  if (key === 'noche') { G.circle(x + w - 34, y + 26, 14, '#FFF3B0'); for (let i = 0; i < 12; i++) G.circle(x + (i * 29) % w, y + (i * 13) % 50, 1.3, '#fff'); ctx.fillStyle = '#0B0F24'; ctx.fillRect(x, gy, w, h); ctx.fillRect(x + 100, gy - 40, 50, 40); G.rrect(x + 112, gy - 30, 12, 12, 1, '#FFD166'); }
+  if (key === 'cole') { G.rrect(x + 20, y + 12, w - 40, 44, 3, '#1F3A2E', '#8a6a4a', 4); ctx.strokeStyle = '#fff9'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x + 34, y + 30); ctx.lineTo(x + 80, y + 26); ctx.moveTo(x + 34, y + 42); ctx.lineTo(x + 100, y + 40); ctx.stroke(); ctx.fillStyle = '#8a6a4a'; ctx.fillRect(x, gy, w, h); }
+  if (key === 'hospital') { ctx.fillStyle = '#B8C6CC'; ctx.fillRect(x, gy, w, h); G.rrect(x + 20, y + 14, 32, 32, 4, '#fff'); ctx.fillStyle = '#E04050'; ctx.fillRect(x + 32, y + 18, 8, 24); ctx.fillRect(x + 24, y + 26, 24, 8); G.rrect(x + 90, gy - 20, 80, 18, 5, '#fff'); }
+  // el protagonista del recuerdo
+  const px = x + 60, py = gy + 4;
+  G.circle(px, py - 18, 17, col); G.circle(px - 6, py - 22, 4, '#fff'); G.circle(px + 6, py - 22, 4, '#fff');
+  G.circle(px - 6, py - 22, 2, '#111'); G.circle(px + 6, py - 22, 2, '#111');
+  // viñeta de recuerdo
+  const g = ctx.createRadialGradient(x + w / 2, y + h / 2, h * 0.3, x + w / 2, y + h / 2, w * 0.7);
+  g.addColorStop(0, '#0000'); g.addColorStop(1, '#2a1a0a99'); ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
+  ctx.restore();
+  G.rrect(x, y, w, h, 10, null, '#F2E9D8', 3);
+}
+function wrap(str, maxW, size) {
+  ctx.font = `700 ${size}px ${G.BODY}`;
+  const out = []; let line = '';
+  for (const w of str.split(' ')) { const t = line ? line + ' ' + w : w; if (ctx.measureText(t).width > maxW && line) { out.push(line); line = w; } else line = t; }
+  if (line) out.push(line); return out;
+}
+function drawPanel() {
+  G.rrect(14, 584, 512, 300, 16, C.panel, '#ffffff18', 2);
+  const c = S.sel;
+  if (S.phase !== 'play' || !c || c.gone || c.dead) {
+    const msg = S.phase === 'shoot' ? '...' : 'Toca a alguien del salón para ver sus recuerdos.';
+    wrap(msg, 440, 20).forEach((l, i) => G.text(l, 270, 690 + i * 28, { size: 20, body: true, weight: 700, align: 'center', color: C.dim }));
+    if (S.phase === 'play') G.text('Luego márcalo: REAL o PARÁSITO', 270, 770, { size: 16, align: 'center', color: C.gold });
+    return;
+  }
+  G.text(c.def.name + ' recuerda...', 34, 620, { size: 24, color: C.gold });
+  c.mems.forEach((m, i) => G.circle(500 - (c.mems.length - 1 - i) * 18, 612, 6, i === S.mi ? C.gold : c.seen.has(i) ? C.dim : '#ffffff22'));
+  const m = c.mems[S.mi];
+  drawScene(m.s, 30, 636, 180, 134, c.def.shape === 'dog' ? '#B0703C' : c.def.col);
+  wrap('«' + m.t + '»', 282, 18).slice(0, 6).forEach((l, i) => G.text(l, 226, 658 + i * 24, { size: 18, body: true, weight: 700, shadow: false }));
+  if (G.pointer.pressed && G.inRect(G.pointer.sx, G.pointer.sy, 30, 636, 480, 134)) nextMem();
+  if (G.button(30, 790, 150, 78, 'Otro recuerdo ›', { color: '#4A3A63', textColor: C.ink, body: true, size: 16 })) nextMem();
+  if (G.button(192, 790, 150, 78, 'REAL', { color: c.mark === 'real' ? C.teal : '#2F6F66', textColor: c.mark === 'real' ? C.bg : C.ink, size: 22, stroke: c.mark === 'real' ? '#fff' : null })) mark('real');
+  if (G.button(354, 790, 156, 78, 'PARÁSITO', { color: c.mark === 'fake' ? C.pink : '#7A2E45', textColor: c.mark === 'fake' ? C.bg : C.ink, size: 20, stroke: c.mark === 'fake' ? '#fff' : null })) mark('fake');
+}
+function draw() {
+  ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, G.H);
+  if (!S) return;
+  drawRoom();
+  const cs = S.chars.filter(c => !c.gone).sort((a, b) => a.y - b.y);
+  cs.forEach(drawChar);
+  if (S.phase === 'shoot' && S.cur) {
+    const { x, y } = S.aim, r = 26 + Math.max(0, 0.45 - S.qT) * 40;
+    ctx.strokeStyle = C.pink; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, r, 0, 7);
+    ctx.moveTo(x - r - 10, y); ctx.lineTo(x + r + 10, y); ctx.moveTo(x, y - r - 10); ctx.lineTo(x, y + r + 10); ctx.stroke();
+    if (S.done && S.qT < 0.55) { ctx.fillStyle = '#fff'; ctx.globalAlpha = 0.5; ctx.fillRect(0, 118, W, 460); ctx.globalAlpha = 1; }
+  }
+  if (S.guilt > 0) {
+    ctx.globalAlpha = Math.min(1, S.guilt); ctx.fillStyle = '#000000aa'; ctx.fillRect(0, 118, W, 460);
+    G.text(S.guiltName + ' era real.', 270, 300, { size: 34, align: 'center', color: C.pink });
+    G.text('Silencio incómodo en el salón...', 270, 340, { size: 18, align: 'center', body: true, weight: 700, color: C.dim });
+    ctx.globalAlpha = 1;
+  }
+  // HUD
+  ctx.fillStyle = C.bg; ctx.fillRect(0, 60, W, 58);
+  G.text('RONDA ' + Math.min(5, S.round + 1) + '/5', 20, 88, { size: 20, color: C.teal });
+  G.text(S.score + ' pts', 520, 88, { size: 20, align: 'right', color: C.gold });
+  const R = ROUNDS[S.round], over = S.phase === 'play' && S.timer <= 0;
+  G.bar(20, 98, 500, 12, Math.max(0, S.timer) / R.time, S.timer < 10 ? C.pink : C.lime);
+  const pc = present().length;
+  if (over) {
+    const a = 0.6 + Math.sin(G.t * 10) * 0.4; ctx.globalAlpha = a;
+    G.text('¡SE MULTIPLICAN! ' + pc + '/' + MAXCH, 290, 89, { size: 17, align: 'center', color: C.pink }); ctx.globalAlpha = 1;
+  } else if (S.phase === 'play') G.text(Math.ceil(S.timer) + ' s', 270, 90, { size: 18, align: 'center', color: C.ink, body: true, weight: 700 });
+  drawPanel();
+  const left = present().filter(c => !c.mark).length;
+  const lab = S.phase !== 'play' ? '...' : left ? `Faltan ${left} por marcar` : '¡DISPARAR!';
+  if (G.button(14, 896, 512, 54, lab, { disabled: !canShoot(), color: C.pink, textColor: C.bg, size: 22 })) shoot();
+}
+
+newGame();
+G.run(update, draw);
+</script></body></html>

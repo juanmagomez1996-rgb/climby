@@ -1,0 +1,483 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Zapping Infinito</title></head><body>
+<script src="proto.js"></script>
+<script>
+// Zapping Infinito: microjuegos de 4-5 s en una tele interdimensional.
+const G = Proto.create({ onRestart() { reset(); G.hideScreen(); } });
+const C = G.C, ctx = G.ctx, { rand, randi, pick, clamp, lerp, dist } = G;
+const S = { x: 40, y: 150, w: 460, h: 540 };
+const CX = S.x + S.w / 2, CY = S.y + S.h / 2, SB = S.y + S.h, SR = S.x + S.w;
+const TAU = Math.PI * 2;
+
+// ---------- Utilidades ----------
+const P = G.pointer;
+const inScreen = (x, y) => G.inRect(x, y, S.x, S.y, S.w, S.h);
+const tap = () => P.pressed && inScreen(P.x, P.y);
+const kp = (...ks) => ks.some(k => G.keyPressed(k));
+const act = () => tap() || kp(' ', 'Enter');
+const win = m => { if (!m.res) m.res = 1; };
+const lose = (m, why) => { if (!m.res) { m.res = -1; m.why = why; } };
+
+function blob(x, y, r, col, o = {}) {
+  const t = G.t, wob = o.wob ?? 0.05;
+  ctx.beginPath();
+  for (let i = 0; i <= 28; i++) {
+    const a = i / 28 * TAU, rr = r * (1 + wob * Math.sin(a * 3 + t * 4 + (o.seed || 0)));
+    const px = x + Math.cos(a) * rr * (o.sx || 1), py = y + Math.sin(a) * rr * (o.sy || 1);
+    i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+  }
+  ctx.fillStyle = col; ctx.fill();
+  ctx.lineWidth = 4; ctx.strokeStyle = '#00000055'; ctx.stroke();
+  const n = o.eyes ?? 2;
+  if (n) {
+    const er = o.er || r * 0.22;
+    for (let i = 0; i < n; i++) {
+      const ex = x + (n === 1 ? 0 : (i / (n - 1) - 0.5) * r * (n > 2 ? 1.2 : 0.8));
+      eye(ex, y - r * 0.2, er, o.lx || 0, o.ly || 0, o.lid || 0, col);
+    }
+  }
+  if (o.mouth) {
+    ctx.beginPath(); ctx.lineWidth = 4; ctx.strokeStyle = '#1a1424';
+    if (o.mouth === 'o') { G.circle(x, y + r * 0.35, r * 0.14, '#1a1424'); }
+    else { const s = o.mouth === 'sad' ? -1 : 1; ctx.arc(x, y + r * 0.25 - s * r * 0.1, r * 0.3, s > 0 ? 0.2 : Math.PI + 0.2, s > 0 ? Math.PI - 0.2 : TAU - 0.2); ctx.stroke(); }
+  }
+}
+function eye(x, y, r, lx = 0, ly = 0, lid = 0, lidCol = C.panel) {
+  G.circle(x, y, r, '#fff', '#1a1424', 3);
+  G.circle(x + lx * r * 0.45, y + ly * r * 0.45, r * 0.45, '#1a1424');
+  G.circle(x + lx * r * 0.45 - r * 0.15, y + ly * r * 0.45 - r * 0.15, r * 0.12, '#fff');
+  if (lid > 0) {
+    ctx.save(); ctx.beginPath(); ctx.arc(x, y, r + 1, 0, TAU); ctx.clip();
+    ctx.fillStyle = lidCol; ctx.fillRect(x - r - 2, y - r - 2, r * 2 + 4, (r * 2 + 4) * lid);
+    ctx.restore();
+  }
+}
+function wrap(str, x, y, maxW, size, o = {}) {
+  ctx.font = `${o.body ? 700 : 400} ${size}px ${o.body ? G.BODY : G.FONT}`;
+  const words = str.split(' '), lines = []; let cur = '';
+  for (const w of words) { const t = cur ? cur + ' ' + w : w; if (ctx.measureText(t).width > maxW && cur) { lines.push(cur); cur = w; } else cur = t; }
+  lines.push(cur);
+  lines.forEach((l, i) => G.text(l, x, y + i * size * 1.2, { size, align: 'center', weight: o.body ? 700 : 400, ...o }));
+}
+function bgStripes(c1, c2, n = 8, off = 0) {
+  const w = S.w / n;
+  for (let i = -1; i <= n; i++) { ctx.fillStyle = i % 2 ? c1 : c2; ctx.fillRect(S.x + i * w + (off % (2 * w)), S.y, w, S.h); }
+}
+function lookAt(x, y, tx, ty) { const a = Math.atan2(ty - y, tx - x); return [Math.cos(a), Math.sin(a)]; }
+
+// ---------- Microjuegos ----------
+const QUESTIONS = [
+  ['¿Un gato cabe dentro de un planeta?', 1], ['¿Las sillas pueden votar?', 0], ['¿2 + 2 son 4?', 1],
+  ['¿El agua está seca?', 0], ['¿Tienes dedos en los pies?', 1], ['¿Un lunes es un tipo de queso?', 0],
+  ['¿Esto es la tele?', 1], ['¿Los tomates conducen?', 0], ['¿El fuego quema?', 1], ['¿Una hora tiene 7 minutos?', 0],
+  ['¿La luna es más grande que una uva?', 1], ['¿Los peces respiran por las orejas?', 0],
+];
+const GAMES = [
+  { name: 'CANAL TORNILLO', sub: 'Atornilla la cabeza del presentador', ins: '¡ATORNILLA!', hint: 'Gira en círculos · ← →',
+    init(m, l) { m.a = 0; m.need = TAU * (1.8 + l * 0.3); m.pa = null; },
+    update(m) {
+      if (P.down) {
+        const a = Math.atan2(P.y - (CY - 40), P.x - CX);
+        if (m.pa != null) { let d = a - m.pa; if (d > Math.PI) d -= TAU; if (d < -Math.PI) d += TAU; m.a += Math.min(Math.abs(d), 0.6); if (Math.abs(d) > 0.08) G.beep(200 + m.a * 25, 0.03, 'square', 0.02); }
+        m.pa = a;
+      } else m.pa = null;
+      if (kp('ArrowLeft', 'ArrowRight', ' ')) { m.a += 0.9; G.beep(200 + m.a * 25, 0.04, 'square', 0.04); }
+      if (m.a >= m.need) { win(m); G.burst(CX, CY - 40, C.gold, 20); }
+    },
+    draw(m) {
+      bgStripes('#2b3a6b', '#24315a', 8);
+      const f = clamp(m.a / m.need, 0, 1);
+      G.rrect(CX - 120, SB - 180, 240, 200, 60, '#3b2f6b', '#00000055', 4);
+      ctx.beginPath(); ctx.moveTo(CX, SB - 170); ctx.lineTo(CX - 18, SB - 60); ctx.lineTo(CX, SB - 30); ctx.lineTo(CX + 18, SB - 60); ctx.fillStyle = C.pink; ctx.fill();
+      G.rrect(CX - 28, SB - 215, 56, 50, 10, '#8a9a5b');
+      for (let i = 0; i < 4; i++) G.rrect(CX - 34, SB - 212 + i * 12, 68, 5, 2, '#c9c9c9');
+      const hy = lerp(CY - 150, CY - 40, f);
+      ctx.save(); ctx.translate(CX, hy); ctx.rotate(m.a);
+      blob(0, 0, 80, C.lime, { mouth: f > 0.9 ? 'smile' : 'o', er: 18 });
+      G.rrect(-10, -100, 20, 26, 4, '#c9c9c9', '#555', 2); ctx.fillStyle = '#555'; ctx.fillRect(-10, -89, 20, 4);
+      ctx.restore();
+      ctx.strokeStyle = C.gold + '88'; ctx.lineWidth = 6; ctx.setLineDash([14, 12]);
+      ctx.beginPath(); ctx.arc(CX, CY - 40, 150, G.t * 3, G.t * 3 + TAU * 0.8); ctx.stroke(); ctx.setLineDash([]);
+      G.bar(S.x + 40, SB - 26, S.w - 80, 14, f, C.gold);
+    } },
+  { name: 'BRAZOS FALSOS S.L.', sub: 'Pulsa cuando el brazo encaje', ins: '¡ENCAJA!', hint: 'Toca · Espacio',
+    init(m, l) { m.spd = 2.4 + l * 0.5 + rand(0, 0.6); m.ph = rand(0, TAU); m.ax = CX; },
+    update(m) {
+      if (m.res) return;
+      m.ax = CX + 50 + Math.sin(m.t * m.spd + m.ph) * 150;
+      if (act()) {
+        if (Math.abs(m.ax - (CX + 50)) < 26) { win(m); G.burst(CX + 50, CY + 20, C.teal, 20); m.ax = CX + 50; }
+        else lose(m, 'Brazo en la oreja');
+      }
+    },
+    draw(m) {
+      bgStripes('#6b2b4f', '#5a2443', 6, G.t * 20);
+      blob(CX - 70, CY + 70, 110, '#e5a07a', { er: 22, mouth: m.res === 1 ? 'smile' : m.res ? 'sad' : 'o' });
+      const sx = CX + 50, sy = CY + 20;
+      G.circle(sx, sy, 24, '#1a1424', C.gold, 4);
+      G.text('AQUÍ', sx, sy + 58, { size: 20, align: 'center', color: C.gold });
+      ctx.strokeStyle = '#888'; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(m.ax, S.y + 20); ctx.lineTo(m.ax, sy - 150); ctx.stroke();
+      const ay = m.res === -1 ? sy - 40 : sy - 150;
+      G.rrect(m.ax - 22, ay, 44, 150, 22, '#e5a07a', '#00000066', 4);
+      for (let i = 0; i < 4; i++) G.rrect(m.ax - 20 + i * 11, ay - 26, 9, 30, 4, '#e5a07a', '#00000066', 2);
+      G.text('¡SOLO 3,99 GALAXICRÉDITOS!', CX, SB - 30, { size: 20, align: 'center', color: C.gold });
+    } },
+  { name: 'NOTICIAS DE PLANETA GAZPACHO', sub: 'Esquiva los tomates', ins: '¡ESQUIVA!', hint: 'Arrastra · ← →', survive: true,
+    init(m, l) { m.px = CX; m.tom = []; m.cd = 0.3; m.rate = 0.34 / (1 + l * 0.25); m.vy = 330 + l * 50; },
+    update(m, dt) {
+      if (P.down && inScreen(P.x, P.y)) m.px = lerp(m.px, P.x, 1 - Math.exp(-dt * 14));
+      if (G.key('ArrowLeft')) m.px -= 440 * dt;
+      if (G.key('ArrowRight')) m.px += 440 * dt;
+      m.px = clamp(m.px, S.x + 40, SR - 40);
+      if ((m.cd -= dt) <= 0) { m.cd = m.rate; m.tom.push({ x: rand(S.x + 30, SR - 30), y: S.y - 20, r: rand(18, 26), rot: rand(0, 6) }); if (Math.random() < 0.4) m.tom.push({ x: m.px + rand(-20, 20), y: S.y - 60, r: 22, rot: 0 }); }
+      for (const t of m.tom) { t.y += m.vy * dt; t.rot += dt * 5; if (dist(t.x, t.y, m.px, SB - 80) < t.r + 34) { lose(m, '¡Tomatazo!'); G.burst(t.x, t.y, '#e0302a', 26); t.y = 9999; } }
+      m.tom = m.tom.filter(t => t.y < SB + 40);
+    },
+    draw(m) {
+      ctx.fillStyle = '#c24a2c'; ctx.fillRect(S.x, S.y, S.w, S.h);
+      G.circle(CX + 120, S.y + 120, 70, '#f28a3c');
+      ctx.fillStyle = '#8e3020'; ctx.fillRect(S.x, SB - 40, S.w, 40);
+      blob(m.px, SB - 80, 38, C.teal, { er: 10, lx: 0, ly: -1, mouth: m.res ? 'sad' : 'o' });
+      G.rrect(m.px + 30, SB - 100, 8, 40, 3, '#333'); G.circle(m.px + 34, SB - 104, 9, '#555');
+      for (const t of m.tom) { G.circle(t.x, t.y, t.r, '#e0302a', '#7a120e', 3); ctx.save(); ctx.translate(t.x, t.y - t.r); ctx.rotate(t.rot); G.rrect(-8, -4, 16, 8, 4, '#3d9b3d'); ctx.restore(); }
+      G.rrect(S.x, S.y + 20, S.w, 34, 0, '#00000088');
+      G.text('ÚLTIMA HORA: LLUEVEN TOMATES OTRA VEZ', CX, S.y + 44, { size: 16, align: 'center', body: true, weight: 700, color: C.gold });
+    } },
+  { name: 'COCINA CON BLORP', sub: 'Corta verduras, no dedos', ins: '¡CORTA!', hint: 'Toca · Espacio',
+    init(m, l) {
+      m.spd = 230 + l * 35; m.items = []; m.cut = 0; m.chop = 0;
+      for (let i = 0; i < 12; i++) m.items.push({ x: S.x - 40 - i * 115, f: i > 0 && Math.random() < 0.35 && i % 3 !== 1, c: pick([C.lime, '#ff8a2a', C.pink, '#b06ae0']), cut: false });
+    },
+    update(m, dt) {
+      for (const it of m.items) if (!it.cut) it.x += m.spd * dt; else it.x += m.spd * dt * 0.6;
+      m.chop = Math.max(0, m.chop - dt * 5);
+      if (act() && !m.res) {
+        m.chop = 1; G.beep(160, 0.06, 'sawtooth', 0.05);
+        const it = m.items.find(it => !it.cut && Math.abs(it.x - CX) < 44);
+        if (it) {
+          it.cut = true;
+          if (it.f) { lose(m, '¡Ese era un dedo!'); G.burst(it.x, CY + 60, C.pink, 24); }
+          else { m.cut++; G.burst(it.x, CY + 60, it.c, 14); G.beep(600, 0.05); if (m.cut >= 3) win(m); }
+        }
+      }
+    },
+    draw(m) {
+      ctx.fillStyle = '#3a6b5a'; ctx.fillRect(S.x, S.y, S.w, S.h);
+      blob(CX - 130, S.y + 110, 60, C.pink, { eyes: 3, er: 12, mouth: 'smile' });
+      G.rrect(CX - 175, S.y + 40, 90, 24, 8, '#fff');
+      G.rrect(S.x, CY + 20, S.w, 90, 0, '#8a6a4a'); ctx.fillStyle = '#6a4a2a'; for (let i = 0; i < 10; i++) ctx.fillRect(S.x + ((i * 50 + G.t * 60) % S.w), CY + 20, 4, 90);
+      for (const it of m.items) {
+        if (it.x < S.x - 60 || it.x > SR + 60) continue;
+        const y = CY + 65;
+        if (it.f) { G.rrect(it.x - 45, y - 16, 90, 32, 16, '#f2c29a', '#00000066', 3); G.rrect(it.x + 22, y - 10, 18, 20, 6, '#ffe6e6'); if (it.cut) G.circle(it.x, y, 14, '#c0203a'); }
+        else if (it.cut) { G.rrect(it.x - 44, y - 14, 40, 28, 12, it.c, '#00000066', 3); G.rrect(it.x + 4, y - 14, 40, 28, 12, it.c, '#00000066', 3); }
+        else { G.rrect(it.x - 42, y - 16, 84, 32, 16, it.c, '#00000066', 3); G.rrect(it.x - 52, y - 6, 14, 12, 4, '#3d9b3d'); }
+      }
+      const ky = lerp(CY - 110, CY + 30, m.chop);
+      G.rrect(CX - 8, ky - 70, 16, 60, 6, '#6a3a1a');
+      ctx.beginPath(); ctx.moveTo(CX - 40, ky - 10); ctx.lineTo(CX + 40, ky - 10); ctx.lineTo(CX + 40, ky + 50); ctx.lineTo(CX - 40, ky + 30); ctx.closePath(); ctx.fillStyle = '#dfe6ee'; ctx.fill(); ctx.strokeStyle = '#555'; ctx.lineWidth = 3; ctx.stroke();
+      G.text(`${m.cut}/3`, SR - 30, S.y + 60, { size: 34, align: 'right', color: C.gold });
+    } },
+  { name: 'CONCURSO SÍ O NO', sub: 'Responde rápido', ins: '¡RESPONDE!', hint: 'Toca SÍ o NO · ← →',
+    init(m) { [m.q, m.a] = pick(QUESTIONS); m.pickd = -1; },
+    update(m) {
+      if (m.res) return;
+      let c = -1;
+      if (P.pressed && G.inRect(P.x, P.y, S.x + 20, SB - 180, S.w / 2 - 30, 150)) c = 1;
+      if (P.pressed && G.inRect(P.x, P.y, CX + 10, SB - 180, S.w / 2 - 30, 150)) c = 0;
+      if (kp('ArrowLeft', 's', 'S')) c = 1; if (kp('ArrowRight', 'n', 'N')) c = 0;
+      if (c >= 0) { m.pickd = c; c === m.a ? (win(m), G.burst(c ? CX - 110 : CX + 110, SB - 105, C.gold, 20)) : lose(m, '¡Respuesta incorrecta!'); }
+    },
+    draw(m) {
+      ctx.fillStyle = '#2a1f5a'; ctx.fillRect(S.x, S.y, S.w, S.h);
+      for (let i = 0; i < 12; i++) G.circle(S.x + 20 + i * 40, S.y + 14, 6, (i + Math.floor(G.t * 8)) % 2 ? C.gold : C.pink);
+      blob(CX, S.y + 110, 55, C.blue, { er: 13, mouth: 'smile' });
+      G.rrect(S.x + 30, S.y + 185, S.w - 60, 130, 16, '#fff');
+      wrap(m.q, CX, S.y + 235, S.w - 100, 26, { color: C.bg, shadow: false });
+      G.rrect(S.x + 20, SB - 180, S.w / 2 - 30, 150, 20, m.pickd === 1 ? C.gold : C.teal, '#00000066', 4);
+      G.rrect(CX + 10, SB - 180, S.w / 2 - 30, 150, 20, m.pickd === 0 ? C.gold : C.pink, '#00000066', 4);
+      G.text('SÍ', CX - 110, SB - 105, { size: 56, align: 'center', baseline: 'middle', color: C.bg, shadow: false });
+      G.text('NO', CX + 110, SB - 105, { size: 56, align: 'center', baseline: 'middle', color: C.bg, shadow: false });
+    } },
+  { name: 'LUCHA DE SILLAS', sub: 'Siéntate cuando pare la música', ins: '¡ESPERA Y SIÉNTATE!', hint: 'Toca · Espacio',
+    init(m, l) { m.stop = rand(1.1, 2.8); m.win = 0.75 / (1 + l * 0.2); m.me = 0; },
+    update(m) {
+      const on = m.t < m.stop;
+      if (on && Math.random() < 0.08) G.beep(pick([392, 440, 523, 587]), 0.08, 'triangle', 0.04);
+      if (act() && !m.res) {
+        if (on) lose(m, '¡La música seguía!'); else { win(m); m.me = 1; G.burst(CX, CY + 60, C.gold, 20); }
+      }
+      if (!on && m.t > m.stop + m.win) lose(m, 'Te han quitado la silla');
+    },
+    draw(m) {
+      const on = m.t < m.stop;
+      ctx.fillStyle = on ? '#3a2a5a' : '#1f4a2a'; ctx.fillRect(S.x, S.y, S.w, S.h);
+      G.rrect(CX - 50, CY + 40, 100, 20, 6, '#b07a3a'); G.rrect(CX - 50, CY - 60, 16, 100, 6, '#b07a3a'); G.rrect(CX - 44, CY + 60, 12, 70, 4, '#8a5a2a'); G.rrect(CX + 32, CY + 60, 12, 70, 4, '#8a5a2a');
+      const rv = on ? 0 : clamp((m.t - m.stop) / m.win, 0, 1);
+      const a = m.t * 3;
+      if (m.me) blob(CX, CY + 10, 42, C.teal, { er: 12, mouth: 'smile' });
+      else blob(on ? CX + Math.cos(a) * 150 : CX + 150 - rv * 150, on ? CY + 20 + Math.sin(a) * 60 : CY + 10, 42, C.teal, { er: 12, mouth: 'o' });
+      if (!m.me) blob(on ? CX - Math.cos(a) * 150 : lerp(CX - 150, CX, rv), on ? CY + 20 - Math.sin(a) * 60 : CY + 10, 46, C.pink, { eyes: 3, er: 11, mouth: rv > 0.9 ? 'smile' : 'o', seed: 2 });
+      if (on) for (let i = 0; i < 4; i++) G.text('♪', S.x + 60 + i * 110, S.y + 80 + Math.sin(G.t * 6 + i) * 20, { size: 40, color: C.gold });
+      else G.text('¡YA!', CX, S.y + 110, { size: 70, align: 'center', color: C.lime });
+      G.text('TÚ = AZUL', CX, SB - 30, { size: 20, align: 'center', color: C.teal });
+    } },
+  { name: 'TELETIENDA PROHIBIDA', sub: 'Ni se te ocurra', ins: '¡NO TOQUES!', hint: 'No hagas nada', survive: true,
+    init(m) { m.msg = pick(['TÓCAME', 'GRATIS', 'PORFA', 'SOLO UNA VEZ', 'NADIE MIRA']); },
+    update(m) { if (tap() || kp(' ', 'Enter', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight')) { lose(m, '¡Lo has tocado!'); G.burst(CX, CY, C.pink, 30); } },
+    draw(m) {
+      bgStripes('#5a1f2a', '#4a1a24', 10, G.t * 40);
+      const j = Math.sin(G.t * 30) * 4, r = 110 + Math.sin(G.t * 5) * 8;
+      G.rrect(CX - 140, CY + 40, 280, 70, 20, '#555', '#222', 4);
+      blob(CX + j, CY + 20, r, '#ff2a3a', { sy: 0.6, er: 20, lx: Math.sin(G.t * 2), ly: 0.3, mouth: 'smile' });
+      G.text(m.msg, CX, S.y + 90, { size: 44, align: 'center', color: C.gold });
+      G.text('pulsa pulsa pulsa', CX + Math.sin(G.t * 9) * 20, SB - 60, { size: 22, align: 'center', color: C.ink, body: true, weight: 700 });
+    } },
+  { name: 'REFRESCO PLASMA', sub: 'Agítalo hasta que explote', ins: '¡AGITA!', hint: 'Arrastra rápido · ← →',
+    init(m, l) { m.v = 0; m.need = 2400 + l * 350; m.sh = 0; m.off = 0; },
+    update(m, dt) {
+      if (P.down) { const d = Math.abs(P.dx) + Math.abs(P.dy); m.v += d; m.off = clamp(m.off + P.dx * 0.5, -60, 60); if (d > 20 && Math.random() < 0.3) G.beep(rand(300, 700), 0.03, 'square', 0.02); }
+      if (kp('ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' ')) { m.v += 150; m.off = rand(-50, 50); G.beep(rand(300, 700), 0.04, 'square', 0.03); }
+      m.off *= 0.9;
+      if (m.v >= m.need) { win(m); G.burst(CX, CY - 60, C.lime, 40, 500, 8); G.shake(10); }
+    },
+    draw(m) {
+      ctx.fillStyle = '#1f3a5a'; ctx.fillRect(S.x, S.y, S.w, S.h);
+      const f = clamp(m.v / m.need, 0, 1), x = CX + m.off + rand(-f, f) * 8;
+      G.rrect(x - 70, CY - 130, 140, 260, 30, C.lime, '#00000066', 5);
+      G.rrect(x - 70, CY - 40, 140, 70, 0, C.teal);
+      G.text('PLASMA', x, CY + 12, { size: 26, align: 'center', color: C.bg, shadow: false });
+      eye(x - 28, CY - 80, 16, rand(-1, 1) * f, 0); eye(x + 28, CY - 80, 16, rand(-1, 1) * f, 0);
+      for (let i = 0; i < f * 12; i++) G.circle(x + rand(-60, 60), CY - 140 - rand(0, 80) * f, rand(3, 8), '#dfffb0');
+      G.bar(S.x + 40, SB - 60, S.w - 80, 22, f, C.lime);
+    } },
+  { name: 'PESCA DE OJOS', sub: 'Atrapa el ojo fugitivo', ins: '¡ATRAPA!', hint: 'Toca el ojo',
+    init(m, l) { const a = rand(0, TAU), s = 300 + l * 50; m.x = CX; m.y = CY; m.vx = Math.cos(a) * s; m.vy = Math.sin(a) * s; },
+    update(m, dt) {
+      if (m.res) return;
+      m.x += m.vx * dt; m.y += m.vy * dt;
+      if (m.x < S.x + 40 || m.x > SR - 40) { m.vx *= -1; m.x = clamp(m.x, S.x + 40, SR - 40); }
+      if (m.y < S.y + 40 || m.y > SB - 40) { m.vy *= -1; m.y = clamp(m.y, S.y + 40, SB - 40); }
+      if (Math.random() < 0.02) { const a = rand(0, TAU), s = Math.hypot(m.vx, m.vy); m.vx = Math.cos(a) * s; m.vy = Math.sin(a) * s; }
+      if (tap()) { if (dist(P.x, P.y, m.x, m.y) < 60) { win(m); G.burst(m.x, m.y, '#fff', 24); } else { G.float('¡casi!', P.x, P.y, C.dim, 20); m.vx *= 1.1; m.vy *= 1.1; } }
+    },
+    draw(m) {
+      ctx.fillStyle = '#123a4a'; ctx.fillRect(S.x, S.y, S.w, S.h);
+      for (let i = 0; i < 6; i++) { ctx.strokeStyle = '#1f5a6a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(S.x + ((i * 97 + G.t * 30) % S.w), SB - 20, 30, Math.PI, TAU); ctx.stroke(); }
+      const [lx, ly] = lookAt(m.x, m.y, P.x, P.y);
+      eye(m.x, m.y, 40, -lx, -ly);
+      ctx.strokeStyle = '#c0203a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(m.x - m.vx * 0.12, m.y - m.vy * 0.12); ctx.lineTo(m.x - m.vx * 0.2, m.y - m.vy * 0.2); ctx.stroke();
+      G.rrect(CX - 3, S.y, 6, 60, 3, '#aaa');
+    } },
+  { name: 'EL GLOTÓN DE LAS TRES', sub: 'Dale la hamburguesa', ins: '¡DALE DE COMER!', hint: 'Arrastra · flechas',
+    init(m, l) { m.bx = CX; m.by = SB - 80; m.grab = false; m.mx = CX; m.spd = 1.6 + l * 0.4; },
+    update(m, dt) {
+      if (m.res) return;
+      m.mx = CX + Math.sin(m.t * m.spd) * 140;
+      if (P.pressed && dist(P.x, P.y, m.bx, m.by) < 80) m.grab = true;
+      if (!P.down) m.grab = false;
+      if (m.grab) { m.bx = P.x; m.by = P.y; }
+      const kx = (G.key('ArrowRight') ? 1 : 0) - (G.key('ArrowLeft') ? 1 : 0), ky = (G.key('ArrowDown') ? 1 : 0) - (G.key('ArrowUp') ? 1 : 0);
+      m.bx += kx * 460 * dt; m.by += ky * 460 * dt;
+      m.bx = clamp(m.bx, S.x + 30, SR - 30); m.by = clamp(m.by, S.y + 30, SB - 30);
+      if (dist(m.bx, m.by, m.mx, S.y + 170) < 60) { win(m); G.burst(m.mx, S.y + 170, C.gold, 24); G.beep(200, 0.2, 'sawtooth', 0.06, -120); }
+    },
+    draw(m) {
+      ctx.fillStyle = '#4a2a1f'; ctx.fillRect(S.x, S.y, S.w, S.h);
+      const my = S.y + 150;
+      blob(m.mx, my, 90, '#9a6ae0', { eyes: 3, er: 14, lx: (m.bx - m.mx) / 300, ly: 1 });
+      const open = m.res === 1 ? 0.2 : 1;
+      G.rrect(m.mx - 40, my + 10, 80, 50 * open, 20, '#1a1424');
+      for (let i = 0; i < 4; i++) G.rrect(m.mx - 34 + i * 18, my + 10, 12, 12, 3, '#fff');
+      if (m.res !== 1) {
+        G.rrect(m.bx - 40, m.by - 26, 80, 20, 10, '#e0a040'); G.rrect(m.bx - 42, m.by - 6, 84, 12, 4, '#6a3a1a');
+        G.rrect(m.bx - 44, m.by + 4, 88, 6, 3, C.lime); G.rrect(m.bx - 40, m.by + 10, 80, 16, 8, '#e0a040');
+      }
+      G.text('MÉTELA EN LA BOCA', CX, SB - 20, { size: 16, align: 'center', color: C.dim, body: true, weight: 700 });
+    } },
+  { name: 'BICHOS DE OFERTA', sub: 'Aplasta todos los bichos', ins: '¡APLASTA!', hint: 'Toca los bichos',
+    init(m, l) { m.b = []; const n = Math.min(3 + l, 6); for (let i = 0; i < n; i++) m.b.push({ x: rand(S.x + 60, SR - 60), y: rand(S.y + 90, SB - 60), a: rand(0, TAU), s: 110 + l * 25, dead: 0 }); },
+    update(m, dt) {
+      for (const b of m.b) {
+        if (b.dead) continue;
+        b.a += rand(-3, 3) * dt; b.x += Math.cos(b.a) * b.s * dt; b.y += Math.sin(b.a) * b.s * dt;
+        if (b.x < S.x + 30 || b.x > SR - 30) b.a = Math.PI - b.a; if (b.y < S.y + 80 || b.y > SB - 30) b.a = -b.a;
+        b.x = clamp(b.x, S.x + 30, SR - 30); b.y = clamp(b.y, S.y + 80, SB - 30);
+      }
+      if (tap()) { const b = m.b.find(b => !b.dead && dist(P.x, P.y, b.x, b.y) < 48); if (b) { b.dead = 1; G.burst(b.x, b.y, C.lime, 16); G.beep(120, 0.08, 'square', 0.06); G.shake(3, 0.1); } }
+      if (m.b.every(b => b.dead)) win(m);
+    },
+    draw(m) {
+      ctx.fillStyle = '#e8d8b0'; ctx.fillRect(S.x, S.y, S.w, S.h);
+      ctx.fillStyle = '#d0c090'; for (let i = 0; i < 8; i++) ctx.fillRect(S.x, S.y + i * 70, S.w, 3);
+      for (const b of m.b) {
+        if (b.dead) { blob(b.x, b.y, 30, '#6a8a2a', { eyes: 0, sy: 0.4, wob: 0.2 }); G.text('x x', b.x, b.y + 5, { size: 14, align: 'center', color: C.bg, shadow: false }); continue; }
+        ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.a + Math.PI / 2);
+        for (let k = -1; k <= 1; k++) { ctx.strokeStyle = '#222'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-30, k * 12 + Math.sin(G.t * 20 + k) * 4); ctx.lineTo(30, k * 12 - Math.sin(G.t * 20 + k) * 4); ctx.stroke(); }
+        blob(0, 0, 24, '#6a8a2a', { er: 7, ly: -1 }); ctx.restore();
+      }
+      G.text(`QUEDAN ${m.b.filter(b => !b.dead).length}`, CX, S.y + 50, { size: 24, align: 'center', color: C.pink });
+    } },
+  { name: 'EL TIEMPO CON DORMILÓN', sub: 'Despierta al meteorólogo', ins: '¡DESPIERTA!', hint: 'Toca rápido · Espacio',
+    init(m, l) { m.n = 0; m.need = 10 + l * 2; m.hit = 0; },
+    update(m, dt) {
+      m.hit = Math.max(0, m.hit - dt * 6);
+      if (act() && !m.res) { m.n++; m.hit = 1; G.beep(400 + m.n * 30, 0.05, 'square', 0.05); G.float('¡EH!', rand(S.x + 60, SR - 60), rand(S.y + 100, CY), C.gold, 24); if (m.n >= m.need) { win(m); G.shake(8); G.burst(CX, CY, C.gold, 30); } }
+      m.n = Math.max(0, m.n - dt * 0.8);
+    },
+    draw(m) {
+      ctx.fillStyle = '#4a7ab0'; ctx.fillRect(S.x, S.y, S.w, S.h);
+      G.rrect(S.x + 30, S.y + 60, 200, 150, 10, '#2a5a8a'); G.circle(S.x + 100, S.y + 130, 34, C.gold); blob(S.x + 160, S.y + 140, 34, '#fff', { eyes: 0, sx: 1.5 });
+      const f = clamp(m.n / m.need, 0, 1);
+      blob(CX + 70 + m.hit * rand(-8, 8), CY + 90, 100, '#f0b0d0', { er: 22, lid: m.res === 1 ? 0 : lerp(0.95, 0.3, f), mouth: m.res === 1 ? 'o' : 'sad', ly: 0.5 });
+      if (m.res !== 1) G.text('Zzz', CX + 150, CY - 40 - Math.sin(G.t * 3) * 10, { size: 36, color: '#fff' });
+      G.bar(S.x + 40, SB - 50, S.w - 80, 20, f, C.gold);
+    } },
+];
+const BOSS = { name: 'JEFE: EL PRESENTADOR COLOSAL', sub: 'Toca sus ojos cuando estén abiertos', ins: '¡A LOS OJOS!', hint: 'Toca ojos · ← ↑ →', dur: 9, boss: true,
+  init(m, l) { m.hp = 6 + l; m.max = m.hp; m.eyes = [0, 1, 2].map(i => ({ x: CX + (i - 1) * 130, y: CY - 60 + (i === 1 ? -40 : 0), open: 0, t: rand(0.3, 1.2) })); m.flash = 0; },
+  update(m, dt) {
+    m.flash = Math.max(0, m.flash - dt * 4);
+    for (const e of m.eyes) { e.t -= dt; if (e.t <= 0) { e.open = e.open ? 0 : 1; e.t = e.open ? rand(0.5, 0.9) : rand(0.4, 1.3); } }
+    const hit = e => { if (!e.open) return; e.open = 0; e.t = rand(0.5, 1.1); m.hp--; m.flash = 1; G.burst(e.x, e.y, C.pink, 20); G.shake(8, 0.15); G.beep(150, 0.12, 'sawtooth', 0.07, -80); if (m.hp <= 0) win(m); };
+    if (tap()) for (const e of m.eyes) if (dist(P.x, P.y, e.x, e.y) < 58) hit(e);
+    if (kp('ArrowLeft')) hit(m.eyes[0]); if (kp('ArrowUp', ' ')) hit(m.eyes[1]); if (kp('ArrowRight')) hit(m.eyes[2]);
+  },
+  draw(m) {
+    ctx.fillStyle = m.flash > 0.5 ? '#6a1a2a' : '#2a0f1a'; ctx.fillRect(S.x, S.y, S.w, S.h);
+    blob(CX, CY + 20, 220, '#c05a9a', { eyes: 0, wob: 0.07 });
+    for (const e of m.eyes) { eye(e.x, e.y, 46, Math.sin(G.t * 3), 0, e.open ? 0 : 1, '#c05a9a'); if (!e.open) G.rrect(e.x - 40, e.y - 3, 80, 6, 3, '#6a1a4a'); }
+    G.rrect(CX - 90, CY + 90, 180, 60, 30, '#1a1424'); for (let i = 0; i < 6; i++) G.rrect(CX - 80 + i * 28, CY + 90, 20, 18, 4, '#fff');
+    G.bar(S.x + 40, S.y + 30, S.w - 80, 20, m.hp / m.max, C.pink);
+  } };
+
+// ---------- Estado ----------
+let st;
+function reset() {
+  st = { lives: 4, ch: 0, score: 0, phase: 'static', pt: 0, g: null, m: null, bag: [], last: -1, over: false };
+  nextChannel();
+}
+const level = () => Math.floor(st.score / 5);
+const speed = () => 1 + 0.14 * level();
+function nextChannel() {
+  st.ch++;
+  let g;
+  if (st.ch % 10 === 0) g = BOSS;
+  else {
+    if (!st.bag.length) st.bag = GAMES.map((_, i) => i).sort(() => Math.random() - 0.5);
+    let i = st.bag.pop(); if (i === st.last && st.bag.length) { const j = st.bag.pop(); st.bag.unshift(i); i = j; }
+    st.last = i; g = GAMES[i];
+  }
+  st.g = g; st.m = { t: 0, res: 0, why: '' }; g.init(st.m, level());
+  st.phase = 'static'; st.pt = 0;
+  G.beep(80, 0.3, 'sawtooth', 0.03);
+}
+function finish(ok) {
+  st.phase = 'result'; st.pt = 0; st.ok = ok;
+  if (ok) {
+    const lvlBefore = level();
+    st.score++;
+    G.float(st.g.boss ? '¡JEFE VENCIDO!' : '¡BIEN!', CX, CY - 150, C.lime, 44); G.burst(CX, CY, C.lime, 26, 360);
+    G.beep(660, 0.08); setTimeout(() => G.beep(990, 0.12), 80);
+    if (st.g.boss && st.lives < 4) { st.lives++; G.float('+1 VIDA', CX, CY - 90, C.pink, 30); }
+    if (level() > lvlBefore) G.float('¡MÁS RÁPIDO!', CX, CY + 120, C.gold, 36);
+  } else {
+    st.lives--; G.shake(14, 0.35); G.beep(180, 0.35, 'sawtooth', 0.07, -120);
+    G.float(st.m.why || '¡FALLO!', CX, CY - 150, C.pink, 32);
+  }
+}
+function gameOver() {
+  st.over = true;
+  const prev = G.best('zapping') || 0, best = G.best('zapping', st.score);
+  G.screen({ sub: 'Fin de la emisión', title: st.score > prev ? '¡Nuevo récord de audiencia!' : 'Se acabó la señal', big: st.score,
+    html: `<p>Canales superados. Llegaste al canal ${st.ch}.</p><p>Récord: <b>${best}</b></p>`, button: 'Volver a zapear', onClick: reset });
+}
+
+function update(dt) {
+  if (st.over) return;
+  st.pt += dt;
+  if (st.phase === 'static') { if (st.pt > (st.g.boss ? 1.9 : 1.35)) { st.phase = 'play'; st.pt = 0; G.beep(880, 0.06); } }
+  else if (st.phase === 'play') {
+    const gdt = dt * speed(), m = st.m;
+    m.t += gdt; st.g.update(m, gdt);
+    const dur = st.g.dur || 4.5;
+    if (!m.res && m.t >= dur) st.g.survive ? win(m) : lose(m, '¡Tiempo!');
+    if (m.res) { m.hold = (m.hold || 0) + dt; if (m.hold > 0.35 || m.t >= dur) finish(m.res > 0); }
+    else if (Math.floor(m.t) !== Math.floor(m.t - gdt) && dur - m.t < 3.2) G.beep(520, 0.04, 'square', 0.03);
+  } else if (st.phase === 'result') {
+    if (st.pt > 0.9) st.lives <= 0 ? gameOver() : nextChannel();
+  }
+}
+
+// ---------- Dibujo ----------
+function drawStatic() {
+  for (let y = S.y; y < SB; y += 8) for (let x = S.x; x < SR; x += 12) { const v = randi(20, 200); ctx.fillStyle = `rgb(${v},${v},${v + 20})`; ctx.fillRect(x, y, 12, 8); }
+  const a = clamp(st.pt * 3, 0, 1); ctx.globalAlpha = a;
+  G.rrect(S.x + 20, CY - 150, S.w - 40, 300, 18, '#000000cc');
+  G.text('CANAL ' + String(st.ch).padStart(2, '0'), CX, CY - 100, { size: 44, align: 'center', color: st.g.boss ? C.pink : C.lime });
+  wrap(st.g.name, CX, CY - 45, S.w - 80, 26, { color: C.gold });
+  wrap(st.g.sub, CX, CY + 20, S.w - 80, 20, { color: C.ink, body: true });
+  G.text(st.g.hint, CX, CY + 118, { size: 18, align: 'center', color: C.teal, body: true, weight: 700 });
+  ctx.globalAlpha = 1;
+}
+function drawTV() {
+  ctx.fillStyle = C.bg; ctx.fillRect(0, 0, G.W, G.H);
+  ctx.strokeStyle = C.dim; ctx.lineWidth = 6; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(CX - 20, 112); ctx.lineTo(CX - 110 + Math.sin(G.t * 2) * 6, 72); ctx.moveTo(CX + 20, 112); ctx.lineTo(CX + 120, 70 + Math.cos(G.t * 2) * 6); ctx.stroke();
+  G.circle(CX - 110 + Math.sin(G.t * 2) * 6, 72, 9, C.pink); G.circle(CX + 120, 70 + Math.cos(G.t * 2) * 6, 9, C.teal);
+  G.rrect(CX - 50, 96, 100, 26, 12, '#4a3a66');
+  G.rrect(60, 780, 60, 24, 8, '#3a2d52'); G.rrect(420, 780, 60, 24, 8, '#3a2d52');
+  G.rrect(16, 112, 508, 680, 44, '#6a4a8a', '#00000077', 6);
+  G.rrect(28, 124, 484, 656, 36, null, '#ffffff22', 3);
+  G.rrect(S.x - 8, S.y - 8, S.w + 16, S.h + 16, 30, '#120d1a');
+  // mandos
+  G.rrect(S.x, 716, 330, 44, 14, '#3a2d52');
+  G.circle(420, 738, 24, '#3a2d52', C.gold, 3); G.circle(478, 738, 18, '#3a2d52', C.gold, 3);
+  ctx.save(); ctx.translate(420, 738); ctx.rotate(st ? st.ch * 0.7 : 0); ctx.fillStyle = C.gold; ctx.fillRect(-3, -22, 6, 16); ctx.restore();
+}
+function drawHUD() {
+  const m = st.m;
+  if (st.phase === 'play') {
+    const f = 1 - m.t / (st.g.dur || 4.5);
+    G.bar(S.x + 10, 730, 310, 16, f, f < 0.3 ? C.pink : C.gold, '#120d1a');
+  } else G.text(st.phase === 'static' ? 'SINTONIZANDO…' : st.ok ? 'SEÑAL OK' : 'SIN SEÑAL', S.x + 165, 745, { size: 18, align: 'center', color: C.dim });
+  for (let i = 0; i < 4; i++) {
+    const x = 60 + i * 58, y = 870, on = i < st.lives;
+    G.rrect(x - 22, y - 18, 44, 36, 8, on ? C.teal : '#3a3048', '#00000066', 3);
+    if (on) { eye(x - 8, y - 2, 7, Math.sin(G.t * 2 + i), 0); eye(x + 8, y - 2, 7, Math.sin(G.t * 2 + i), 0); }
+    else G.text('×', x, y + 8, { size: 24, align: 'center', color: C.dim, shadow: false });
+  }
+  G.text('VIDAS', 32, 840, { size: 16, color: C.dim, body: true, weight: 700 });
+  G.text('CANALES', 500, 840, { size: 16, align: 'right', color: C.dim, body: true, weight: 700 });
+  G.text(String(st.score), 500, 895, { size: 50, align: 'right', color: C.gold });
+  G.text('Récord ' + (G.best('zapping') || 0), 500, 928, { size: 15, align: 'right', color: C.dim, body: true, weight: 700 });
+  const lv = level();
+  if (lv) G.text('VELOCIDAD x' + speed().toFixed(2), 32, 928, { size: 15, color: C.lime, body: true, weight: 700 });
+}
+function draw() {
+  drawTV();
+  if (!st) return;
+  ctx.save(); ctx.beginPath(); ctx.roundRect(S.x, S.y, S.w, S.h, 24); ctx.clip();
+  if (st.phase === 'static') drawStatic();
+  else {
+    st.g.draw(st.m);
+    if (st.phase === 'play' && st.m.t < 0.8) {
+      const k = 1 + Math.max(0, 0.4 - st.m.t) * 1.5;
+      ctx.save(); ctx.translate(CX, S.y + 60); ctx.scale(k, k); ctx.rotate(Math.sin(st.m.t * 30) * 0.04);
+      G.text(st.g.ins, 0, 0, { size: 44, align: 'center', baseline: 'middle', color: '#fff' }); ctx.restore();
+    }
+    if (st.phase === 'result') { ctx.fillStyle = st.ok ? '#53d8c333' : '#ff5c7a44'; ctx.fillRect(S.x, S.y, S.w, S.h); G.text(st.ok ? '✔' : '✘', CX, CY + 40, { size: 160, align: 'center', color: st.ok ? C.lime : C.pink }); }
+  }
+  ctx.fillStyle = '#00000022'; for (let y = S.y; y < SB; y += 4) ctx.fillRect(S.x, y, S.w, 2);
+  const gr = ctx.createRadialGradient(CX, CY, S.h * 0.3, CX, CY, S.h * 0.75); gr.addColorStop(0, '#0000'); gr.addColorStop(1, '#0008');
+  ctx.fillStyle = gr; ctx.fillRect(S.x, S.y, S.w, S.h);
+  ctx.restore();
+  drawHUD();
+}
+
+reset(); st.over = true;
+G.screen({ sub: 'Prototipo · microjuegos', title: 'Zapping Infinito',
+  html: `<p>Tu tele pilla canales de otras dimensiones. Cada canal es un reto de 4 segundos. Haz lo que grite la pantalla.</p>
+  <ul><li><b>Toca</b> o pulsa <b>Espacio</b> para actuar.</li><li><b>Arrastra</b> para mover, girar o agitar.</li><li>En escritorio, las <b>flechas</b> también sirven.</li><li>4 vidas. Cada 5 canales va más rápido. Cada 10, un jefe.</li></ul>`,
+  button: 'Encender la tele', onClick: reset });
+G.run(update, draw);
+</script></body></html>

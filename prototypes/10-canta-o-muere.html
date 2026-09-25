@@ -1,0 +1,390 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Canta o Muere</title></head><body>
+<script src="proto.js"></script>
+<script>
+// Canta o Muere: una cabeza gigante exige una canción. Juego de ritmo a 4 carriles.
+const G = Proto.create({ onRestart() { start(); } });
+const C = G.C, W = G.W, H = G.H;
+const LX = 50, LW = 110, TOPL = 372, HIT = 800;
+const LANEC = [C.pink, C.gold, C.teal, C.blue];
+const KEYS = [['d', 'D', 'ArrowLeft'], ['f', 'F', 'ArrowDown'], ['j', 'J', 'ArrowUp'], ['k', 'K', 'ArrowRight']];
+const LABEL = ['D ←', 'F ↓', 'J ↑', 'K →'];
+const SONGS = [
+  { name: 'Hola, Tierra', bpm: 96, bars: 18, seed: 11, key: 0, speed: 560 },
+  { name: 'Baile de Supervivencia', bpm: 114, bars: 22, seed: 23, key: 2, speed: 640 },
+  { name: 'Final Galáctico', bpm: 132, bars: 26, seed: 37, key: 5, speed: 720 },
+];
+const SEMI = [0, 3, 5, 7, 10, 12, 15, 17, 19, 22];
+const ROOTS = [0, -4, 3, -2];
+const W_PERF = 0.055, W_GOOD = 0.12, W_MISS = 0.15;
+
+function rng(s) { return () => { s = s + 0x6D2B79F5 | 0; let t = Math.imul(s ^ s >>> 15, 1 | s); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const noteF = (d, k) => 220 * Math.pow(2, (SEMI[G.clamp(d, 0, 9)] + k) / 12);
+const laneOf = d => Math.min(3, Math.floor(d / 2));
+
+// --- generación de canciones a partir de frases con semilla ---
+function gen(S, lvl) {
+  const r = rng(S.seed), spb = 60 / S.bpm, out = [];
+  const pOn = [0.8, 0.88, 0.94][lvl], pOff = [0.12, 0.38, 0.58][lvl], p16 = [0, 0, 0.13][lvl], pCh = [0, 0.15, 0.3][lvl];
+  let deg = 3, phrase = [];
+  const walk = () => { deg = G.clamp(deg + [-3, -2, -1, 1, 2, 3, 0][Math.floor(r() * 7)], 0, 7); return deg; };
+  for (let bar = 0, pi = 0; bar < S.bars - 1; bar += 2, pi++) {
+    if (pi % 2 === 0) {
+      phrase = [];
+      for (let s8 = 0; s8 < 16; s8++) {
+        if (lvl === 0 && s8 >= 14) continue;
+        const on = s8 % 2 === 0;
+        if (r() < (on ? pOn : pOff)) {
+          const d = walk(); phrase.push({ s: s8 * 2, d });
+          if (s8 % 4 === 0 && r() < pCh) phrase.push({ s: s8 * 2, d: d >= 4 ? d - 4 : d + 4 });
+          else if (r() < p16 && s8 < 15) phrase.push({ s: s8 * 2 + 1, d: G.clamp(d + (r() < .5 ? -2 : 2), 0, 7) });
+        }
+      }
+    } else if (phrase.length > 3) {
+      // repetición con variación al final: se aprende y suena a canción
+      phrase = phrase.map(n => n.s >= 24 ? { s: n.s, d: G.clamp(n.d + (r() < .5 ? -2 : 2), 0, 7) } : n);
+    }
+    for (const n of phrase) if (bar + n.s / 16 < S.bars - 1) out.push({ t: (bar * 4 + n.s / 4) * spb, lane: laneOf(n.d), d: n.d });
+  }
+  const tEnd = (S.bars - 1) * 4 * spb;
+  out.push({ t: tEnd, lane: 0, d: 0 }, { t: tEnd, lane: 3, d: 7 });
+  out.sort((a, b) => a.t - b.t);
+  // evita notas repetidas en el mismo carril y el mismo instante
+  return out.filter((n, i) => !out.slice(0, i).some(m => m.lane === n.lane && Math.abs(m.t - n.t) < 0.01))
+    .map(n => ({ ...n, judged: false }));
+}
+
+let phase, si, S, spb, notes, st, lastSlot, approval, moodV, score, combo, maxCombo, nP, nG, nM, missRow;
+let say, beatPulse, laneFlash, improT, improUsed, boomT, ended, stars, angryWarned, endT;
+const queue = [];
+function start() {
+  approval = 60; moodV = 60; score = 0; combo = 0; maxCombo = 0; nP = nG = nM = 0; missRow = 0;
+  say = null; beatPulse = 0; laneFlash = [0, 0, 0, 0]; ended = false; angryWarned = false;
+  G.particles.length = 0; G.floaters.length = 0; queue.length = 0;
+  G.hideScreen(); startSong(0);
+}
+function startSong(i) {
+  si = i; S = SONGS[i]; spb = 60 / S.bpm; notes = gen(S, i);
+  st = -4 * spb; lastSlot = Math.floor(st / (spb / 2)) - 1; phase = 'count';
+  endT = notes[notes.length - 1].t + 1.2;
+  talk(`CANCIÓN ${i + 1}: «${S.name}»`, 3);
+}
+function talk(text, t = 2) { say = { text, t }; G.beep(90, 0.18, 'sawtooth', 0.04, 30); }
+function tapLane(l) { queue.push(l); }
+G.canvas.addEventListener('pointerdown', e => {
+  const r = G.canvas.getBoundingClientRect(), s = r.width / W;
+  const x = (e.clientX - r.left) / s, y = (e.clientY - r.top) / s;
+  if (y < TOPL - 40) return;
+  tapLane(G.clamp(Math.floor((x - LX) / LW), 0, 3));
+});
+window.addEventListener('keydown', e => {
+  if (e.repeat) return;
+  KEYS.forEach((ks, i) => { if (ks.includes(e.key)) tapLane(i); });
+});
+
+// --- batería y bajo ---
+function drums() {
+  const slot = Math.floor(st / (spb / 2));
+  while (lastSlot < slot) {
+    lastSlot++;
+    const k = lastSlot, p = ((k % 8) + 8) % 8, bar = Math.floor(k / 8);
+    if (k < 0) { if (p % 2 === 0) { G.beep(p === 0 ? 1200 : 900, 0.05, 'square', 0.05); G.float(['3', '2', '1', '¡YA!'][(k + 8) / 2 | 0] || '', W / 2, 600, C.gold, 64); beatPulse = 1; } continue; }
+    if (phase === 'boom' || phase === 'end') continue;
+    const kick = p === 0 || p === 4 || (si >= 1 && p === 3) || (si >= 2 && p === 7);
+    if (kick) G.beep(150, 0.14, 'sine', 0.22, -110);
+    if (p === 2 || p === 6) { G.beep(220, 0.09, 'square', 0.035, -120); G.beep(2400, 0.06, 'sawtooth', 0.018, -2000); }
+    G.beep(7000, 0.025, 'square', p % 2 ? 0.008 : 0.014);
+    if (p === 0 || p === 4 || (si >= 1 && p === 6)) {
+      const root = 55 * Math.pow(2, (ROOTS[bar % 4] + S.key) / 12);
+      G.beep(root, spb * 0.9, 'triangle', 0.12);
+    }
+    if (p % 2 === 0) beatPulse = 1;
+  }
+}
+
+function addApproval(v) {
+  approval = G.clamp(approval + v, 0, 100);
+  if (approval < 30 && !angryWarned) { angryWarned = true; talk('¡MI PACIENCIA SE AGOTA, TERRÍCOLA!', 2.5); }
+  if (approval > 45) angryWarned = false;
+  if (approval <= 0 && phase !== 'boom') boom();
+}
+function judge(n, kind) {
+  n.judged = true;
+  const lx = LX + n.lane * LW + LW / 2;
+  if (kind === 'miss') {
+    nM++; combo = 0; missRow++;
+    G.float('FALLO', lx, HIT - 70, C.pink, 22); G.shake(4, 0.12);
+    G.beep(98, 0.16, 'sawtooth', 0.05, -30);
+    addApproval(-[6, 7, 8][si]);
+    if (missRow === 4) talk(G.pick(['¿ESO ES MÚSICA?', '¡QUÉ HORROR!', 'MIS OREJAS... ¡ESPERA, NO TENGO!']));
+    return;
+  }
+  missRow = 0; combo++; maxCombo = Math.max(maxCombo, combo);
+  const perf = kind === 'perf', mult = 1 + Math.min(3, Math.floor(combo / 10));
+  if (perf) nP++; else nG++;
+  score += (perf ? 300 : 100) * mult;
+  addApproval(perf ? 2.2 : 0.8);
+  G.beep(noteF(n.d, S.key) * 2, spb * 0.8, 'square', perf ? 0.06 : 0.045);
+  G.beep(noteF(n.d, S.key) * 4, spb * 0.4, 'triangle', 0.03);
+  G.float(perf ? '¡PERFECTO!' : 'BIEN', lx, HIT - 70, perf ? C.lime : C.ink, perf ? 24 : 20);
+  G.burst(lx, HIT, LANEC[n.lane], perf ? 16 : 8, perf ? 300 : 180, 5);
+  if ([10, 25, 50, 80].includes(combo)) {
+    talk(['¡ME GUSTA!', '¡SIGUE ASÍ!', '¡ESTO ES ARTE!', '¡LLORO DE EMOCIÓN!'][[10, 25, 50, 80].indexOf(combo)]);
+    G.float('COMBO ' + combo, W / 2, 470, C.gold, 34);
+  }
+}
+function hitLane(l) {
+  laneFlash[l] = 1;
+  let best = null, bd = 1;
+  for (const n of notes) {
+    if (n.judged || n.lane !== l) continue;
+    const d = Math.abs(n.t - st); if (d < bd) { bd = d; best = n; }
+    if (n.t - st > 0.5) break;
+  }
+  if (best && bd <= W_GOOD) judge(best, bd <= W_PERF ? 'perf' : 'good');
+  else { addApproval(-0.6); G.beep(140, 0.05, 'sine', 0.04); }
+}
+function improTap(l) {
+  laneFlash[l] = 1;
+  const e = spb / 2, k = Math.round(st / e), off = Math.abs(st - k * e), lx = LX + l * LW + LW / 2;
+  G.beep(noteF(l * 2 + G.randi(0, 1), S.key) * 2, 0.15, 'square', 0.05);
+  if (off < 0.08 && !improUsed.has(k)) {
+    improUsed.add(k); addApproval(1.8); combo++; maxCombo = Math.max(maxCombo, combo);
+    score += 80 * (1 + Math.min(3, Math.floor(combo / 10)));
+    G.burst(lx, HIT, LANEC[l], 12, 260, 5); G.float('¡EN RITMO!', lx, HIT - 70, C.lime, 20);
+  } else G.float('fuera', lx, HIT - 70, C.dim, 18);
+}
+function boom() {
+  phase = 'boom'; boomT = 2.4;
+  talk('¡SE ACABÓ! ¡ADIÓS, TIERRA!', 3);
+  G.beep(60, 1.2, 'sawtooth', 0.08, 200);
+}
+
+function update(dt) {
+  beatPulse *= Math.exp(-8 * dt);
+  for (let i = 0; i < 4; i++) laneFlash[i] *= Math.exp(-10 * dt);
+  if (say && (say.t -= dt) <= 0) say = null;
+  moodV = G.lerp(moodV, approval, 1 - Math.exp(-4 * dt));
+  if (phase === 'end') { queue.length = 0; return; }
+  if (phase === 'boom') {
+    queue.length = 0;
+    const was = boomT; boomT -= dt;
+    if (was > 1.2 && boomT <= 1.2) {
+      G.shake(26, 1.2);
+      for (let i = 0; i < 8; i++) G.burst(G.rand(40, 500), G.rand(850, 950), G.pick([C.gold, C.pink, '#4a8fe0', '#5FAE3E']), 26, 520, 9);
+      G.beep(45, 1.4, 'sawtooth', 0.12, -20); G.beep(80, 1, 'square', 0.08, -50);
+    }
+    if (boomT <= 0 && !ended) finish(false);
+    return;
+  }
+  st += dt; drums();
+  const taps = queue.splice(0);
+  if (phase === 'count') { if (st >= 0) phase = 'song'; }
+  if (phase === 'song') {
+    for (const l of taps) hitLane(l);
+    for (const n of notes) { if (n.t - st > 0) break; if (!n.judged && st - n.t > W_MISS) judge(n, 'miss'); }
+    if (st > endT && phase === 'song') {
+      if (si < SONGS.length - 1) {
+        phase = 'improv'; improT = 8; improUsed = new Set();
+        talk('¡IMPROVISA, TERRÍCOLA!', 2.5);
+        G.shake(4, 0.2);
+      } else finish(true);
+    }
+  } else if (phase === 'improv') {
+    for (const l of taps) improTap(l);
+    improT -= dt;
+    if (improT <= 0) startSong(si + 1);
+  }
+}
+function finish(won) {
+  ended = true; phase = 'end';
+  const tot = nP + nG + nM, acc = tot ? (nP + nG * 0.6) / tot : 0;
+  const grade = !won ? 'C' : acc >= 0.95 ? 'S' : acc >= 0.85 ? 'A' : acc >= 0.7 ? 'B' : 'C';
+  const prev = G.best('canta-puntos'), best = G.best('canta-puntos', score);
+  if (won) [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => G.beep(f, 0.2, 'triangle', 0.07), i * 120));
+  setTimeout(() => G.screen({
+    sub: won ? (prev === null || score > prev ? '¡Nuevo récord!' : '¡La Cabeza aplaude!') : 'La Tierra ha explotado',
+    title: won ? '¡Tierra salvada!' : '¡Planeta destruido!',
+    big: score.toLocaleString('es-ES'),
+    html: `<p>Nota: <b style="font-size:22px;color:${C.gold}">${grade}</b> · Precisión: <b>${Math.round(acc * 100)}%</b><br>
+      Combo máximo: <b>${maxCombo}</b> · Canciones: <b>${won ? 3 : si}/3</b><br>Mejor puntuación: <b>${best.toLocaleString('es-ES')}</b></p>`,
+    button: 'Otra vez', onClick: start,
+  }), won ? 900 : 300);
+}
+
+// ---------- DIBUJO ----------
+stars = Array.from({ length: 90 }, () => ({ x: G.rand(0, W), y: G.rand(0, H), r: G.rand(0.5, 2), p: G.rand(0, 6) }));
+function mix(a, b, t) {
+  const pa = [1, 3, 5].map(i => parseInt(a.slice(i, i + 2), 16)), pb = [1, 3, 5].map(i => parseInt(b.slice(i, i + 2), 16));
+  return `rgb(${pa.map((v, i) => Math.round(G.lerp(v, pb[i], t))).join(',')})`;
+}
+function drawPlanet(ctx) {
+  const exploded = phase === 'boom' && boomT < 1.2 || (phase === 'end' && approval <= 0);
+  const cx = 270, cy = 1560, r = 700;
+  if (exploded) {
+    for (let i = 0; i < 9; i++) {
+      const a = -Math.PI / 2 + (i - 4) * 0.16, dd = (1.2 - Math.max(0, boomT)) * 260 * (1 + i % 3 * 0.3);
+      ctx.fillStyle = i % 2 ? '#3a6fc0' : '#8a4a2a';
+      ctx.beginPath(); ctx.arc(cx + Math.cos(a) * (r + dd * 0.2) + (i - 4) * dd * 0.3, cy + Math.sin(a) * r - dd * 0.6, 40 + i % 3 * 18, 0, 7); ctx.fill();
+    }
+    return;
+  }
+  const g = ctx.createRadialGradient(cx, cy - r, 20, cx, cy, r);
+  g.addColorStop(0, '#6FA8FF'); g.addColorStop(1, '#1e3f8a');
+  ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.fillStyle = g; ctx.fill(); ctx.clip();
+  ctx.fillStyle = '#5FAE3E';
+  for (let i = 0; i < 7; i++) { const x = ((i * 170 + G.t * 14) % 1200) - 330; ctx.beginPath(); ctx.ellipse(x, 900 + (i % 3) * 30, 70 + i % 2 * 40, 22, 0.1 * i, 0, 7); ctx.fill(); }
+  const heat = G.clamp((30 - moodV) / 30, 0, 1);
+  if (heat > 0) { ctx.fillStyle = `rgba(255,92,60,${heat * 0.45})`; ctx.fillRect(0, 840, W, 200); }
+  ctx.restore();
+  ctx.strokeStyle = '#9fd0ff55'; ctx.lineWidth = 8; ctx.beginPath(); ctx.arc(cx, cy, r + 4, 0, 7); ctx.stroke();
+}
+function drawHead(ctx) {
+  const anger = G.clamp((42 - moodV) / 42, 0, 1), joy = G.clamp((moodV - 60) / 40, 0, 1);
+  const cx = 270, cy = 210 + Math.sin(G.t * 1.3) * 6, r = 108 * (1 + beatPulse * 0.035);
+  // objetivo de la mirada: la próxima nota
+  let tx = 270, ty = HIT;
+  if (notes && (phase === 'song' || phase === 'count')) { const n = notes.find(n => !n.judged && n.t > st - 0.1); if (n) { tx = LX + n.lane * LW + LW / 2; ty = Math.max(TOPL, HIT - (n.t - st) * S.speed); } }
+  // láseres
+  const eyes = [[cx - 44, cy - 16], [cx + 44, cy - 16]];
+  if (anger > 0.55 || phase === 'boom') {
+    const k = phase === 'boom' ? 1 : (anger - 0.55) / 0.45;
+    for (const [ex, ey] of eyes) {
+      const tgx = ex + Math.sin(G.t * 3 + ex) * 120, fl = 0.5 + Math.random() * 0.5;
+      ctx.strokeStyle = `rgba(255,60,80,${0.25 * k * fl})`; ctx.lineWidth = 22 * k; ctx.beginPath(); ctx.moveTo(ex, ey); ctx.lineTo(tgx, 880); ctx.stroke();
+      ctx.strokeStyle = `rgba(255,220,220,${0.8 * k * fl})`; ctx.lineWidth = 4 * k; ctx.stroke();
+    }
+  }
+  const skin = mix('#B9A6E8', '#E8566E', anger);
+  // antenas
+  for (const s of [-1, 0, 1]) {
+    const bx = cx + s * 55, by = cy - r + 18 + Math.abs(s) * 14, sw = Math.sin(G.t * 3 + s) * 8;
+    ctx.strokeStyle = skin; ctx.lineWidth = 7; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(bx, by); ctx.quadraticCurveTo(bx + sw + s * 20, by - 30, bx + sw * 1.5 + s * 26, by - 48); ctx.stroke();
+    G.circle(bx + sw * 1.5 + s * 26, by - 48, 8 + beatPulse * 3, s === 0 ? C.teal : C.lime);
+  }
+  // cuerpo blandito con goteo
+  ctx.beginPath();
+  for (let i = 0; i <= 60; i++) {
+    const a = i / 60 * Math.PI * 2;
+    let rr = r * (1 + 0.035 * Math.sin(a * 5 + G.t * 2));
+    if (Math.sin(a) > 0.5) rr += Math.max(0, Math.sin(a * 9 + G.t)) * 16 * (Math.sin(a) - 0.5);
+    ctx.lineTo(cx + Math.cos(a) * rr * 1.08, cy + Math.sin(a) * rr);
+  }
+  ctx.closePath(); ctx.fillStyle = skin; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = '#1a1424'; ctx.stroke();
+  ctx.fillStyle = '#ffffff22'; ctx.beginPath(); ctx.ellipse(cx - 40, cy - 60, 36, 18, -0.4, 0, 7); ctx.fill();
+  // tercer ojo
+  const blink3 = (G.t % 4) < 0.15;
+  G.circle(cx, cy - 66, 11, '#fff', '#1a1424', 2);
+  if (!blink3) G.circle(cx + (tx - cx) * 0.01, cy - 64, 5, anger > 0.5 ? '#c01030' : '#1a1424'); else { ctx.fillStyle = skin; ctx.fillRect(cx - 12, cy - 78, 24, 13); }
+  // ojos
+  for (const [ex, ey] of eyes) {
+    G.circle(ex, ey, 30, '#fff', '#1a1424', 3);
+    const a = Math.atan2(ty - ey, tx - ex), m = 13;
+    G.circle(ex + Math.cos(a) * m, ey + Math.sin(a) * m, 14, anger > 0.5 ? '#d0203c' : '#3a2a5a');
+    G.circle(ex + Math.cos(a) * m, ey + Math.sin(a) * m, 7, '#1a1424');
+    G.circle(ex + Math.cos(a) * m - 4, ey + Math.sin(a) * m - 4, 3, '#fff');
+    const s = ex < cx ? -1 : 1, tilt = anger * 16 - joy * 8;
+    ctx.strokeStyle = '#1a1424'; ctx.lineWidth = 7;
+    ctx.beginPath(); ctx.moveTo(ex - s * 26, ey - 42 + tilt); ctx.lineTo(ex + s * 26, ey - 44 - tilt * 0.4); ctx.stroke();
+  }
+  // boca: canta con el ritmo
+  const my = cy + 50, curve = (moodV - 45) / 55 * 26, open = 6 + beatPulse * 16 + (say ? Math.abs(Math.sin(G.t * 18)) * 10 : 0);
+  ctx.beginPath(); ctx.moveTo(cx - 40, my - curve * 0.3);
+  ctx.quadraticCurveTo(cx, my + curve - open * 0.2, cx + 40, my - curve * 0.3);
+  ctx.quadraticCurveTo(cx, my + curve + open * 1.6, cx - 40, my - curve * 0.3);
+  ctx.fillStyle = '#2a1030'; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = '#1a1424'; ctx.stroke();
+  if (anger > 0.4) { ctx.fillStyle = '#fff'; for (let i = -2; i <= 2; i++) { ctx.beginPath(); ctx.moveTo(cx + i * 13 - 5, my + curve * 0.4 - 3); ctx.lineTo(cx + i * 13 + 5, my + curve * 0.4 - 3); ctx.lineTo(cx + i * 13, my + curve * 0.4 + 7); ctx.fill(); } }
+  if (joy > 0.3) { G.circle(cx - 78, cy + 26, 12, `rgba(255,92,122,${joy * 0.5})`); G.circle(cx + 78, cy + 26, 12, `rgba(255,92,122,${joy * 0.5})`); }
+}
+function drawSay(ctx) {
+  if (!say) return;
+  ctx.globalAlpha = G.clamp(say.t * 3, 0, 1);
+  const x = 330, y = 262, w = 190;
+  ctx.font = `700 15px ${G.BODY}`;
+  const words = say.text.split(' '), lines = []; let line = '';
+  for (const wd of words) { const t = line ? line + ' ' + wd : wd; if (ctx.measureText(t).width > w - 24 && line) { lines.push(line); line = wd; } else line = t; }
+  lines.push(line);
+  const h = 18 + lines.length * 19;
+  G.rrect(x, y, w, h, 12, '#F2E9D8', '#1a1424', 3);
+  ctx.fillStyle = '#F2E9D8'; ctx.beginPath(); ctx.moveTo(x + 20, y + 2); ctx.lineTo(x - 4, y - 16); ctx.lineTo(x + 44, y + 2); ctx.fill();
+  lines.forEach((l, i) => G.text(l, x + w / 2, y + 23 + i * 19, { size: 15, body: true, weight: 700, align: 'center', color: '#1a1424', shadow: false }));
+  ctx.globalAlpha = 1;
+}
+function drawLanes(ctx) {
+  for (let i = 0; i < 4; i++) {
+    const x = LX + i * LW;
+    G.rrect(x + 5, TOPL, LW - 10, HIT + 60 - TOPL, 14, '#120d1a88');
+    const g = ctx.createLinearGradient(0, TOPL, 0, HIT);
+    g.addColorStop(0, '#00000000'); g.addColorStop(1, LANEC[i] + '33');
+    ctx.fillStyle = g; ctx.fillRect(x + 5, TOPL, LW - 10, HIT - TOPL);
+    if (laneFlash[i] > 0.05) { ctx.globalAlpha = laneFlash[i] * 0.35; ctx.fillStyle = LANEC[i]; ctx.fillRect(x + 5, TOPL, LW - 10, HIT + 60 - TOPL); ctx.globalAlpha = 1; }
+    const cx = x + LW / 2;
+    const ring = phase === 'improv' ? 34 + beatPulse * 10 : 34 + laneFlash[i] * 6;
+    G.circle(cx, HIT, ring, laneFlash[i] > 0.3 ? LANEC[i] + '66' : null, LANEC[i], 4);
+    G.text(LABEL[i], cx, HIT + 78, { size: 16, align: 'center', body: true, weight: 700, color: C.ink });
+  }
+  G.rrect(LX, HIT - 2, LW * 4, 4, 2, '#ffffff33');
+  if (!notes || phase === 'improv') return;
+  const vis = notes.filter(n => !n.judged && (n.t - st) * S.speed < HIT - TOPL + 20);
+  for (let i = 0; i < vis.length; i++) {
+    const a = vis[i], b = vis[i + 1];
+    if (b && Math.abs(a.t - b.t) < 0.01) { const y = HIT - (a.t - st) * S.speed; ctx.strokeStyle = '#ffffff88'; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(LX + a.lane * LW + LW / 2, y); ctx.lineTo(LX + b.lane * LW + LW / 2, y); ctx.stroke(); }
+  }
+  for (const n of vis) {
+    const y = HIT - (n.t - st) * S.speed, x = LX + n.lane * LW + LW / 2;
+    if (y < TOPL - 20) continue;
+    ctx.globalAlpha = G.clamp((y - TOPL + 20) / 60, 0, 1);
+    const wob = Math.sin(G.t * 8 + n.t * 5) * 2;
+    ctx.beginPath(); ctx.ellipse(x, y, 32 + wob, 26 - wob, 0, 0, 7); ctx.fillStyle = LANEC[n.lane]; ctx.fill();
+    ctx.lineWidth = 3; ctx.strokeStyle = '#1a1424'; ctx.stroke();
+    G.circle(x - 9, y - 5, 7, '#fff'); G.circle(x + 9, y - 5, 7, '#fff');
+    G.circle(x - 9, y - 8, 3.5, '#1a1424'); G.circle(x + 9, y - 8, 3.5, '#1a1424');
+    ctx.strokeStyle = '#1a1424'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(x, y + 9, 5, 4, 0, 0, 7); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+}
+function drawHUD() {
+  G.text(score.toLocaleString('es-ES'), 20, 104, { size: 26, color: C.ink });
+  G.text('Canción ' + (si + 1) + '/3', 20, 128, { size: 14, body: true, weight: 700, color: C.dim });
+  if (combo >= 2) {
+    G.text(combo + '', W - 20, 104, { size: 30, align: 'right', color: combo >= 10 ? C.gold : C.ink });
+    G.text('COMBO x' + (1 + Math.min(3, Math.floor(combo / 10))), W - 20, 128, { size: 14, align: 'right', body: true, weight: 700, color: C.dim });
+  }
+  const col = approval < 30 ? C.pink : approval < 60 ? C.gold : C.lime;
+  G.text('APROBACIÓN', LX, 352, { size: 13, body: true, weight: 700, color: C.dim });
+  G.bar(LX + 110, 340, LW * 4 - 110, 16, approval / 100, col);
+  if (phase === 'song' || phase === 'count') {
+    const prog = G.clamp(st / endT, 0, 1);
+    G.rrect(LX, 364, LW * 4 * prog, 3, 1, '#ffffff44');
+  }
+  if (phase === 'improv') {
+    G.text('¡IMPROVISA!', W / 2, 520, { size: 46, align: 'center', color: C.gold });
+    G.text('Toca cualquier carril al ritmo', W / 2, 556, { size: 18, align: 'center', body: true, weight: 700 });
+    G.bar(W / 2 - 120, 580, 240, 12, improT / 8, C.teal);
+  }
+}
+function draw(ctx) {
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#0e0a18'); bg.addColorStop(1, '#2a1c3c');
+  ctx.fillStyle = bg; ctx.fillRect(-20, -20, W + 40, H + 40);
+  for (const s of stars) { ctx.globalAlpha = 0.4 + 0.4 * Math.sin(G.t * 2 + s.p); G.circle(s.x, s.y, s.r, '#fff'); }
+  ctx.globalAlpha = 1;
+  drawPlanet(ctx);
+  drawLanes(ctx);
+  drawHead(ctx);
+  drawHUD();
+  drawSay(ctx);
+}
+
+start(); G.paused = true;
+G.screen({
+  sub: 'Prototipo 10', title: 'Canta o Muere',
+  html: `<p>Una cabeza gigante flota sobre la Tierra: «¡Cantad algo bueno o destruyo el planeta!». Tú eres la voz de la humanidad.</p>
+  <ul><li>Toca el carril cuando la nota llegue al círculo.</li>
+  <li>Teclado: <b>D F J K</b> o las <b>flechas</b>.</li>
+  <li>Cada acierto suena: tú cantas la melodía.</li>
+  <li>Si la Aprobación llega a cero... ¡bum!</li></ul>`,
+  button: 'Cantar', onClick: start,
+});
+G.run(update, draw);
+</script></body></html>
