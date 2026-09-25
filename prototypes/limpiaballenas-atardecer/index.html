@@ -1,0 +1,1515 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+</head>
+<body>
+<title>Buzo Limpiaballenas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&family=Atkinson+Hyperlegible:wght@400;700&family=Share+Tech+Mono&display=swap">
+<style>
+  :root {
+    color-scheme: dark;
+    --abyss: #03131f;
+    --foam: #fdf3ea;
+    --mist: #b9d3d6;
+    --kelp: #8fd6c6;
+    --sun: #ffb07a;
+    --coral: #ff9e87;
+    --lcd: #b8f0c8;
+    --lcd-dim: #6fa987;
+    --glass: rgba(6, 28, 40, 0.6);
+    --line: rgba(255, 220, 190, 0.22);
+  }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--abyss); color: var(--foam);
+    font-family: "Atkinson Hyperlegible", system-ui, sans-serif;
+    overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none;
+  }
+  #sea { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+
+  .mask {
+    position: fixed; inset: 2.5vh 2vw; border-radius: 46% 46% 40% 40% / 30% 30% 44% 44%;
+    box-shadow: 0 0 0 100vmax #02090e, inset 0 0 50px 20px rgba(1, 8, 13, 0.9), inset 0 0 160px 40px rgba(20, 70, 90, 0.18);
+    pointer-events: none;
+  }
+  .mask::after {
+    content: ""; position: absolute; left: 50%; bottom: -2px; width: 17%; height: 10%;
+    transform: translateX(-50%); border-radius: 50% 50% 0 0 / 100% 100% 0 0;
+    background: #02090e; box-shadow: 0 0 30px 16px rgba(1, 8, 13, 0.85);
+  }
+  .glare { position: fixed; inset: 0; pointer-events: none;
+    background: linear-gradient(115deg, rgba(255,240,220,0.06) 0%, rgba(255,255,255,0) 22%, rgba(255,255,255,0) 72%, rgba(255,230,210,0.04) 100%); }
+
+  .computer {
+    position: fixed; top: calc(env(safe-area-inset-top, 0px) + 16px); left: 16px;
+    padding: 10px 12px; border-radius: 14px; min-width: 150px;
+    background: #0d1417; border: 2px solid #2b363b; box-shadow: inset 0 0 0 2px #05090b, 0 6px 18px rgba(0,0,0,.45);
+    font-family: "Share Tech Mono", ui-monospace, monospace; color: var(--lcd);
+    pointer-events: none; font-variant-numeric: tabular-nums;
+  }
+  .computer .row { display: flex; justify-content: space-between; gap: 14px; font-size: 13px; line-height: 1.5; }
+  .computer .row span:first-child { color: var(--lcd-dim); letter-spacing: 0.08em; }
+  .computer .big { font-size: 26px; line-height: 1.05; margin: 2px 0 4px; display: flex; align-items: baseline; gap: 6px; }
+  .computer .big small { font-size: 12px; color: var(--lcd-dim); letter-spacing: 0.08em; }
+  .computer .bar { height: 5px; background: #1a2a22; border-radius: 3px; overflow: hidden; margin-top: 6px; }
+  .computer .bar i { display: block; height: 100%; width: 0%; background: var(--lcd); transition: width .4s ease; }
+  .computer .who { margin-top: 6px; font-size: 12px; color: var(--lcd-dim); }
+
+  button { font: inherit; color: var(--foam); cursor: pointer; background: var(--glass); border: 1px solid var(--line); border-radius: 12px; }
+  button:focus-visible { outline: 2px solid var(--kelp); outline-offset: 2px; }
+  button:disabled { opacity: .55; cursor: progress; }
+  #mute { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 16px); right: 16px; width: 44px; height: 44px; display: grid; place-items: center; }
+  #mute svg { width: 22px; height: 22px; }
+
+  .legend {
+    position: fixed; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+    padding: 0 16px; display: flex; justify-content: center; flex-wrap: wrap; gap: 4px 16px;
+    pointer-events: none; font-size: 13px; color: var(--mist); text-shadow: 0 1px 3px #000;
+  }
+  .legend b { color: var(--foam); }
+  .toast {
+    position: fixed; left: 50%; top: 18%; transform: translateX(-50%);
+    padding: 8px 14px; border-radius: 999px; background: var(--glass); border: 1px solid var(--line);
+    font-size: 14px; pointer-events: none; transition: opacity .4s ease; opacity: 0; white-space: nowrap;
+  }
+  .toast.on { opacity: 1; }
+
+  #stick {
+    position: fixed; left: 22px; bottom: calc(env(safe-area-inset-bottom, 0px) + 40px);
+    width: 116px; height: 116px; border-radius: 50%;
+    background: rgba(6, 28, 40, 0.4); border: 1px solid var(--line); touch-action: none;
+  }
+  #stick i { position: absolute; left: 50%; top: 50%; width: 48px; height: 48px; margin: -24px 0 0 -24px; border-radius: 50%;
+    background: rgba(255, 220, 190, 0.28); border: 1px solid rgba(253, 243, 234, 0.5); }
+  .vert { position: fixed; right: 22px; bottom: calc(env(safe-area-inset-bottom, 0px) + 40px); display: grid; gap: 10px; }
+  .vert button { width: 56px; height: 56px; border-radius: 50%; font-size: 22px; touch-action: none; }
+
+  .card {
+    position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: min(400px, calc(100% - 32px)); box-sizing: border-box; max-height: calc(100% - 32px); overflow: auto;
+    padding: 24px 22px 20px; border-radius: 22px;
+    background: rgba(8, 30, 44, 0.84); border: 1px solid var(--line);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 20px 60px rgba(0,0,0,.45);
+  }
+  .card h2 { margin: 0 0 6px; font-family: "Fredoka", sans-serif; font-weight: 600; font-size: 28px; text-wrap: balance; }
+  .card .lead { margin: 0 0 16px; color: var(--mist); line-height: 1.45; }
+  .card ul { margin: 0 0 18px; padding: 0; list-style: none; display: grid; gap: 10px; }
+  .card li { display: grid; grid-template-columns: 34px 1fr; gap: 10px; align-items: center; line-height: 1.35; font-size: 15px; }
+  .card li span:first-child { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center;
+    background: rgba(255, 176, 122, 0.14); color: var(--sun); font-family: "Share Tech Mono", monospace; font-size: 12px; }
+  .card .go { width: 100%; padding: 13px 22px; border-radius: 999px; font-weight: 700; font-size: 16px; background: var(--coral); color: #2a0f0a; border: none; }
+  .load { height: 4px; border-radius: 2px; background: rgba(255,255,255,.1); overflow: hidden; margin: -6px 0 16px; }
+  .load i { display: block; height: 100%; width: 0%; background: var(--sun); transition: width .3s ease; }
+  #fade { position: fixed; inset: 0; background: #0b3a4c; opacity: 0; pointer-events: none; transition: opacity .9s ease; }
+  @media (max-width: 560px) {
+    .legend { display: none; }
+    .computer { min-width: 124px; padding: 8px 10px; }
+    .computer .big { font-size: 22px; }
+  }
+</style>
+
+<canvas id="sea" aria-label="Vista de buzo junto a una ballena jorobada al atardecer"></canvas>
+<div class="mask"></div>
+<div class="glare"></div>
+
+<div class="computer" aria-live="polite">
+  <div class="big"><span id="left">–</span><small>POR QUITAR</small></div>
+  <div class="row"><span>PROF</span><span id="depth">0,0 m</span></div>
+  <div class="row"><span>MÁX</span><span id="maxDepth">0,0 m</span></div>
+  <div class="row"><span>TEMP</span><span id="temp">26 °C</span></div>
+  <div class="row"><span>T.INM</span><span id="time">00:00</span></div>
+  <div class="bar"><i id="fill"></i></div>
+  <div class="who"><span id="whaleName">Marina</span> · yubarta nº <span id="whaleNo">1</span></div>
+</div>
+
+<button id="mute" aria-label="Silenciar sonido" aria-pressed="false">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 9h4l5-4v14l-5-4H4z"/>
+    <path id="waves" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/>
+    <path id="cross" d="M17 9l5 6M22 9l-5 6" hidden/>
+  </svg>
+</button>
+
+<div class="legend">
+  <span><b>WASD</b> nadar</span>
+  <span><b>Espacio / C</b> subir y bajar</span>
+  <span><b>Arrastra el agua</b> mirar</span>
+  <span><b>Arrastra sobre la ballena</b> raspar</span>
+  <span><b>Agarra</b> un percebe y tira</span>
+</div>
+<div class="toast" id="toast"></div>
+
+<div id="stick" hidden><i></i></div>
+<div class="vert" id="vert" hidden>
+  <button id="upBtn" aria-label="Subir">▲</button>
+  <button id="downBtn" aria-label="Bajar">▼</button>
+</div>
+<div id="fade"></div>
+
+<div class="card" id="intro">
+  <h2>Limpiaballenas</h2>
+  <p class="lead">Atardece sobre el mar. <b id="introName">Marina</b>, una yubarta, descansa a diez metros de profundidad cargada de parásitos. Tienes la rasqueta, aire de sobra y ninguna prisa.</p>
+  <div class="load"><i id="loadBar"></i></div>
+  <ul>
+    <li><span id="moveKey">WASD</span><span id="moveText">Nada con WASD, sube con Espacio y baja con C. Arrastra el agua para mirar.</span></li>
+    <li><span>◎</span><span>Acércate y arrastra la pala sobre las <b>bellotas de mar</b> hasta que salten.</span></li>
+    <li><span>↗</span><span>Engancha los <b>percebes</b> por la cabeza y tira hasta que se suelten.</span></li>
+    <li><span>♡</span><span>Los peces se acercan a saludar. Baja hasta el arrecife si quieres ver más.</span></li>
+  </ul>
+  <button class="go" id="dive" disabled>Cargando el océano…</button>
+</div>
+
+<div class="card" id="done" hidden>
+  <h2 id="doneTitle">Marina está limpia</h2>
+  <p class="lead" id="doneText"></p>
+  <button class="go" id="next">Siguiente ballena</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/loaders/GLTFLoader.js"></script>
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const coarse = matchMedia('(pointer: coarse)').matches;
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+  };
+  const NAMES = ['Marina', 'Tomasa', 'Nube', 'Bruno', 'Celestina', 'Perla', 'Anselmo', 'Remedios', 'Luz', 'Olvido', 'Gaspar', 'Brisa'];
+  let whaleNo = store.get('limpiaballenas.atardecer.no', 1);
+  let soundOn = store.get('limpiaballenas.atardecer.sound', true);
+  const whaleName = () => NAMES[(whaleNo - 1) % NAMES.length];
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+  const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
+  const ASSET = 'assets/';
+
+  THREE.ColorManagement.legacyMode = false;
+
+  // ---------------------------------------------------------------- renderer
+  const canvas = $('sea');
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(Math.min(coarse ? 1.5 : 2, window.devicePixelRatio || 1));
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.08;
+  const scene = new THREE.Scene();
+  const fogColor = new THREE.Color(0x3d8f98);
+  scene.fog = new THREE.FogExp2(fogColor, 0.024);
+  scene.background = fogColor;
+  const camera = new THREE.PerspectiveCamera(70, 1, 0.03, 900);
+  const player = new THREE.Object3D();
+  player.add(camera);
+  scene.add(player);
+  let W = 1, H = 1, pxScale = 1;
+  const dbs = new THREE.Vector2();
+  const sheets = [];
+  function resize() {
+    W = window.innerWidth; H = window.innerHeight;
+    renderer.setSize(W, H, false);
+    camera.aspect = W / H;
+    camera.fov = W < H ? 80 : 70;
+    camera.updateProjectionMatrix();
+    renderer.getDrawingBufferSize(dbs);
+    pxScale = dbs.y / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
+    for (const s of sheets) s.mat.uniforms.uScale.value = pxScale;
+  }
+
+  // ---------------------------------------------------------------- shared uniforms and material patching
+  const U = { uTime: { value: 0 }, uCaus: { value: null }, uCausStr: { value: 1 } };
+  // Adds sunlit caustics to a lit material and, optionally, an idle bend in the vertex shader.
+  function patch(mat, bend) {
+    const own = bend ? { uAmp: { value: bend.amp }, uFreq: { value: bend.freq }, uPhase: { value: bend.phase || 0 } } : {};
+    mat.userData.bend = own;
+    mat.onBeforeCompile = sh => {
+      Object.assign(sh.uniforms, U, own);
+      sh.vertexShader = 'uniform float uTime;\nuniform float uAmp;\nuniform float uFreq;\nuniform float uPhase;\nvarying vec3 vWPos;\n' + sh.vertexShader;
+      let b = '';
+      if (bend && bend.kind === 'whale') b = `
+        float zn = position.z / 0.95;
+        float tail = smoothstep(-0.15, -1.0, zn);
+        transformed.y += sin(uTime * uFreq - zn * 2.4 + uPhase) * uAmp * tail;
+        float fin = smoothstep(0.2, 0.55, abs(position.x));
+        transformed.y += sin(uTime * uFreq * 0.7 + uPhase) * uAmp * 0.6 * fin * (abs(position.x) - 0.2);`;
+      if (bend && bend.kind === 'fish') b = `
+        float zn = position.z / 0.95;
+        float tail = smoothstep(0.25, -1.0, zn);
+        transformed.x += sin(uTime * uFreq + zn * 3.2 + uPhase) * uAmp * tail;`;
+      if (bend && bend.kind === 'turtle') b = `
+        float fl = smoothstep(0.28, 0.85, abs(position.x));
+        transformed.y += sin(uTime * uFreq + uPhase + sign(position.x) * 0.3) * uAmp * fl * abs(position.x);
+        transformed.z += cos(uTime * uFreq + uPhase) * uAmp * 0.4 * fl * abs(position.x);`;
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\n' + b)
+        .replace('#include <project_vertex>', '#include <project_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+      sh.fragmentShader = 'uniform float uTime;\nuniform sampler2D uCaus;\nuniform float uCausStr;\nvarying vec3 vWPos;\n' + sh.fragmentShader;
+      sh.fragmentShader = sh.fragmentShader.replace('#include <fog_fragment>', `
+        {
+          vec2 p = vWPos.xz;
+          float c1 = texture2D(uCaus, p * 0.085 + vec2(uTime * 0.012, uTime * 0.007)).r;
+          float c2 = texture2D(uCaus, p * 0.067 + vec2(-uTime * 0.009, uTime * 0.013)).r;
+          float c = min(c1, c2) * 1.7;
+          vec3 wN = (vec4(normal, 0.0) * viewMatrix).xyz;
+          float up = clamp(wN.y * 0.75 + 0.25, 0.0, 1.0);
+          float fade = exp(vWPos.y * 0.075);
+          gl_FragColor.rgb += diffuseColor.rgb * vec3(1.0, 0.82, 0.6) * c * up * fade * uCausStr;
+        }
+        #include <fog_fragment>`);
+    };
+    mat.customProgramCacheKey = () => 'patch-' + (bend ? bend.kind : 'none');
+    return mat;
+  }
+
+  // ---------------------------------------------------------------- loading
+  const manager = new THREE.LoadingManager();
+  manager.onProgress = (url, l, t) => { $('loadBar').style.width = (l / t * 100) + '%'; };
+  const texLoader = new THREE.TextureLoader(manager);
+  const gltfLoader = new THREE.GLTFLoader(manager);
+  function tex(name, srgb, repeat) {
+    const t = texLoader.load(ASSET + name);
+    if (srgb) t.encoding = THREE.sRGBEncoding;
+    if (repeat) { t.wrapS = t.wrapT = THREE.RepeatWrapping; }
+    t.anisotropy = 4;
+    return t;
+  }
+  const T_PANO = tex('sunset_pano.jpg', true);
+  T_PANO.wrapS = THREE.RepeatWrapping;
+  const T_WIN = tex('surface_window.jpg', true);
+  const T_CAUS = tex('caustics.jpg', false, true);
+  const T_SAND = tex('sand.jpg', true, true);
+  T_SAND.repeat.set(36, 36);
+  const T_BUBBLE = tex('bubble_sheet.png', true);
+  const T_HEART = tex('heart_sheet.png', true);
+  const T_SARDINE = tex('sardine_sheet.png', true);
+  const T_MOTE = tex('mote_sheet.png', true);
+  U.uCaus.value = T_CAUS;
+  const models = {};
+  for (const n of ['whale', 'whale_collider', 'acorn', 'goose', 'ytang', 'btang', 'turtle', 'reef']) {
+    gltfLoader.load(ASSET + n + '.json', g => { models[n] = g.scene; }, undefined, e => console.error('No se pudo cargar', n, e));
+  }
+
+  // ---------------------------------------------------------------- sky, surface, light shafts
+  const skyMat = new THREE.ShaderMaterial({
+    uniforms: { uPano: { value: T_PANO }, uWin: { value: T_WIN }, uFog: { value: fogColor }, uDeep: { value: 0 } },
+    vertexShader: `varying vec3 vDir;
+      void main() { vDir = position; vec4 p = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_Position = p.xyww; }`,
+    fragmentShader: `uniform sampler2D uPano; uniform sampler2D uWin; uniform vec3 uFog; uniform float uDeep; varying vec3 vDir;
+      void main() {
+        vec3 d = normalize(vDir);
+        float el = asin(clamp(d.y, -1.0, 1.0));
+        float az = atan(d.z, d.x);
+        vec2 uv = vec2(fract(az / 6.2831853 + 0.5), clamp((el + 0.95) / 2.05, 0.004, 0.996));
+        vec3 c = texture2D(uPano, uv).rgb;
+        float w = smoothstep(0.95, 1.35, el);
+        vec2 wuv = d.xz / max(d.y, 0.05) * 0.42 + 0.5;
+        c = mix(c, texture2D(uWin, clamp(wuv, 0.0, 1.0)).rgb, w);
+        float hz = 1.0 - smoothstep(-0.1, 0.55, el);
+        c = mix(c, uFog, clamp(max(uDeep, hz * 0.85), 0.0, 0.96));
+        gl_FragColor = vec4(c, 1.0);
+        #include <tonemapping_fragment>
+        #include <encodings_fragment>
+      }`,
+    side: THREE.BackSide, depthWrite: false
+  });
+  const sky = new THREE.Mesh(new THREE.SphereGeometry(500, 48, 24), skyMat);
+  sky.frustumCulled = false; sky.renderOrder = -10; scene.add(sky);
+
+  const surfMat = new THREE.ShaderMaterial({
+    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uWin: { value: null }, uCaus: { value: null }, uTime: { value: 0 }, uCam: { value: V() }, uRefl: { value: new THREE.Color(0x1b6d76) } }]),
+    vertexShader: `varying vec3 vW;
+      #include <fog_pars_vertex>
+      void main() {
+        vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz;
+        vec4 mvPosition = viewMatrix * w;
+        gl_Position = projectionMatrix * mvPosition;
+        #include <fog_vertex>
+      }`,
+    fragmentShader: `uniform sampler2D uWin; uniform sampler2D uCaus; uniform float uTime; uniform vec3 uCam; uniform vec3 uRefl; varying vec3 vW;
+      #include <fog_pars_fragment>
+      void main() {
+        float h = max(0.6, -uCam.y);
+        vec2 rel = vW.xz - uCam.xz;
+        float n = texture2D(uCaus, vW.xz * 0.03 + vec2(uTime * 0.01, uTime * 0.014)).r - 0.5;
+        float n2 = texture2D(uCaus, vW.xz * 0.05 - vec2(uTime * 0.012, uTime * 0.006)).r - 0.5;
+        rel += (n + n2) * 1.4;
+        float R = h * 1.134;
+        vec2 uv = rel / (R * 2.0 / 0.62) + 0.5;
+        vec3 win = texture2D(uWin, clamp(uv, 0.0, 1.0)).rgb * 1.2;
+        float inside = 1.0 - smoothstep(0.36, 0.5, length(uv - 0.5));
+        vec3 c = mix(uRefl * (0.85 + (n + n2) * 0.7), win, inside);
+        gl_FragColor = vec4(c, 1.0);
+        #include <tonemapping_fragment>
+        #include <encodings_fragment>
+        #include <fog_fragment>
+      }`,
+    side: THREE.DoubleSide, fog: true
+  });
+  surfMat.uniforms.uWin.value = T_WIN; surfMat.uniforms.uCaus.value = T_CAUS;
+  const surface = new THREE.Mesh(new THREE.PlaneGeometry(1400, 1400), surfMat);
+  surface.rotation.x = -Math.PI / 2; scene.add(surface);
+
+  const rayTex = (() => {
+    const c = document.createElement('canvas'); c.width = 8; c.height = 256;
+    const g = c.getContext('2d'); const gr = g.createLinearGradient(0, 0, 0, 256);
+    gr.addColorStop(0, 'rgba(255,214,160,1)'); gr.addColorStop(0.35, 'rgba(255,196,150,0.45)'); gr.addColorStop(1, 'rgba(120,200,210,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 8, 256);
+    const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; return t;
+  })();
+  const shafts = [];
+  for (let i = 0; i < 18; i++) {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(rnd(0.4, 1.2), rnd(1.6, 3.2), 48, 14, 1, true),
+      new THREE.MeshBasicMaterial({ map: rayTex, transparent: true, opacity: 0.1, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+    m.userData = { x: rnd(-45, 45), z: rnd(-45, 45), p: rnd(0, 6.28), o: rnd(0.05, 0.11) };
+    m.rotation.z = 0.32; m.rotation.x = rnd(-0.08, 0.08);
+    shafts.push(m); scene.add(m);
+  }
+
+  // ---------------------------------------------------------------- lights
+  const hemi = new THREE.HemisphereLight(0xffd7b0, 0x0e3a4a, 1.1); scene.add(hemi);
+  const sun = new THREE.DirectionalLight(0xffc28a, 1.6); sun.position.set(30, 40, 6); scene.add(sun);
+  const fill = new THREE.DirectionalLight(0x7fd0e0, 0.35); fill.position.set(-20, 10, -15); scene.add(fill);
+  const torch = new THREE.PointLight(0xfff1dc, 0.6, 6, 1.6); torch.position.set(0.2, 0.1, 0); camera.add(torch);
+
+  // ---------------------------------------------------------------- seabed, reefs, kelp
+  const SEABED = -40;
+  const groundH = (x, z) => SEABED + Math.sin(x * 0.08) * 1.2 + Math.cos(z * 0.06 + x * 0.03) * 1.5 + Math.sin((x + z) * 0.21) * 0.35;
+  {
+    const g = new THREE.PlaneGeometry(320, 320, 160, 160); g.rotateX(-Math.PI / 2);
+    const p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) p.setY(i, groundH(p.getX(i), p.getZ(i)));
+    g.computeVertexNormals();
+    scene.add(new THREE.Mesh(g, patch(new THREE.MeshStandardMaterial({ map: T_SAND, color: 0xe8dcc4, roughness: 1 }))));
+  }
+  const reefs = [];
+  const kelpPts = [];
+  function buildReefs() {
+    if (!models.reef) return;
+    for (let i = 0; i < 16; i++) {
+      const a = rnd(0, 6.28), r = rnd(9, 58);
+      const x = Math.cos(a) * r, z = Math.sin(a) * r, s = rnd(3, 8);
+      const o = cloneModel(models.reef);
+      o.scale.setScalar(s / 1.9); o.rotation.y = rnd(0, 6.28);
+      o.position.set(x, groundH(x, z) - 0.1 * s, z);
+      scene.add(o);
+      reefs.push({ c: V(x, groundH(x, z) + 0.2 * s, z), r: 0.52 * s });
+      for (let k = 0; k < 4; k++) kelpPts.push([x + rnd(-1, 1) * s * 0.9, z + rnd(-1, 1) * s * 0.9]);
+    }
+    buildKelp();
+  }
+  function buildKelp() {
+    const n = kelpPts.length + 30;
+    const g = new THREE.PlaneGeometry(0.34, 1, 1, 18); g.translate(0, 0.5, 0);
+    const mat = new THREE.MeshStandardMaterial({ color: 0x8a8a30, roughness: 0.8, side: THREE.DoubleSide, emissive: 0x2a2208, emissiveIntensity: 0.3 });
+    mat.onBeforeCompile = sh => {
+      sh.uniforms.uTime = U.uTime;
+      sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+        float ph = instanceMatrix[3].x * 0.37 + instanceMatrix[3].z * 0.21;
+        float k = pow(position.y, 1.5);
+        transformed.x += sin(uTime * 0.55 + position.y * 3.0 + ph) * 0.18 * k;
+        transformed.z += cos(uTime * 0.4 + position.y * 2.2 + ph) * 0.12 * k;
+        transformed.x *= 1.0 - position.y * 0.35;`);
+    };
+    const im = new THREE.InstancedMesh(g, mat, n);
+    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), s = V();
+    for (let i = 0; i < n; i++) {
+      const [x, z] = i < kelpPts.length ? kelpPts[i] : [rnd(-60, 60), rnd(-60, 60)];
+      q.setFromAxisAngle(V(0, 1, 0), rnd(0, 6.28)); s.set(1, rnd(4, 13), 1);
+      m4.compose(V(x, groundH(x, z) - 0.2, z), q, s); im.setMatrixAt(i, m4);
+    }
+    scene.add(im);
+  }
+  function cloneModel(src, bend) {
+    const o = src.clone(true);
+    o.traverse(m => { if (m.isMesh) { m.material = patch(m.material.clone(), bend); } });
+    return o;
+  }
+
+  // ---------------------------------------------------------------- sprite-sheet particles
+  function makeSheet(texture, cols, rows, max, additive) {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(max * 3), 3));
+    geo.setAttribute('aSize', new THREE.BufferAttribute(new Float32Array(max), 1));
+    geo.setAttribute('aFrame', new THREE.BufferAttribute(new Float32Array(max), 1));
+    geo.setAttribute('aAlpha', new THREE.BufferAttribute(new Float32Array(max), 1));
+    const mat = new THREE.ShaderMaterial({
+      uniforms: { map: { value: texture }, uCols: { value: cols }, uRows: { value: rows }, uScale: { value: 1 }, uTint: { value: new THREE.Color(1, 1, 1) } },
+      vertexShader: `attribute float aSize; attribute float aFrame; attribute float aAlpha; uniform float uScale;
+        varying float vFrame; varying float vAlpha;
+        void main() { vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_PointSize = min(512.0, aSize * uScale / max(0.05, -mv.z)); gl_Position = projectionMatrix * mv; vFrame = aFrame; vAlpha = aAlpha; }`,
+      fragmentShader: `uniform sampler2D map; uniform float uCols; uniform float uRows; uniform vec3 uTint; varying float vFrame; varying float vAlpha;
+        void main() {
+          vec2 cell = vec2(mod(vFrame, uCols), floor(vFrame / uCols));
+          vec2 uv = vec2((cell.x + gl_PointCoord.x) / uCols, 1.0 - (cell.y + gl_PointCoord.y) / uRows);
+          vec4 c = texture2D(map, uv);
+          gl_FragColor = vec4(c.rgb * uTint, c.a * vAlpha);
+          if (gl_FragColor.a < 0.01) discard;
+          #include <tonemapping_fragment>
+          #include <encodings_fragment>
+        }`,
+      transparent: true, depthWrite: false, blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending
+    });
+    const pts = new THREE.Points(geo, mat); pts.frustumCulled = false; scene.add(pts);
+    const s = { geo, mat, max, items: [] };
+    sheets.push(s); return s;
+  }
+  function flushSheet(s) {
+    const P = s.geo.attributes.position.array, S = s.geo.attributes.aSize.array, F = s.geo.attributes.aFrame.array, A = s.geo.attributes.aAlpha.array;
+    let k = 0;
+    for (const it of s.items) {
+      if (k >= s.max) break;
+      P[k * 3] = it.p.x; P[k * 3 + 1] = it.p.y; P[k * 3 + 2] = it.p.z;
+      S[k] = it.size; F[k] = it.frame; A[k] = it.alpha; k++;
+    }
+    s.geo.setDrawRange(0, k);
+    for (const n of ['position', 'aSize', 'aFrame', 'aAlpha']) s.geo.attributes[n].needsUpdate = true;
+  }
+  const bubbles = makeSheet(T_BUBBLE, 4, 4, 900, false);
+  const hearts = makeSheet(T_HEART, 4, 2, 24, false);
+  const motes = makeSheet(T_MOTE, 4, 4, 800, true);
+  for (let i = 0; i < 800; i++) motes.items.push({ p: V(rnd(-14, 14), rnd(-24, 4), rnd(-14, 14)), size: rnd(0.05, 0.12), frame: 0, alpha: 0, seed: rnd(0, 16), drift: V(rnd(-0.05, 0.05), rnd(-0.03, 0.02), rnd(-0.05, 0.05)) });
+  function spawnBubble(p, size, vy) {
+    bubbles.items.push({ p: p.clone(), v: V(rnd(-0.05, 0.05), vy, rnd(-0.05, 0.05)), size, frame: 0, alpha: 1, life: 0, max: rnd(3, 7), seed: rnd(0, 12), pop: -1 });
+  }
+  function spawnHeart(p) { hearts.items.push({ p: p.clone(), size: 0.42, frame: 0, alpha: 1, life: 0 }); }
+
+  const chipGeo = new THREE.BufferGeometry();
+  chipGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(600 * 3), 3));
+  const chipPts = new THREE.Points(chipGeo, new THREE.PointsMaterial({ color: 0xf1e7d6, size: 0.016 }));
+  chipPts.frustumCulled = false; scene.add(chipPts);
+  let chips = [];
+  function spawnChips(w, n, sp) { for (let k = 0; k < n; k++) chips.push({ p: w.clone(), v: V(rnd(-1, 1), rnd(-0.3, 1), rnd(-1, 1)).multiplyScalar(sp), life: 0, max: rnd(0.5, 1.2) }); }
+
+  // ---------------------------------------------------------------- sardine schools (instanced sprite sheet)
+  const SCHOOL = 130, SCHOOLS = 3;
+  const sardMat = new THREE.ShaderMaterial({
+    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { map: { value: null }, uTime: { value: 0 }, uLight: { value: 1 } }]),
+    vertexShader: `attribute float aPhase; uniform float uTime; varying vec2 vUv; varying float vFrame;
+      #include <fog_pars_vertex>
+      void main() {
+        vUv = uv; vec3 p = position;
+        p.z += sin(uTime * 11.0 + aPhase * 6.283 + p.x * 20.0) * 0.012 * (0.5 - p.x / 0.3);
+        vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(p, 1.0);
+        gl_Position = projectionMatrix * mvPosition;
+        vFrame = floor(mod(uTime * 14.0 + aPhase * 16.0, 16.0));
+        #include <fog_vertex>
+      }`,
+    fragmentShader: `uniform sampler2D map; uniform float uLight; varying vec2 vUv; varying float vFrame;
+      #include <fog_pars_fragment>
+      void main() {
+        vec2 cell = vec2(mod(vFrame, 4.0), floor(vFrame / 4.0));
+        vec2 uv = vec2((cell.x + vUv.x) / 4.0, 1.0 - (cell.y + 1.0 - vUv.y) / 4.0);
+        vec4 c = texture2D(map, uv);
+        if (c.a < 0.45) discard;
+        gl_FragColor = vec4(c.rgb * uLight, 1.0);
+        #include <tonemapping_fragment>
+        #include <encodings_fragment>
+        #include <fog_fragment>
+      }`,
+    side: THREE.DoubleSide, fog: true
+  });
+  sardMat.uniforms.map.value = T_SARDINE;
+  const schools = [];
+  {
+    const g = new THREE.PlaneGeometry(0.3, 0.3);
+    for (let s = 0; s < SCHOOLS; s++) {
+      const g2 = g.clone();
+      const ph = new Float32Array(SCHOOL); for (let i = 0; i < SCHOOL; i++) ph[i] = Math.random();
+      g2.setAttribute('aPhase', new THREE.InstancedBufferAttribute(ph, 1));
+      const im = new THREE.InstancedMesh(g2, sardMat, SCHOOL); im.frustumCulled = false; scene.add(im);
+      const fish = [];
+      for (let i = 0; i < SCHOOL; i++) {
+        const a = rnd(0, 6.28), rr = Math.sqrt(Math.random());
+        fish.push({ off: V(Math.cos(a) * rr * 3.2, rnd(-1, 1) * 1.1, Math.sin(a) * rr * 3.2), p: V(0, -8, 0), v: V(1, 0, 0), push: V(), k: rnd(0.8, 1.2) });
+      }
+      schools.push({ im, fish, R: rnd(16, 30), w: rnd(0.02, 0.035) * (s % 2 ? -1 : 1), ph: rnd(0, 6.28), y0: -4 - s * 6 - rnd(0, 4), center: V() });
+    }
+  }
+  const m4 = new THREE.Matrix4(), bx = V(), by = V(), bz = V(), upV = V(0, 1, 0);
+  function updateSchools(dt, T) {
+    const pp = player.position;
+    for (const s of schools) {
+      const a = T * s.w + s.ph;
+      s.center.set(Math.cos(a) * s.R, s.y0 + Math.sin(T * 0.13 + s.ph) * 2.5, Math.sin(a) * s.R * 0.8);
+      const rot = T * 0.25;
+      for (let i = 0; i < s.fish.length; i++) {
+        const f = s.fish[i];
+        const ox = f.off.x * Math.cos(rot) - f.off.z * Math.sin(rot), oz = f.off.x * Math.sin(rot) + f.off.z * Math.cos(rot);
+        const tx = s.center.x + ox + f.push.x, ty = s.center.y + f.off.y + Math.sin(T * 1.3 + i) * 0.15 + f.push.y, tz = s.center.z + oz + f.push.z;
+        const dx = f.p.x - pp.x, dy = f.p.y - pp.y, dz = f.p.z - pp.z, d2 = dx * dx + dy * dy + dz * dz;
+        if (d2 < 7.5) { const d = Math.sqrt(d2) || 1; f.push.x += dx / d * 5 * dt; f.push.y += dy / d * 3 * dt; f.push.z += dz / d * 5 * dt; }
+        f.push.multiplyScalar(Math.exp(-0.6 * dt));
+        const k = 1 - Math.exp(-1.6 * f.k * dt);
+        const nx = f.p.x + (tx - f.p.x) * k, ny = f.p.y + (ty - f.p.y) * k, nz = f.p.z + (tz - f.p.z) * k;
+        f.v.set(nx - f.p.x, ny - f.p.y, nz - f.p.z);
+        if (f.v.lengthSq() > 1e-8) bx.copy(f.v).normalize(); else bx.set(1, 0, 0);
+        f.p.set(nx, ny, nz);
+        bz.crossVectors(bx, upV); if (bz.lengthSq() < 1e-6) bz.set(0, 0, 1); bz.normalize();
+        by.crossVectors(bz, bx);
+        m4.makeBasis(bx, by, bz); m4.setPosition(f.p);
+        s.im.setMatrixAt(i, m4);
+      }
+      s.im.instanceMatrix.needsUpdate = true;
+    }
+  }
+
+  // ---------------------------------------------------------------- jellyfish (deep water, procedural)
+  const jellies = [];
+  {
+    const bellGeo = new THREE.SphereGeometry(0.34, 28, 14, 0, Math.PI * 2, 0, Math.PI * 0.55);
+    for (let i = 0; i < 10; i++) {
+      const hue = [0xff9ad5, 0xb99cff, 0x8fe3ff, 0xffc38f][i % 4];
+      const mat = new THREE.ShaderMaterial({
+        uniforms: { uColor: { value: new THREE.Color(hue) }, uAlpha: { value: 1 } },
+        vertexShader: `varying vec3 vN; varying vec3 vV; void main() { vec4 mv = modelViewMatrix * vec4(position, 1.0); vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }`,
+        fragmentShader: `uniform vec3 uColor; uniform float uAlpha; varying vec3 vN; varying vec3 vV;
+          void main() {
+            float f = pow(1.0 - abs(dot(vN, vV)), 2.2);
+            gl_FragColor = vec4(uColor * (0.25 + f * 1.6), (0.18 + f * 0.7) * uAlpha);
+            #include <tonemapping_fragment>
+            #include <encodings_fragment>
+          }`,
+        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide
+      });
+      const g = new THREE.Group();
+      const bell = new THREE.Mesh(bellGeo, mat); g.add(bell);
+      const lines = [];
+      const lmat = new THREE.LineBasicMaterial({ color: hue, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false });
+      for (let k = 0; k < 7; k++) {
+        const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(14 * 3), 3));
+        const l = new THREE.Line(lg, lmat); l.frustumCulled = false; g.add(l);
+        lines.push({ l, a: k / 7 * 6.28, r: k === 0 ? 0 : 0.2, len: k === 0 ? 1.1 : rnd(1.2, 2.2) });
+      }
+      const a = rnd(0, 6.28), r = rnd(8, 45);
+      g.position.set(Math.cos(a) * r, rnd(-35, -17), Math.sin(a) * r);
+      g.scale.setScalar(rnd(0.7, 1.5));
+      scene.add(g);
+      jellies.push({ g, bell, mat, lmat, lines, ph: rnd(0, 6.28), base: g.position.y });
+    }
+  }
+  function updateJellies(dt, T) {
+    for (const j of jellies) {
+      const pulse = Math.sin(T * 1.4 + j.ph);
+      j.bell.scale.set(1 + pulse * 0.08, 1 - pulse * 0.14, 1 + pulse * 0.08);
+      j.g.position.y = j.base + Math.sin(T * 0.2 + j.ph) * 1.5;
+      const a = Math.exp(-j.g.position.distanceTo(player.position) * 0.035);
+      j.mat.uniforms.uAlpha.value = a; j.lmat.opacity = 0.45 * a;
+      for (const t of j.lines) {
+        const arr = t.l.geometry.attributes.position.array;
+        for (let i = 0; i < 14; i++) {
+          const u = i / 13;
+          arr[i * 3] = Math.cos(t.a) * t.r + Math.sin(T * 1.1 + u * 4 + t.a + j.ph) * 0.12 * u;
+          arr[i * 3 + 1] = -u * t.len - 0.02;
+          arr[i * 3 + 2] = Math.sin(t.a) * t.r + Math.cos(T * 0.9 + u * 3.5 + t.a) * 0.12 * u;
+        }
+        t.l.geometry.attributes.position.needsUpdate = true;
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------- whale and its collider
+  const WHALE_LEN = 14, WS = WHALE_LEN / 1.9;
+  const whaleRoot = new THREE.Group(); whaleRoot.position.set(0, -10.5, 0); scene.add(whaleRoot);
+  const whaleModel = new THREE.Group(); whaleModel.scale.setScalar(WS); whaleRoot.add(whaleModel);
+  let colTris = null, colBox = null, colMesh = null, sampleTris = null;
+  const whaleMats = [];
+  function buildWhale() {
+    const src = models.whale;
+    src.updateMatrixWorld(true);
+    src.traverse(o => {
+      if (!o.isMesh) return;
+      o.material = patch(o.material, { kind: 'whale', amp: 0.035, freq: 0.9 });
+      whaleMats.push(o.material);
+    });
+    whaleModel.add(src);
+    const tris = [];
+    src.traverse(o => {
+      if (!o.isMesh) return;
+      const g = o.geometry, P = g.attributes.position, I = g.index, M = o.matrixWorld;
+      const n = I ? I.count / 3 : P.count / 3;
+      const a = V(), b = V(), c = V();
+      for (let i = 0; i < n; i++) {
+        const ia = I ? I.getX(i * 3) : i * 3, ib = I ? I.getX(i * 3 + 1) : i * 3 + 1, ic = I ? I.getX(i * 3 + 2) : i * 3 + 2;
+        a.fromBufferAttribute(P, ia).applyMatrix4(M); b.fromBufferAttribute(P, ib).applyMatrix4(M); c.fromBufferAttribute(P, ic).applyMatrix4(M);
+        tris.push([a.clone(), b.clone(), c.clone()]);
+      }
+    });
+    const col = models.whale_collider; col.updateMatrixWorld(true);
+    const arr = [];
+    col.traverse(o => {
+      if (!o.isMesh) return;
+      const g = o.geometry, P = g.attributes.position, I = g.index, M = o.matrixWorld, a = V();
+      const pos = []; for (let i = 0; i < P.count; i++) { a.fromBufferAttribute(P, i).applyMatrix4(M); pos.push(a.x, a.y, a.z); }
+      const n = I ? I.count : P.count;
+      for (let i = 0; i < n; i++) { const k = I ? I.getX(i) : i; arr.push(pos[k * 3], pos[k * 3 + 1], pos[k * 3 + 2]); }
+      const cg = new THREE.BufferGeometry(); cg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); if (I) cg.setIndex(Array.from(I.array));
+      colMesh = new THREE.Mesh(cg, new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide }));
+      whaleModel.add(colMesh);
+    });
+    colTris = new Float32Array(arr);
+    colBox = new THREE.Box3().setFromBufferAttribute(new THREE.BufferAttribute(colTris, 3));
+    // body half-width per slice, from the upper half of the collider so the flippers are ignored
+    const SL = 40, halfW = new Float32Array(SL), buckets = Array.from({ length: SL }, () => []);
+    const zSpan = colBox.max.z - colBox.min.z;
+    for (let i = 0; i < colTris.length; i += 3) {
+      if (colTris[i + 1] < -0.02) continue;
+      const s = clamp(Math.floor((colTris[i + 2] - colBox.min.z) / zSpan * SL), 0, SL - 1);
+      buckets[s].push(Math.abs(colTris[i]));
+    }
+    buckets.forEach((b, i) => { b.sort((p, q) => p - q); halfW[i] = b.length ? b[Math.floor(b.length * 0.8)] : 0.05; });
+    const hw = z => halfW[clamp(Math.floor((z - colBox.min.z) / zSpan * SL), 0, SL - 1)];
+    const cand = [], cum = []; let acc = 0;
+    const e1 = V(), e2 = V(), nn = V(), cen = V();
+    for (const t of tris) {
+      e1.subVectors(t[1], t[0]); e2.subVectors(t[2], t[0]); nn.crossVectors(e1, e2);
+      const area = nn.length() / 2; if (area <= 0) continue; nn.normalize();
+      cen.copy(t[0]).add(t[1]).add(t[2]).divideScalar(3);
+      const zn = cen.z / 0.95;
+      if (zn < -0.32 || zn > 0.86) continue;
+      if (nn.y < -0.3) continue;
+      if (Math.abs(cen.x) > hw(cen.z) * 1.05) continue;
+      acc += area; cand.push({ t, n: nn.clone() }); cum.push(acc);
+    }
+    sampleTris = { cand, cum, acc };
+  }
+  function sampleWhaleSurface() {
+    const r = Math.random() * sampleTris.acc;
+    let lo = 0, hi = sampleTris.cum.length - 1;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (sampleTris.cum[m] < r) lo = m + 1; else hi = m; }
+    const { t, n } = sampleTris.cand[lo];
+    let u = Math.random(), v = Math.random(); if (u + v > 1) { u = 1 - u; v = 1 - v; }
+    const p = t[0].clone().addScaledVector(V().subVectors(t[1], t[0]), u).addScaledVector(V().subVectors(t[2], t[0]), v);
+    return { p: p.multiplyScalar(WS), n: n.clone() };
+  }
+
+  // closest point on a collider triangle (Ericson, Real-Time Collision Detection 5.1.5)
+  function closestPtTri(px, py, pz, i, out) {
+    const T = colTris;
+    const ax = T[i], ay = T[i + 1], az = T[i + 2], bx = T[i + 3], by = T[i + 4], bz = T[i + 5], cx = T[i + 6], cy = T[i + 7], cz = T[i + 8];
+    const abx = bx - ax, aby = by - ay, abz = bz - az, acx = cx - ax, acy = cy - ay, acz = cz - az;
+    const apx = px - ax, apy = py - ay, apz = pz - az;
+    const d1 = abx * apx + aby * apy + abz * apz, d2 = acx * apx + acy * apy + acz * apz;
+    if (d1 <= 0 && d2 <= 0) { out[0] = ax; out[1] = ay; out[2] = az; return; }
+    const bpx = px - bx, bpy = py - by, bpz = pz - bz;
+    const d3 = abx * bpx + aby * bpy + abz * bpz, d4 = acx * bpx + acy * bpy + acz * bpz;
+    if (d3 >= 0 && d4 <= d3) { out[0] = bx; out[1] = by; out[2] = bz; return; }
+    const vc = d1 * d4 - d3 * d2;
+    if (vc <= 0 && d1 >= 0 && d3 <= 0) { const v = d1 / (d1 - d3); out[0] = ax + abx * v; out[1] = ay + aby * v; out[2] = az + abz * v; return; }
+    const cpx = px - cx, cpy = py - cy, cpz = pz - cz;
+    const d5 = abx * cpx + aby * cpy + abz * cpz, d6 = acx * cpx + acy * cpy + acz * cpz;
+    if (d6 >= 0 && d5 <= d6) { out[0] = cx; out[1] = cy; out[2] = cz; return; }
+    const vb = d5 * d2 - d1 * d6;
+    if (vb <= 0 && d2 >= 0 && d6 <= 0) { const w = d2 / (d2 - d6); out[0] = ax + acx * w; out[1] = ay + acy * w; out[2] = az + acz * w; return; }
+    const va = d3 * d6 - d5 * d4;
+    if (va <= 0 && (d4 - d3) >= 0 && (d5 - d6) >= 0) { const w = (d4 - d3) / ((d4 - d3) + (d5 - d6)); out[0] = bx + (cx - bx) * w; out[1] = by + (cy - by) * w; out[2] = bz + (cz - bz) * w; return; }
+    const den = 1 / (va + vb + vc), v = vb * den, w = vc * den;
+    out[0] = ax + abx * v + acx * w; out[1] = ay + aby * v + acy * w; out[2] = az + abz * v + acz * w;
+  }
+  const cpOut = [0, 0, 0], invW = new THREE.Matrix4(), tmpL = V();
+  // Pushes a world-space sphere out of the whale's collider mesh.
+  function collideWhale(p, radius) {
+    if (!colTris) return false;
+    invW.copy(whaleModel.matrixWorld).invert();
+    tmpL.copy(p).applyMatrix4(invW);
+    const r = radius / WS, r2 = r * r, B = colBox;
+    if (tmpL.x < B.min.x - r || tmpL.x > B.max.x + r || tmpL.y < B.min.y - r || tmpL.y > B.max.y + r || tmpL.z < B.min.z - r || tmpL.z > B.max.z + r) return false;
+    let hit = false;
+    const Tr = colTris;
+    for (let it = 0; it < 2; it++) {
+      for (let i = 0; i < Tr.length; i += 9) {
+        if (Math.min(Tr[i], Tr[i + 3], Tr[i + 6]) - r > tmpL.x || Math.max(Tr[i], Tr[i + 3], Tr[i + 6]) + r < tmpL.x) continue;
+        if (Math.min(Tr[i + 1], Tr[i + 4], Tr[i + 7]) - r > tmpL.y || Math.max(Tr[i + 1], Tr[i + 4], Tr[i + 7]) + r < tmpL.y) continue;
+        if (Math.min(Tr[i + 2], Tr[i + 5], Tr[i + 8]) - r > tmpL.z || Math.max(Tr[i + 2], Tr[i + 5], Tr[i + 8]) + r < tmpL.z) continue;
+        closestPtTri(tmpL.x, tmpL.y, tmpL.z, i, cpOut);
+        const dx = tmpL.x - cpOut[0], dy = tmpL.y - cpOut[1], dz = tmpL.z - cpOut[2], d2 = dx * dx + dy * dy + dz * dz;
+        if (d2 < r2 && d2 > 1e-12) { const d = Math.sqrt(d2), k = (r - d) / d; tmpL.x += dx * k; tmpL.y += dy * k; tmpL.z += dz * k; hit = true; }
+      }
+    }
+    if (hit) p.copy(tmpL.applyMatrix4(whaleModel.matrixWorld));
+    return hit;
+  }
+  function collideWorld(p, radius) {
+    let hit = collideWhale(p, radius);
+    for (const r of reefs) {
+      const d = p.distanceTo(r.c), m = r.r + radius;
+      if (d < m) { p.sub(r.c).setLength(m).add(r.c); hit = true; }
+    }
+    const g = groundH(p.x, p.z) + radius + 0.2;
+    if (p.y < g) { p.y = g; hit = true; }
+    if (p.y > -0.55) p.y = -0.55;
+    const hr = Math.hypot(p.x, p.z); if (hr > 80) { p.x *= 80 / hr; p.z *= 80 / hr; }
+    return hit;
+  }
+
+  // ---------------------------------------------------------------- barnacles
+  const Y = V(0, 1, 0);
+  const hitMat = new THREE.MeshBasicMaterial({ visible: false });
+  let barnacles = [], hitList = [], marks = [], debris = [], total = 0, removed = 0;
+  function makeAcorn(s) {
+    const diam = rnd(0.09, 0.17);
+    const g = new THREE.Group();
+    const inner = models.acorn.clone(true);
+    const mats = [];
+    inner.traverse(o => { if (o.isMesh) { o.material = patch(o.material.clone()); mats.push(o.material); } });
+    inner.position.y = 0.808; inner.rotation.y = rnd(0, 6.28);
+    g.add(inner);
+    g.scale.setScalar(diam / 1.9);
+    g.position.copy(s.p).addScaledVector(s.n, -0.012);
+    g.quaternion.setFromUnitVectors(Y, s.n);
+    const hit = new THREE.Mesh(new THREE.SphereGeometry(1.3, 8, 6), hitMat); hit.position.y = 0.8; g.add(hit);
+    whaleRoot.add(g);
+    const b = { kind: 'a', g, mats, r: diam / 2, p: s.p.clone(), n: s.n.clone(), base: g.position.clone(), t1: V(1, 0, 0).cross(s.n).normalize(), rub: 0, need: 0.32 + diam * 2.2, jig: 0, seed: rnd(0, 100) };
+    hit.userData.b = b; hitList.push(hit);
+    return b;
+  }
+  function makeGoose(s) {
+    const L = rnd(0.2, 0.3), sc = L / 1.895;
+    const pivot = new THREE.Group();
+    const inner = models.goose.clone(true);
+    const mats = [];
+    inner.traverse(o => { if (o.isMesh) { o.material = patch(o.material.clone()); mats.push(o.material); } });
+    inner.position.y = 0.9475; inner.rotation.y = rnd(0, 6.28);
+    pivot.add(inner);
+    const anchor = s.p.clone().addScaledVector(s.n, -0.015);
+    pivot.position.copy(anchor);
+    whaleRoot.add(pivot);
+    const side = V().crossVectors(s.n, V(0, 0, 1)); if (side.lengthSq() < 1e-4) side.set(1, 0, 0); side.normalize();
+    const dir = s.n.clone().multiplyScalar(0.72).add(V(0, 0, -0.55)).addScaledVector(side, rnd(-0.3, 0.3)).normalize();
+    const hit = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 6), hitMat); whaleRoot.add(hit);
+    const b = { kind: 'g', g: pivot, mats, hit, anchor, n: s.n.clone(), side, dir, L, sc, rest: anchor.clone().addScaledVector(dir, L), tip: anchor.clone().addScaledVector(dir, L), vel: V(), need: rnd(0.2, 0.32), tension: 0, seed: rnd(0, 100), r: 0.06 };
+    hit.userData.b = b; hitList.push(hit);
+    placeGoose(b, 0);
+    return b;
+  }
+  const gv = V();
+  function placeGoose(b, T) {
+    gv.subVectors(b.tip, b.anchor);
+    const l = gv.length() || 1e-4; gv.divideScalar(l);
+    b.g.quaternion.setFromUnitVectors(Y, gv);
+    const stretch = l / b.L, thin = 1 / Math.sqrt(Math.max(0.6, stretch));
+    b.g.scale.set(b.sc * thin, b.sc * stretch, b.sc * thin);
+    b.g.rotateY(Math.sin(T * 0.9 + b.seed) * 0.25);
+    b.hit.position.copy(b.tip);
+  }
+  function genBarnacles(n) {
+    let tries = 0;
+    const clusters = Array.from({ length: 4 + Math.floor(Math.random() * 3) }, () => sampleWhaleSurface().p);
+    while (barnacles.length < n && tries < 4000) {
+      tries++;
+      const s = sampleWhaleSurface();
+      if (Math.random() < 0.7 && !clusters.some(c => c.distanceTo(s.p) < 2.2)) continue;
+      const goose = Math.random() < 0.33;
+      const r = goose ? 0.07 : 0.085;
+      if (barnacles.some(b => (b.kind === 'g' ? b.anchor : b.p).distanceTo(s.p) < b.r + r + 0.05)) continue;
+      barnacles.push(goose ? makeGoose(s) : makeAcorn(s));
+    }
+    total = barnacles.length; removed = 0;
+  }
+  function clearBarnacles() {
+    for (const b of barnacles) { whaleRoot.remove(b.g); if (b.hit) whaleRoot.remove(b.hit); }
+    for (const m of marks) whaleRoot.remove(m.mesh);
+    barnacles = []; hitList = []; marks = [];
+  }
+
+  // ---------------------------------------------------------------- friendly fish and the turtle
+  const friends = [];
+  let turtle = null;
+  function buildFriends() {
+    const kinds = [['ytang', 0.34], ['btang', 0.36]];
+    for (let i = 0; i < 12; i++) {
+      const [k, L] = kinds[i % 2];
+      if (!models[k]) continue;
+      const o = cloneModel(models[k], { kind: 'fish', amp: 0.07, freq: 8, phase: rnd(0, 6.28) });
+      o.scale.setScalar((L * rnd(0.85, 1.2)) / 1.9);
+      const holder = new THREE.Group(); holder.add(o);
+      const a = rnd(0, 6.28), r = rnd(6, 16);
+      holder.position.set(Math.cos(a) * r, rnd(-14, -5), Math.sin(a) * r);
+      scene.add(holder);
+      const mats = []; o.traverse(m => { if (m.isMesh) mats.push(m.material); });
+      friends.push({ holder, mats, v: V(rnd(-1, 1), 0, rnd(-1, 1)).setLength(0.6), target: V(), state: 'wander', t: 0, speed: rnd(0.5, 0.9) });
+    }
+    friends.forEach(pickWander);
+    if (models.turtle) {
+      const o = cloneModel(models.turtle, { kind: 'turtle', amp: 0.35, freq: 1.3 });
+      o.scale.setScalar(1.15 / 1.9);
+      const holder = new THREE.Group(); holder.add(o); scene.add(holder);
+      turtle = { holder, a: rnd(0, 6.28), cd: 0 };
+    }
+  }
+  function pickWander(f) {
+    const a = rnd(0, 6.28), r = rnd(5, 18);
+    f.target.set(Math.cos(a) * r, rnd(-15, -3.5), Math.sin(a) * r);
+  }
+  let greetCd = 6;
+  const tv = V(), look = V(), qa = new THREE.Quaternion();
+  function updateFriends(dt, T) {
+    greetCd -= dt;
+    if (started && greetCd <= 0) {
+      greetCd = rnd(9, 16);
+      let best = null, bd = 22;
+      for (const f of friends) { const d = f.holder.position.distanceTo(player.position); if (f.state === 'wander' && d < bd) { bd = d; best = f; } }
+      if (best) { best.state = 'approach'; best.t = 0; }
+    }
+    const fwd = camera.getWorldDirection(V());
+    const camPos = camera.getWorldPosition(V());
+    for (const f of friends) {
+      f.t += dt;
+      const pos = f.holder.position;
+      let spd = f.speed, freq = 8, amp = 0.07;
+      if (f.state === 'wander') {
+        if (pos.distanceTo(f.target) < 1.2 || f.t > 25) { pickWander(f); f.t = 0; }
+        tv.copy(f.target);
+      } else if (f.state === 'approach') {
+        tv.copy(camPos).addScaledVector(fwd, 1.15); tv.y -= 0.08;
+        spd = 1.5;
+        if (pos.distanceTo(tv) < 0.3) { f.state = 'greet'; f.t = 0; f.said = false; }
+        if (f.t > 20 || pos.distanceTo(camPos) > 30) { f.state = 'wander'; pickWander(f); }
+      } else if (f.state === 'greet') {
+        tv.copy(camPos).addScaledVector(fwd, 1.15); tv.y -= 0.08;
+        spd = 0.4; freq = 17; amp = 0.05;
+        if (!f.said && f.t > 0.35) {
+          f.said = true;
+          spawnHeart(pos.clone().add(V(0, 0.22, 0)));
+          for (let k = 0; k < 5; k++) spawnBubble(pos.clone().add(V(rnd(-0.05, 0.05), 0.05, rnd(-0.05, 0.05))), rnd(0.03, 0.06), rnd(0.25, 0.5));
+          sfxHello();
+        }
+        if (f.t > 2.8) { f.state = 'leave'; f.t = 0; f.target.copy(pos).addScaledVector(fwd, 6).add(V(rnd(-4, 4), rnd(-1, 2), rnd(-4, 4))); }
+      } else if (f.state === 'leave') {
+        tv.copy(f.target); spd = 1.1;
+        if (f.t > 4) { f.state = 'wander'; pickWander(f); f.t = 0; }
+      }
+      tv.sub(pos);
+      const dist = tv.length();
+      if (dist > 0.001) tv.multiplyScalar(Math.min(spd, dist * 1.5) / dist); else tv.set(0, 0, 0);
+      f.v.lerp(tv, 1 - Math.exp(-1.6 * dt));
+      pos.addScaledVector(f.v, dt);
+      collideWorld(pos, 0.25);
+      for (const m of f.mats) { const b = m.userData.bend; if (b.uFreq) { b.uFreq.value += (freq - b.uFreq.value) * Math.min(1, dt * 3); b.uAmp.value = amp; } }
+      if (f.state === 'greet') {
+        f.holder.lookAt(camPos);
+        f.holder.rotateZ(Math.sin(f.t * 9) * 0.28 * Math.min(1, f.t * 2));
+      } else if (f.v.lengthSq() > 1e-4) {
+        qa.copy(f.holder.quaternion);
+        look.copy(pos).add(f.v); f.holder.lookAt(look);
+        const q1 = f.holder.quaternion.clone(); f.holder.quaternion.copy(qa).slerp(q1, 1 - Math.exp(-4 * dt));
+      }
+    }
+    if (turtle) {
+      turtle.a += dt * 0.034;
+      const R = 17, pAt = a => V(Math.cos(a) * R, -7 + Math.sin(a * 2.1) * 2.6, Math.sin(a) * R * 0.85);
+      const p = pAt(turtle.a);
+      collideWorld(p, 0.8);
+      turtle.holder.position.lerp(p, 1 - Math.exp(-2 * dt));
+      turtle.holder.lookAt(pAt(turtle.a + 0.02));
+      turtle.cd -= dt;
+      if (started && turtle.cd <= 0 && turtle.holder.position.distanceTo(player.position) < 5) {
+        turtle.cd = 30; spawnHeart(turtle.holder.position.clone().add(V(0, 0.6, 0))); sfxHello(0.7);
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------- diver: arm, scraper, fins
+  const suitMat = new THREE.MeshStandardMaterial({ color: 0x14191c, roughness: 0.65 });
+  const accentMat = new THREE.MeshStandardMaterial({ color: 0xff8a5c, roughness: 0.5 });
+  const gloveMat = new THREE.MeshStandardMaterial({ color: 0x1b2023, roughness: 0.85 });
+  const handleMat = new THREE.MeshStandardMaterial({ color: 0xf4b43a, roughness: 0.45 });
+  const steelMat = new THREE.MeshStandardMaterial({ color: 0xd8e0e4, roughness: 0.22, metalness: 0.9 });
+  const rig = new THREE.Group(); camera.add(rig);
+  {
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.017, 0.021, 0.26, 16), handleMat); handle.rotation.x = Math.PI / 2; handle.position.z = -0.15;
+    const ringMat = new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.9 });
+    for (let i = 0; i < 4; i++) { const r = new THREE.Mesh(new THREE.TorusGeometry(0.019, 0.004, 6, 16), ringMat); r.position.z = -0.06 - i * 0.045; rig.add(r); }
+    const ferrule = new THREE.Mesh(new THREE.CylinderGeometry(0.023, 0.023, 0.035, 16), steelMat); ferrule.rotation.x = Math.PI / 2; ferrule.position.z = -0.29;
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.005, 0.1), steelMat); blade.position.z = -0.355;
+    const glove = new THREE.Mesh(new THREE.SphereGeometry(0.052, 18, 14), gloveMat); glove.scale.set(1.15, 0.95, 1.55); glove.position.z = -0.08;
+    const thumb = new THREE.Mesh(new THREE.SphereGeometry(0.022, 10, 8), gloveMat); thumb.scale.set(1, 1, 2); thumb.position.set(-0.045, 0.02, -0.1);
+    const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.053, 0.053, 0.03, 16), accentMat); cuff.rotation.x = Math.PI / 2;
+    rig.add(handle, ferrule, blade, glove, thumb, cuff);
+  }
+  const armGeo = new THREE.CylinderGeometry(0.04, 0.052, 1, 16); armGeo.translate(0, 0.5, 0);
+  const arm = new THREE.Mesh(armGeo, suitMat); camera.add(arm);
+  const SHOULDER = V(0.34, -0.6, 0.12), REST_TIP = V(0.16, -0.27, -0.78);
+  const tipNow = REST_TIP.clone(), tipTarget = REST_TIP.clone(), FWD = V(0, 0, -1), tq = V(), tq2 = V();
+  function placeRig(T, scr) {
+    const d = tq.subVectors(tipNow, SHOULDER); const dl = d.length(); d.divideScalar(dl);
+    const grip = tq2.copy(tipNow).addScaledVector(d, -0.4);
+    rig.position.copy(grip);
+    rig.quaternion.setFromUnitVectors(FWD, d);
+    rig.rotateZ(scr ? Math.sin(T * 26) * 0.12 : 0.25);
+    const a = V().subVectors(grip, SHOULDER); const al = a.length(); a.divideScalar(al);
+    arm.position.copy(SHOULDER); arm.quaternion.setFromUnitVectors(Y, a); arm.scale.set(1, al + 0.02, 1);
+  }
+  const fins = [];
+  {
+    const s = new THREE.Shape(); s.moveTo(-0.07, 0); s.lineTo(0.07, 0); s.lineTo(0.13, 0.5); s.quadraticCurveTo(0, 0.44, -0.13, 0.5); s.lineTo(-0.07, 0);
+    const g = new THREE.ShapeGeometry(s);
+    const m = new THREE.MeshStandardMaterial({ color: 0xff8a5c, roughness: 0.6, side: THREE.DoubleSide });
+    for (const sx of [-1, 1]) {
+      const f = new THREE.Group(); const mesh = new THREE.Mesh(g, m); mesh.rotation.x = Math.PI / 2; f.add(mesh);
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.05, 0.9, 12), suitMat); leg.rotation.x = Math.PI / 2; leg.position.z = -0.45; f.add(leg);
+      f.position.set(sx * 0.16, -1.05, 0.55); player.add(f); fins.push(f);
+    }
+  }
+
+  // ---------------------------------------------------------------- audio (synthesised)
+  let AC = null, master, send, noise, creak = null, ambLP = null, pad = null;
+  const PENTA = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24];
+  let popStep = 0;
+  function ensureAudio() {
+    if (AC) { if (AC.state === 'suspended') AC.resume(); return; }
+    try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; }
+    master = AC.createGain(); master.gain.value = soundOn ? 0.9 : 0;
+    const comp = AC.createDynamicsCompressor(); master.connect(comp); comp.connect(AC.destination);
+    const d1 = AC.createDelay(1.5); d1.delayTime.value = 0.37;
+    const d2 = AC.createDelay(1.5); d2.delayTime.value = 0.53;
+    const fb = AC.createGain(); fb.gain.value = 0.42;
+    const dl = AC.createBiquadFilter(); dl.type = 'lowpass'; dl.frequency.value = 1400;
+    d1.connect(d2); d2.connect(dl); dl.connect(fb); fb.connect(d1); dl.connect(master);
+    send = AC.createGain(); send.gain.value = 0.5; send.connect(d1);
+    const len = AC.sampleRate * 3;
+    noise = AC.createBuffer(1, len, AC.sampleRate);
+    const d = noise.getChannelData(0); let last = 0;
+    for (let i = 0; i < len; i++) { const w = Math.random() * 2 - 1; last = (last + 0.02 * w) / 1.02; d[i] = last * 3.2 + w * 0.04; }
+    const src = AC.createBufferSource(); src.buffer = noise; src.loop = true;
+    ambLP = AC.createBiquadFilter(); ambLP.type = 'lowpass'; ambLP.frequency.value = 420;
+    const lfo = AC.createOscillator(); lfo.frequency.value = 0.08;
+    const lfoG = AC.createGain(); lfoG.gain.value = 140; lfo.connect(lfoG); lfoG.connect(ambLP.frequency);
+    const g = AC.createGain(); g.gain.value = 0.3;
+    src.connect(ambLP); ambLP.connect(g); g.connect(master); src.start(); lfo.start();
+    pad = { lp: AC.createBiquadFilter(), g: AC.createGain(), osc: [] };
+    pad.lp.type = 'lowpass'; pad.lp.frequency.value = 900; pad.g.gain.value = 0.0001;
+    pad.lp.connect(pad.g); pad.g.connect(master); pad.g.connect(send);
+    for (let i = 0; i < 4; i++) {
+      const o = AC.createOscillator(); o.type = i % 2 ? 'triangle' : 'sine';
+      const o2 = AC.createOscillator(); o2.type = 'sine'; o2.detune.value = 7;
+      const og = AC.createGain(); og.gain.value = 0.25;
+      o.connect(og); o2.connect(og); og.connect(pad.lp); o.start(); o2.start();
+      pad.osc.push([o, o2]);
+    }
+    pad.g.gain.setTargetAtTime(0.05, AC.currentTime, 4);
+    padChord(0);
+  }
+  const CHORDS = [[146.83, 220, 329.63, 369.99], [123.47, 185, 293.66, 440], [130.81, 196, 329.63, 392], [110, 164.81, 277.18, 329.63]];
+  let chordIx = 0, chordT = 0;
+  function padChord(ix) { if (!pad) return; const t = AC.currentTime; CHORDS[ix].forEach((f, i) => pad.osc[i].forEach(o => o.frequency.setTargetAtTime(f, t, 2.5))); }
+  function env(g, t, peak, a, dcy) { g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + a); g.gain.exponentialRampToValueAtTime(0.0001, t + a + dcy); }
+  function noiseBurst(t, type, f, q, peak, a, dcy, rate) {
+    const n = AC.createBufferSource(); n.buffer = noise; n.playbackRate.value = rate || 1;
+    const bp = AC.createBiquadFilter(); bp.type = type; bp.frequency.value = f; bp.Q.value = q;
+    const g = AC.createGain(); env(g, t, peak, a, dcy);
+    n.connect(bp); bp.connect(g); g.connect(master); n.start(t, Math.random() * 2); n.stop(t + a + dcy + 0.05);
+  }
+  function tone(t, f, type, peak, a, dcy, toSend) {
+    const o = AC.createOscillator(); o.type = type; o.frequency.value = f;
+    const g = AC.createGain(); env(g, t, peak, a, dcy); o.connect(g); g.connect(master); if (toSend) g.connect(send);
+    o.start(t); o.stop(t + a + dcy + 0.05);
+  }
+  function bloops(t, n, gap, vol) {
+    for (let i = 0; i < n; i++) {
+      const tt = t + i * gap * rnd(0.6, 1.4);
+      const b = AC.createOscillator(); b.type = 'sine';
+      b.frequency.setValueAtTime(rnd(300, 520), tt); b.frequency.exponentialRampToValueAtTime(rnd(800, 1400), tt + 0.06);
+      const bg = AC.createGain(); env(bg, tt, vol, 0.005, 0.06); b.connect(bg); bg.connect(master); b.start(tt); b.stop(tt + 0.1);
+    }
+  }
+  // each pop climbs a pentatonic scale, so clearing a patch plays a little tune
+  function sfxPop(kind) {
+    if (!AC) return; const t = AC.currentTime;
+    const f = 293.66 * Math.pow(2, PENTA[popStep % PENTA.length] / 12); popStep++;
+    const o = AC.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(f * 1.9, t); o.frequency.exponentialRampToValueAtTime(f, t + 0.05);
+    const g = AC.createGain(); env(g, t, 0.35, 0.004, 0.35); o.connect(g); g.connect(master); g.connect(send); o.start(t); o.stop(t + 0.45);
+    tone(t + 0.02, f * 2, 'sine', 0.06, 0.01, 0.5, true);
+    noiseBurst(t, 'bandpass', kind === 'g' ? 900 : 1800, 1.2, 0.35, 0.002, 0.06);
+    bloops(t + 0.06, 5, 0.06, 0.05);
+  }
+  let lastScratch = 0;
+  function sfxScrape(amt) {
+    if (!AC) return; const t = AC.currentTime;
+    if (t - lastScratch < 0.05) return; lastScratch = t;
+    noiseBurst(t, 'bandpass', rnd(2600, 3800), 4, 0.14 + amt * 0.2, 0.004, 0.06, rnd(1.6, 2.4));
+    noiseBurst(t, 'lowpass', 500, 0.7, 0.05 + amt * 0.08, 0.004, 0.08);
+  }
+  function creakStart() {
+    if (!AC || creak) return;
+    const o = AC.createOscillator(); o.type = 'triangle'; o.frequency.value = 100;
+    const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 650;
+    const g = AC.createGain(); g.gain.value = 0.0001;
+    o.connect(lp); lp.connect(g); g.connect(master); o.start(); creak = { o, g };
+  }
+  function creakSet(ten) { if (!creak) return; const t = AC.currentTime; creak.o.frequency.setTargetAtTime(90 + ten * 220, t, 0.03); creak.g.gain.setTargetAtTime(ten > 0.02 ? 0.025 + ten * 0.06 : 0.0001, t, 0.04); }
+  function creakStop() { if (!creak) return; const c = creak; creak = null; const t = AC.currentTime; c.g.gain.setTargetAtTime(0.0001, t, 0.03); c.o.stop(t + 0.2); }
+  function sfxHello(pitch = 1) {
+    if (!AC) return; const t = AC.currentTime;
+    [[620, 900], [820, 1250]].forEach(([a, b], i) => {
+      const o = AC.createOscillator(); o.type = 'sine'; const tt = t + i * 0.13;
+      o.frequency.setValueAtTime(a * pitch, tt); o.frequency.exponentialRampToValueAtTime(b * pitch, tt + 0.08);
+      const g = AC.createGain(); env(g, tt, 0.12, 0.006, 0.12); o.connect(g); g.connect(master); g.connect(send); o.start(tt); o.stop(tt + 0.2);
+    });
+    [1174.66, 1479.98, 1760].forEach((f, i) => tone(t + 0.3 + i * 0.09, f * pitch, 'sine', 0.035, 0.01, 0.6, true));
+  }
+  function sfxSong(big) {
+    if (!AC) return; const t = AC.currentTime;
+    const dur = big ? 5 : 3;
+    const pts = big ? [95, 170, 140, 260, 210, 80] : [120, 190, 100];
+    const bus = AC.createGain(); bus.connect(master); bus.connect(send);
+    const f1 = AC.createBiquadFilter(); f1.type = 'bandpass'; f1.frequency.value = 420; f1.Q.value = 3;
+    const f2 = AC.createBiquadFilter(); f2.type = 'bandpass'; f2.frequency.value = 950; f2.Q.value = 4;
+    const f0 = AC.createBiquadFilter(); f0.type = 'lowpass'; f0.frequency.value = 700;
+    f1.connect(bus); f2.connect(bus); f0.connect(bus);
+    [[1, 'sawtooth', 0.05], [1, 'sine', 0.2], [2.01, 'sine', 0.04]].forEach(([mul, type, peak]) => {
+      const o = AC.createOscillator(); o.type = type;
+      const vib = AC.createOscillator(); vib.frequency.value = 4.2;
+      const vg = AC.createGain(); vg.gain.value = 3 * mul; vib.connect(vg); vg.connect(o.frequency);
+      o.frequency.setValueAtTime(pts[0] * mul, t);
+      pts.forEach((f, i) => { if (i) o.frequency.exponentialRampToValueAtTime(f * mul, t + (dur * i) / (pts.length - 1)); });
+      const g = AC.createGain();
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + 0.6);
+      g.gain.setValueAtTime(peak, t + dur - 0.8); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g); if (type === 'sawtooth') { g.connect(f1); g.connect(f2); } else g.connect(f0);
+      o.start(t); vib.start(t); o.stop(t + dur + 0.05); vib.stop(t + dur + 0.05);
+    });
+  }
+  function sfxInhale() {
+    if (!AC) return; const t = AC.currentTime;
+    const n = AC.createBufferSource(); n.buffer = noise; n.playbackRate.value = 2.2;
+    const bp = AC.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.setValueAtTime(900, t); bp.frequency.linearRampToValueAtTime(1500, t + 1.3); bp.Q.value = 0.8;
+    const g = AC.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.05, t + 0.35); g.gain.setValueAtTime(0.05, t + 1.0); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.45);
+    n.connect(bp); bp.connect(g); g.connect(master); n.start(t, Math.random()); n.stop(t + 1.5);
+  }
+  function sfxExhale() {
+    if (!AC) return; const t = AC.currentTime;
+    const n = AC.createBufferSource(); n.buffer = noise;
+    const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 520;
+    const trem = AC.createOscillator(); trem.frequency.value = 17;
+    const tg = AC.createGain(); tg.gain.value = 0.04; trem.connect(tg);
+    const g = AC.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.11, t + 0.2); g.gain.setValueAtTime(0.11, t + 1.2); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.7);
+    tg.connect(g.gain);
+    n.connect(lp); lp.connect(g); g.connect(master); n.start(t, Math.random()); n.stop(t + 1.8); trem.start(t); trem.stop(t + 1.8);
+    bloops(t + 0.1, 10, 0.13, 0.03);
+  }
+
+  // ---------------------------------------------------------------- game state
+  let started = false, ready = false, state = 'play', stateT = 0, T = 0, diveTime = 0, maxDepth = 0, flourish = 0;
+  let yaw = 0, pitch = 0;
+  const vel = V();
+  let milestones = new Set();
+  const hud = { left: $('left'), fill: $('fill'), depth: $('depth'), maxDepth: $('maxDepth'), temp: $('temp'), time: $('time'), name: $('whaleName'), no: $('whaleNo') };
+  function updateHud() {
+    hud.left.textContent = ready || barnacles.length ? barnacles.length : '–';
+    hud.fill.style.width = (total ? (removed / total) * 100 : 0) + '%';
+    hud.name.textContent = whaleName(); hud.no.textContent = whaleNo;
+    $('introName').textContent = whaleName();
+  }
+  function newWhale() {
+    clearBarnacles();
+    genBarnacles(Math.min(60, 30 + whaleNo * 4));
+    milestones = new Set(); popStep = 0;
+    updateHud();
+  }
+  let toastT = 0;
+  function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('on'); toastT = 2.2; }
+
+  function detach(b, pullDirLocal) {
+    const i = barnacles.indexOf(b); if (i < 0) return;
+    barnacles.splice(i, 1); removed++;
+    hitList = hitList.filter(h => h.userData.b !== b);
+    if (b.hit) whaleRoot.remove(b.hit);
+    b.g.traverse(o => { if (o.isMesh && o.material !== hitMat) o.material.transparent = true; });
+    scene.attach(b.g);
+    const nW = b.n.clone().transformDirection(whaleRoot.matrixWorld);
+    const v = nW.multiplyScalar(b.kind === 'g' ? 0.5 : 0.8).add(V(rnd(-0.2, 0.2), rnd(0, 0.25), rnd(-0.2, 0.2)));
+    if (pullDirLocal) v.addScaledVector(pullDirLocal.clone().transformDirection(whaleRoot.matrixWorld), 1.2);
+    debris.push({ g: b.g, v, spin: V(rnd(-3, 3), rnd(-3, 3), rnd(-3, 3)), life: 0 });
+    const at = b.kind === 'g' ? b.anchor : b.p;
+    const mk = new THREE.Mesh(new THREE.CircleGeometry(b.kind === 'g' ? 0.04 : b.r * 0.9, 24),
+      new THREE.MeshStandardMaterial({ color: 0xf0a898, roughness: 0.7, transparent: true, opacity: 0.85, polygonOffset: true, polygonOffsetFactor: -2 }));
+    mk.position.copy(at).addScaledVector(b.n, 0.01); mk.quaternion.setFromUnitVectors(V(0, 0, 1), b.n);
+    whaleRoot.add(mk); marks.push({ mesh: mk, t: 0 });
+    const w = whaleRoot.localToWorld((b.kind === 'g' ? b.tip : b.p).clone());
+    spawnChips(w, 16, 0.9);
+    for (let k = 0; k < 9; k++) spawnBubble(w.clone().add(V(rnd(-0.05, 0.05), rnd(-0.05, 0.05), rnd(-0.05, 0.05))), rnd(0.025, 0.06), rnd(0.25, 0.6));
+    sfxPop(b.kind);
+    if (navigator.vibrate) { try { navigator.vibrate(14); } catch (e) {} }
+    const frac = removed / total;
+    for (const m of [0.25, 0.5, 0.75]) if (frac >= m && !milestones.has(m)) { milestones.add(m); flourish = 3; setTimeout(() => sfxSong(false), 500); }
+    updateHud();
+    if (!barnacles.length) { state = 'clean'; stateT = 0; }
+  }
+
+  // ---------------------------------------------------------------- input
+  const REACH = 2.9;
+  const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+  let pointerId = null, pointerX = null, pointerY = null, mode = null, held = null, lastLX = 0, lastLY = 0;
+  const grabOff = V(), plane = new THREE.Plane();
+  let prevScrape = null, scraping = 0;
+  const keys = {}, stick = { x: 0, y: 0, id: null }, vbtn = { up: false, down: false };
+  function setRay(x, y) { ndc.set(x / W * 2 - 1, -(y / H) * 2 + 1); ray.setFromCamera(ndc, camera); }
+  function hitWhale() { if (!colMesh) return null; return ray.intersectObject(colMesh, false)[0] || null; }
+  function segDist(p, a, b) {
+    const ab = V().subVectors(b, a), l2 = ab.lengthSq() || 1e-9;
+    const t = clamp(V().subVectors(p, a).dot(ab) / l2, 0, 1);
+    return a.clone().addScaledVector(ab, t).distanceTo(p);
+  }
+  function rubAcorn(b, amt, atLocal) {
+    b.rub += amt; b.jig = 1;
+    const k = 1 - 0.45 * b.rub / b.need;
+    for (const m of b.mats) m.color.setRGB(k, k * 0.96, k * 0.9);
+    if (Math.random() < 0.5) spawnChips(whaleRoot.localToWorld(atLocal.clone()), 2, 0.5);
+    sfxScrape(b.rub / b.need);
+    if (b.rub >= b.need) detach(b, null);
+  }
+  function findGoose(x, y) {
+    setRay(x, y);
+    for (const h of ray.intersectObjects(hitList, false)) if (h.distance < REACH + 0.3 && h.object.userData.b.kind === 'g') return h.object.userData.b;
+    let best = null, bd = 34;
+    const cp = camera.getWorldPosition(V());
+    for (const b of barnacles) {
+      if (b.kind !== 'g') continue;
+      const w = whaleRoot.localToWorld(b.tip.clone());
+      if (w.distanceTo(cp) > REACH + 0.3) continue;
+      w.project(camera); if (w.z > 1) continue;
+      const d = Math.hypot((w.x + 1) / 2 * W - x, (1 - w.y) / 2 * H - y);
+      if (d < bd) { bd = d; best = b; }
+    }
+    return best;
+  }
+  canvas.addEventListener('contextmenu', e => e.preventDefault());
+  canvas.addEventListener('pointerdown', e => {
+    if (!started || pointerId !== null) return;
+    ensureAudio();
+    pointerId = e.pointerId; canvas.setPointerCapture(e.pointerId);
+    pointerX = lastLX = e.clientX; pointerY = lastLY = e.clientY;
+    mode = 'look';
+    if (e.button === 2 || state !== 'play') return;
+    const g = findGoose(pointerX, pointerY);
+    if (g) {
+      mode = 'pull'; held = g;
+      const hw = whaleRoot.localToWorld(g.tip.clone());
+      plane.setFromNormalAndCoplanarPoint(camera.getWorldDirection(V()), hw);
+      setRay(pointerX, pointerY);
+      const ip = ray.ray.intersectPlane(plane, V()) || hw.clone();
+      grabOff.subVectors(hw, ip);
+      creakStart(); canvas.style.cursor = 'grabbing';
+      return;
+    }
+    setRay(pointerX, pointerY);
+    const h = hitWhale();
+    if (h && h.distance <= REACH) {
+      mode = 'scrape';
+      prevScrape = whaleRoot.worldToLocal(h.point.clone());
+      for (const b of barnacles.slice()) if (b.kind === 'a' && b.p.distanceTo(prevScrape) < b.r + 0.06) rubAcorn(b, 0.1, prevScrape);
+    } else if (h && h.distance < 9) toast('Acércate un poco más para raspar');
+  });
+  canvas.addEventListener('pointermove', e => {
+    if (pointerId === null) {
+      if (e.pointerType === 'mouse') { pointerX = e.clientX; pointerY = e.clientY; }
+      return;
+    }
+    if (e.pointerId !== pointerId) return;
+    const dx = e.clientX - lastLX, dy = e.clientY - lastLY;
+    lastLX = e.clientX; lastLY = e.clientY;
+    pointerX = e.clientX; pointerY = e.clientY;
+    if (mode === 'look') {
+      const k = coarse ? 0.006 : 0.0042;
+      yaw -= dx * k; pitch = clamp(pitch - dy * k, -1.45, 1.45);
+    } else if (mode === 'scrape' && state === 'play') {
+      setRay(pointerX, pointerY);
+      const h = hitWhale();
+      const cur = h && h.distance <= REACH + 0.4 ? whaleRoot.worldToLocal(h.point.clone()) : null;
+      if (cur && prevScrape) {
+        const L2 = cur.distanceTo(prevScrape);
+        if (L2 > 0.002 && L2 < 0.6) {
+          scraping = 0.25;
+          for (const b of barnacles.slice()) if (b.kind === 'a' && segDist(b.p, prevScrape, cur) < b.r + 0.07) rubAcorn(b, Math.min(L2, 0.12), cur);
+        }
+      }
+      prevScrape = cur;
+    }
+  });
+  function release(e) {
+    if (e.pointerId !== pointerId) return;
+    pointerId = null; held = null; prevScrape = null; mode = null;
+    if (e.pointerType !== 'mouse') pointerX = pointerY = null;
+    creakStop(); canvas.style.cursor = '';
+  }
+  canvas.addEventListener('pointerup', release);
+  canvas.addEventListener('pointercancel', release);
+  canvas.addEventListener('pointerleave', e => { if (pointerId === null && e.pointerType === 'mouse') pointerX = pointerY = null; });
+  addEventListener('keydown', e => { keys[e.code] = true; if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault(); });
+  addEventListener('keyup', e => { keys[e.code] = false; });
+  addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+
+  const stickEl = $('stick'), knob = stickEl.querySelector('i');
+  function stickMove(e) {
+    const r = stickEl.getBoundingClientRect();
+    let x = (e.clientX - r.left - r.width / 2) / (r.width / 2), y = (e.clientY - r.top - r.height / 2) / (r.height / 2);
+    const l = Math.hypot(x, y); if (l > 1) { x /= l; y /= l; }
+    stick.x = x; stick.y = y; knob.style.transform = `translate(${x * 34}px, ${y * 34}px)`;
+  }
+  stickEl.addEventListener('pointerdown', e => { ensureAudio(); stick.id = e.pointerId; stickEl.setPointerCapture(e.pointerId); stickMove(e); });
+  stickEl.addEventListener('pointermove', e => { if (e.pointerId === stick.id) stickMove(e); });
+  const stickEnd = e => { if (e.pointerId !== stick.id) return; stick.id = null; stick.x = stick.y = 0; knob.style.transform = ''; };
+  stickEl.addEventListener('pointerup', stickEnd); stickEl.addEventListener('pointercancel', stickEnd);
+  for (const [id, k] of [['upBtn', 'up'], ['downBtn', 'down']]) {
+    const b = $(id);
+    b.addEventListener('pointerdown', e => { ensureAudio(); vbtn[k] = true; b.setPointerCapture(e.pointerId); });
+    b.addEventListener('pointerup', () => { vbtn[k] = false; }); b.addEventListener('pointercancel', () => { vbtn[k] = false; });
+  }
+  if (coarse) {
+    stickEl.hidden = false; $('vert').hidden = false;
+    $('moveKey').textContent = '✥';
+    $('moveText').textContent = 'Nada con el joystick, sube y baja con ▲ ▼ y arrastra el agua para mirar.';
+  }
+
+  $('mute').addEventListener('click', () => {
+    soundOn = !soundOn; store.set('limpiaballenas.atardecer.sound', soundOn);
+    ensureAudio(); if (master) master.gain.setTargetAtTime(soundOn ? 0.9 : 0, AC.currentTime, 0.05);
+    syncMute();
+  });
+  function syncMute() {
+    const b = $('mute');
+    b.setAttribute('aria-pressed', String(!soundOn)); b.setAttribute('aria-label', soundOn ? 'Silenciar sonido' : 'Activar sonido');
+    $('waves').toggleAttribute('hidden', !soundOn); $('cross').toggleAttribute('hidden', soundOn);
+  }
+  $('dive').addEventListener('click', () => {
+    if (!ready) return;
+    ensureAudio(); started = true; $('intro').hidden = true; breathT = 0.5;
+  });
+  $('next').addEventListener('click', () => {
+    ensureAudio(); $('done').hidden = true; $('fade').style.opacity = 1;
+    setTimeout(() => { newWhale(); state = 'play'; $('fade').style.opacity = 0; }, 950);
+  });
+
+  // ---------------------------------------------------------------- environment by depth
+  const C_SURF = new THREE.Color(0x4f9ea0), C_WARM = new THREE.Color(0xc79a78), C_MID = new THREE.Color(0x14607a), C_DEEP = new THREE.Color(0x041a30);
+  const C_MOTE_SHALLOW = new THREE.Color(1, 1, 1), C_MOTE_DEEP = new THREE.Color(0.5, 1.2, 1.3);
+  function updateEnvironment(d) {
+    if (d < 15) fogColor.copy(C_SURF).lerp(C_MID, smooth(0, 15, d)); else fogColor.copy(C_MID).lerp(C_DEEP, smooth(15, 40, d));
+    fogColor.lerp(C_WARM, 0.35 * (1 - smooth(0, 6, d)));
+    scene.fog.density = 0.022 + smooth(5, 40, d) * 0.05;
+    skyMat.uniforms.uDeep.value = smooth(3, 38, d) * 0.92;
+    hemi.intensity = 0.12 + 1.0 * Math.exp(-d * 0.06);
+    sun.intensity = 1.8 * Math.exp(-d * 0.07);
+    fill.intensity = 0.2 + 0.2 * Math.exp(-d * 0.05);
+    torch.intensity = 0.5 + smooth(12, 35, d) * 1.4;
+    sardMat.uniforms.uLight.value = 0.35 + 0.75 * Math.exp(-d * 0.045);
+    motes.mat.uniforms.uTint.value.copy(C_MOTE_SHALLOW).lerp(C_MOTE_DEEP, smooth(10, 35, d));
+    if (ambLP) ambLP.frequency.setTargetAtTime(160 + 520 * Math.exp(-d * 0.04), AC.currentTime, 0.5);
+  }
+
+  // ---------------------------------------------------------------- loop
+  let last = performance.now(), breathT = 2, hudT = 0, exhaleLeft = 0;
+  const camW = V(), UPV = V(0, 1, 0);
+  const fmtTime = s => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now; T += dt; stateT += dt;
+    U.uTime.value = T; surfMat.uniforms.uTime.value = T; sardMat.uniforms.uTime.value = T;
+    const motion = reduce ? 0.3 : 1;
+
+    if (keys.ArrowLeft) yaw += dt * 1.4; if (keys.ArrowRight) yaw -= dt * 1.4;
+    if (keys.ArrowUp) pitch = clamp(pitch + dt * 1.1, -1.45, 1.45); if (keys.ArrowDown) pitch = clamp(pitch - dt * 1.1, -1.45, 1.45);
+    player.rotation.set(0, yaw, 0); camera.rotation.set(pitch, 0, Math.sin(T * 0.5) * 0.012 * motion);
+    player.updateMatrixWorld(true);
+
+    // swim
+    const fwdIn = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) - stick.y;
+    const sideIn = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + stick.x;
+    const vertIn = (keys.Space || keys.KeyE || vbtn.up ? 1 : 0) - (keys.KeyC || keys.KeyQ || keys.ShiftLeft || vbtn.down ? 1 : 0);
+    const dir = V();
+    if (started) {
+      const f = camera.getWorldDirection(V());
+      const r = V().crossVectors(f, UPV).normalize();
+      dir.addScaledVector(f, clamp(fwdIn, -1, 1)).addScaledVector(r, clamp(sideIn, -1, 1)).addScaledVector(UPV, vertIn);
+      if (dir.lengthSq() > 1) dir.normalize();
+    }
+    const speed = 2.3, moving = dir.lengthSq() > 0;
+    vel.lerp(dir.multiplyScalar(speed), 1 - Math.exp(-(moving ? 1.8 : 1.1) * dt));
+    player.position.addScaledVector(vel, dt);
+    player.position.y += Math.sin(T * 0.8) * 0.004 * motion;
+
+    // whale idles; she flexes more when she is happy
+    flourish = Math.max(0, flourish - dt);
+    whaleRoot.position.y = -10.5 + Math.sin(T * 0.3) * 0.12 * motion;
+    whaleRoot.rotation.z = Math.sin(T * 0.21) * 0.01 * motion;
+    for (const m of whaleMats) { const b = m.userData.bend; if (b.uAmp) { b.uAmp.value = 0.035 + flourish * 0.02; b.uFreq.value = 0.9 + flourish * 0.25; } }
+    whaleRoot.updateMatrixWorld(true);
+    collideWorld(player.position, 0.5);
+    player.updateMatrixWorld(true);
+    const kick = Math.min(1, vel.length() / speed);
+    fins.forEach((f, i) => { f.rotation.x = Math.sin(T * 5 + i * Math.PI) * 0.35 * (0.15 + kick); });
+
+    // held goose barnacle
+    if (held && pointerX !== null) {
+      setRay(pointerX, pointerY);
+      const ip = ray.ray.intersectPlane(plane, V());
+      if (ip) {
+        const target = whaleRoot.worldToLocal(ip.add(grabOff));
+        const d = target.sub(held.anchor); const dl = d.length() || 1e-4; d.divideScalar(dl);
+        const stretch = Math.max(0, dl - held.L);
+        held.tension = stretch / held.need;
+        const disp = dl <= held.L ? Math.max(dl, held.L * 0.6) : held.L + stretch * 0.6;
+        held.tip.copy(held.anchor).addScaledVector(d, disp);
+        if (held.tension > 0.55) held.tip.add(V(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)).multiplyScalar(0.004 * held.tension));
+        held.vel.set(0, 0, 0);
+        creakSet(Math.min(1, held.tension));
+        if (held.tension >= 1) { const b = held; held = null; mode = null; creakStop(); detach(b, d.clone()); }
+      }
+    }
+    for (const b of barnacles) {
+      if (b.kind === 'a') {
+        b.jig = Math.max(0, b.jig - dt * 5);
+        b.g.position.copy(b.base).addScaledVector(b.t1, Math.sin(T * 60 + b.seed) * b.jig * 0.006);
+        continue;
+      }
+      if (b !== held) {
+        b.tension = Math.max(0, b.tension - dt * 3);
+        const rest = V().copy(b.rest).addScaledVector(b.side, Math.sin(T * 1.1 + b.seed) * 0.015 * motion);
+        b.vel.addScaledVector(rest.sub(b.tip), 110 * dt); b.vel.multiplyScalar(Math.exp(-6 * dt));
+        b.tip.addScaledVector(b.vel, dt);
+      }
+      placeGoose(b, T);
+    }
+    for (const m of marks) { m.t += dt; m.mesh.material.opacity = 0.85 * Math.max(0, 1 - m.t / 16); }
+    marks = marks.filter(m => { if (m.t > 16) { whaleRoot.remove(m.mesh); return false; } return true; });
+    for (const d of debris) {
+      d.life += dt;
+      d.v.multiplyScalar(Math.exp(-1.4 * dt)); d.v.y -= 0.3 * dt;
+      d.g.position.addScaledVector(d.v, dt);
+      d.g.rotation.x += d.spin.x * dt; d.g.rotation.y += d.spin.y * dt; d.g.rotation.z += d.spin.z * dt;
+      d.spin.multiplyScalar(Math.exp(-0.5 * dt));
+      const a = clamp(1 - (d.life - 3) / 2, 0, 1);
+      d.g.traverse(o => { if (o.isMesh && o.material.transparent) o.material.opacity = a; });
+    }
+    debris = debris.filter(d => { if (d.life > 5) { scene.remove(d.g); return false; } return true; });
+
+    updateSchools(dt, T);
+    if (ready) updateFriends(dt, T);
+    updateJellies(dt, T);
+
+    // particles
+    camera.getWorldPosition(camW);
+    for (const c of chips) { c.life += dt; c.v.multiplyScalar(Math.exp(-3 * dt)); c.v.y -= 0.5 * dt; c.p.addScaledVector(c.v, dt); }
+    chips = chips.filter(c => c.life < c.max);
+    { const a = chipGeo.attributes.position.array; let k = 0; for (const c of chips) { if (k >= 600) break; a[k * 3] = c.p.x; a[k * 3 + 1] = c.p.y; a[k * 3 + 2] = c.p.z; k++; } chipGeo.setDrawRange(0, k); chipGeo.attributes.position.needsUpdate = true; }
+    for (const b of bubbles.items) {
+      b.life += dt;
+      if (b.pop >= 0) { b.pop += dt; b.frame = 12 + Math.min(2, Math.floor(b.pop * 12)); b.alpha = Math.max(0, 1 - b.pop * 3); continue; }
+      b.v.y = Math.min(b.v.y + 0.35 * dt, 1.1 + b.size * 4);
+      b.p.addScaledVector(b.v, dt); b.p.x += Math.sin(b.life * 5 + b.seed) * 0.06 * dt;
+      b.frame = Math.floor((b.life * 9 + b.seed) % 12);
+      if (b.life > b.max || b.p.y > -0.3) b.pop = 0;
+    }
+    bubbles.items = bubbles.items.filter(b => b.pop < 0.28);
+    for (const h of hearts.items) { h.life += dt; h.p.y += 0.12 * dt; h.frame = Math.min(7, Math.floor(h.life / 1.9 * 8)); h.alpha = h.life > 1.7 ? Math.max(0, 1 - (h.life - 1.7) * 3) : 1; }
+    hearts.items = hearts.items.filter(h => h.life < 2.1);
+    const depth = clamp(-camW.y, 0, 60);
+    const deepGlow = smooth(8, 35, depth);
+    for (const m of motes.items) {
+      m.p.addScaledVector(m.drift, dt);
+      if (m.p.x < camW.x - 14) m.p.x += 28; else if (m.p.x > camW.x + 14) m.p.x -= 28;
+      if (m.p.y < camW.y - 14) m.p.y += 28; else if (m.p.y > camW.y + 14) m.p.y -= 28;
+      if (m.p.z < camW.z - 14) m.p.z += 28; else if (m.p.z > camW.z + 14) m.p.z -= 28;
+      m.frame = Math.floor((T * 6 + m.seed) % 16);
+      m.alpha = 0.2 + deepGlow * 0.8;
+    }
+    flushSheet(bubbles); flushSheet(hearts); flushSheet(motes);
+
+    for (const s of shafts) {
+      const u = s.userData;
+      s.position.set(u.x + Math.sin(T * 0.05 + u.p) * 3, -22, u.z);
+      s.material.opacity = (u.o + 0.03 * Math.sin(T * 0.35 + u.p)) * (1 - smooth(5, 34, depth) * 0.85);
+    }
+
+    // breathing through the regulator, and the slow pad underneath
+    if (started) {
+      breathT -= dt;
+      if (breathT <= 0) { breathT = 6.4; sfxInhale(); setTimeout(() => { sfxExhale(); exhaleLeft = 1.4; }, 2100); }
+      if (exhaleLeft > 0) {
+        exhaleLeft -= dt;
+        if (Math.random() < 0.8) for (const sx of [-1, 1]) spawnBubble(camera.localToWorld(V(sx * rnd(0.18, 0.3), rnd(-0.34, -0.24), rnd(-0.3, -0.12))), rnd(0.012, 0.035), rnd(0.5, 1));
+      }
+      chordT += dt; if (chordT > 11) { chordT = 0; chordIx = (chordIx + 1) % CHORDS.length; padChord(chordIx); }
+    }
+    // now and then the whale lets out a curtain of bubbles from her blowhole
+    if (ready && Math.random() < dt / 14) {
+      const bh = whaleRoot.localToWorld(V(0, 0.28 * WS, 0.52 * WS));
+      for (let i = 0; i < 26; i++) spawnBubble(bh.clone().add(V(rnd(-0.2, 0.2), 0, rnd(-0.2, 0.2))), rnd(0.03, 0.1), rnd(0.4, 1.1));
+    }
+
+    if (state === 'clean') {
+      if (stateT - dt < 0.6 && stateT >= 0.6) {
+        sfxSong(true); flourish = 6;
+        const bh = whaleRoot.localToWorld(V(0, 0.28 * WS, 0.52 * WS));
+        for (let i = 0; i < 90; i++) spawnBubble(bh.clone().add(V(rnd(-0.3, 0.3), rnd(0, 0.3), rnd(-0.3, 0.3))), rnd(0.03, 0.14), rnd(0.4, 1.4));
+        for (const f of friends) if (f.state === 'wander') { f.state = 'approach'; f.t = 0; }
+      }
+      if (stateT - dt < 2.6 && stateT >= 2.6) {
+        $('doneTitle').textContent = `${whaleName()} está limpia`;
+        $('doneText').textContent = `Le has quitado ${total} bellotas y percebes en ${fmtTime(diveTime)} de inmersión. Ahora nada mucho más ligera, y los peces han venido a darte las gracias.`;
+        $('done').hidden = false;
+        whaleNo++; store.set('limpiaballenas.atardecer.no', whaleNo);
+      }
+    }
+
+    // arm and scraper
+    scraping = Math.max(0, scraping - dt);
+    if (held) tipTarget.copy(camera.worldToLocal(whaleRoot.localToWorld(held.tip.clone())));
+    else if (started && pointerX !== null && mode !== 'look' && state === 'play') {
+      setRay(pointerX, pointerY);
+      const h = hitWhale();
+      if (h && h.distance <= REACH + 0.4) { tipTarget.copy(camera.worldToLocal(h.point.clone())); tipTarget.z += 0.03; } else tipTarget.copy(REST_TIP);
+    } else tipTarget.copy(REST_TIP);
+    if (tipTarget.distanceTo(SHOULDER) > 2.2) tipTarget.sub(SHOULDER).setLength(2.2).add(SHOULDER);
+    tipNow.lerp(tipTarget, 1 - Math.exp(-14 * dt));
+    placeRig(T, scraping > 0);
+
+    updateEnvironment(depth);
+    surfMat.uniforms.uCam.value.copy(camW);
+    sky.position.copy(camW);
+    if (started && state === 'play') diveTime += dt;
+    maxDepth = Math.max(maxDepth, depth);
+    toastT -= dt; if (toastT <= 0) $('toast').classList.remove('on');
+    hudT -= dt;
+    if (hudT <= 0) {
+      hudT = 0.25;
+      hud.depth.textContent = depth.toFixed(1).replace('.', ',') + ' m';
+      hud.maxDepth.textContent = maxDepth.toFixed(1).replace('.', ',') + ' m';
+      hud.temp.textContent = Math.round(27 - depth * 0.2) + ' °C';
+      hud.time.textContent = fmtTime(diveTime);
+    }
+    renderer.render(scene, camera);
+    requestAnimationFrame(frame);
+  }
+
+  manager.onLoad = () => {
+    if (ready) return;
+    try {
+      buildWhale();
+      buildReefs();
+      buildFriends();
+      ready = true;
+      newWhale();
+    } catch (e) { console.error(e); ready = true; }
+    const b = $('dive'); b.disabled = false; b.textContent = 'Sumergirse';
+  };
+
+  // start beside the whale, looking at her flank
+  player.position.set(3.4, -8.7, 1.2);
+  yaw = Math.PI / 2 - 0.1; pitch = -0.2;
+  addEventListener('resize', resize);
+  resize();
+  syncMute();
+  updateHud();
+  requestAnimationFrame(frame);
+})();
+</script>
+
+</body>
+</html>
