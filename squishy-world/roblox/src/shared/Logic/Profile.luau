@@ -27,6 +27,7 @@ function Profile.fresh(): Types.PlayerData
 		tutorial = 0,
 		tourSeen = false,
 		tipSquish = false,
+		muted = false,
 		lastMold = "cat",
 		lastFill = "pink_foam",
 		firstDone = false,

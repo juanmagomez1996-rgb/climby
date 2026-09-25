@@ -13,7 +13,7 @@ function Dialog.confirm(text: string, yes: () -> ())
 		Size = UDim2.fromScale(1, 1),
 		Active = true,
 		ZIndex = 60,
-		Parent = Kit.root(),
+		Parent = Kit.root("dialog"),
 	})
 	local box: Frame = Kit.new("Frame", {
 		AnchorPoint = Vector2.new(0.5, 0.5),
@@ -21,7 +21,7 @@ function Dialog.confirm(text: string, yes: () -> ())
 		Size = UDim2.fromOffset(420, 190),
 		BackgroundColor3 = Theme.paper,
 		Parent = shade,
-	}, { Kit.corner(20), Kit.pad(18, 16), Kit.stroke(Theme.lav2, 3) })
+	}, { Kit.corner(20), Kit.pad(18, 16) })
 	Kit.text(text, 16, { Size = UDim2.new(1, 0, 1, -56), TextYAlignment = Enum.TextYAlignment.Top, Parent = box })
 	local ok = Kit.button(
 		"Sí",

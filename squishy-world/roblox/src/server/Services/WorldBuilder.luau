@@ -196,7 +196,7 @@ local function prompt(pos: Vector3, kind: string, id: string, action: string, ob
 	pp.KeyboardKeyCode = Enum.KeyCode.E
 	pp.MaxActivationDistance = Config.Game.INTERACT_DIST + 3
 	pp.RequiresLineOfSight = false
-	pp.Style = Enum.ProximityPromptStyle.Default
+	pp.Style = Enum.ProximityPromptStyle.Custom -- se dibuja como el #prompt del original (Interact.luau)
 	pp.Parent = anchor
 	anchor.Parent = folder
 end
@@ -224,7 +224,8 @@ function WorldBuilder.build()
 	-- spawn: el Baseplate de Studio trae uno en (0,0,0) = encima de la fuente/estatua → moverlo
 	for _, d in Workspace:GetDescendants() do
 		if d:IsA("SpawnLocation") then
-			d.Position = L.spawn + Vector3.new(0, 0.2, 0)
+			-- mirando hacia las Máquinas (+Z), como el original
+			d.CFrame = CFrame.new(L.spawn + Vector3.new(0, 0.2, 0)) * CFrame.Angles(0, math.pi, 0)
 			d.Transparency = 1
 			d.CanCollide = false
 			local decal = d:FindFirstChildOfClass("Decal")
@@ -237,7 +238,7 @@ function WorldBuilder.build()
 		local sp = Instance.new("SpawnLocation")
 		sp.Anchored = true
 		sp.Size = Vector3.new(6, 0.4, 6)
-		sp.Position = L.spawn + Vector3.new(0, 0.2, 0)
+		sp.CFrame = CFrame.new(L.spawn + Vector3.new(0, 0.2, 0)) * CFrame.Angles(0, math.pi, 0)
 		sp.Transparency = 1
 		sp.CanCollide = false
 		sp.Duration = 0
@@ -254,11 +255,18 @@ function WorldBuilder.build()
 				def = md
 			end
 		end
-		prompt(m.pos + Vector3.new(0, 3, -3), "machine", m.id, "Usar", def.name, folder)
+		prompt(
+			m.pos + Vector3.new(0, 3, -3),
+			"machine",
+			m.id,
+			if m.id == "m1" then "Usar la Máquina Squishy" else "Usar " .. def.name,
+			"",
+			folder
+		)
 	end
-	prompt(L.shopCounter + Vector3.new(2.5, 3, 0), "shop", "shop", "Comprar", "Tienda", folder)
-	prompt(Vector3.new(0, 3, -67), "index", "index", "Ver", "Índice Squishy", folder)
-	prompt(Vector3.new(64, 3, 0), "tradeBoard", "board", "Intercambiar", "Plaza de Intercambio", folder)
+	prompt(L.shopCounter + Vector3.new(2.5, 3, 0), "shop", "shop", "Abrir la Tienda", "", folder)
+	prompt(Vector3.new(0, 3, -67), "index", "index", "Abrir el Índice Squishy", "", folder)
+	prompt(Vector3.new(64, 3, 0), "tradeBoard", "board", "Cambiar con jugadores", "", folder)
 	folder.Parent = Workspace
 
 	-- iluminación pastel (cielo claro, luz cálida)

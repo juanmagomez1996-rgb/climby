@@ -1,5 +1,6 @@
 --!strict
--- Índice Squishy (renderIndex de game5.js): 413 entradas, siluetas "???" hasta descubrirlas.
+-- Índice Squishy (renderIndex de game5.js + #indexWrap): "N / 413 descubiertos — las siluetas
+-- siguen siendo un misterio", pestañas por especie (con wrap), celdas con barra de color arriba.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage.Shared
@@ -24,11 +25,7 @@ local function render()
 	if not d or Modal.current ~= "index" or not ui.grid then
 		return
 	end
-	ui.count.Text = string.format(
-		"%d / %d  <font size='13' color='#6d7285'>descubiertos — las siluetas siguen siendo un misterio</font>",
-		Profile.discoveredCount(d),
-		Catalog.indexTotal()
-	)
+	ui.count.Text = string.format("%d / %d", Profile.discoveredCount(d), Catalog.indexTotal())
 	Kit.clear(ui.tabs)
 	for i, sp in Config.Species do
 		local vs = Catalog.variantsFor(sp.id)
@@ -38,7 +35,7 @@ local function render()
 				c += 1
 			end
 		end
-		local b = Kit.button(
+		local b = Kit.tab(
 			string.format(
 				"%s%s <font transparency='0.4'>%d/%d</font>",
 				if sp.famous then "✨ " else "",
@@ -46,16 +43,10 @@ local function render()
 				c,
 				#vs
 			),
-			if current == sp.id then Theme.purple else Theme.white,
-			{
-				Size = UDim2.new(1, -8, 0, 30),
-				TextSize = 12,
-				TextXAlignment = Enum.TextXAlignment.Left,
-				LayoutOrder = i,
-				Parent = ui.tabs,
-			}
+			current == sp.id,
+			sp.famous,
+			{ LayoutOrder = i, Parent = ui.tabs }
 		)
-		Kit.pad(8, 0).Parent = b
 		b.Activated:Connect(function()
 			current = sp.id
 			Audio.play("click")
@@ -75,27 +66,40 @@ local function render()
 			local v = Catalog.VAR[vid]
 			local known = d.discovered[current .. "|" .. vid] == true
 			local r = Catalog.R[v.rarity]
+			-- .idx: blanca, radius 15, borde superior de 5px del color de la rareza, sombra lav2
 			local cell: Frame = Kit.new("Frame", {
 				BackgroundColor3 = Theme.white,
+				ClipsDescendants = false,
 				LayoutOrder = i,
 				Parent = ui.grid,
-			}, { Kit.corner(12), Kit.stroke(Color3.fromHex(r.color), 2) })
+			}, { Kit.corner(15) })
+			Kit.shadow(cell, Theme.lav2, 3, 15)
+			Kit.new("Frame", {
+				BackgroundColor3 = Color3.fromHex(r.color),
+				BorderSizePixel = 0,
+				Position = UDim2.fromOffset(6, 0),
+				Size = UDim2.new(1, -12, 0, 5),
+				Parent = cell,
+			}, { Kit.corner(3) })
 			local th: Frame = Kit.new("Frame", {
 				BackgroundTransparency = 1,
-				Position = UDim2.fromOffset(6, 4),
-				Size = UDim2.new(1, -12, 0, 70),
+				AnchorPoint = Vector2.new(0.5, 0),
+				Position = UDim2.new(0.5, 0, 0, 8),
+				Size = UDim2.fromOffset(84, 84),
 				Parent = cell,
 			})
 			Thumb.make({ species = current, variant = vid }, th, not known)
 			Kit.text(
 				if known then Squishy.name({ species = current, variant = vid, mutation = "normal" }) else "???",
-				11,
+				11.5,
 				{
-					Font = Theme.bodyBlack,
+					FontFace = Theme.bodyBlack,
 					TextColor3 = if known then Theme.ink else Color3.fromHex("#a7abb9"),
 					TextXAlignment = Enum.TextXAlignment.Center,
-					Position = UDim2.new(0, 4, 1, -32),
-					Size = UDim2.new(1, -8, 0, 28),
+					TextYAlignment = Enum.TextYAlignment.Top,
+					Position = UDim2.new(0, 4, 1, -34),
+					Size = UDim2.new(1, -8, 0, 30),
+					LineHeight = 0.95,
 					Parent = cell,
 				}
 			)
@@ -109,21 +113,66 @@ end
 local function open()
 	local content = Modal.open("index", "Índice Squishy", {
 		width = 900,
-		height = 580,
+		height = 660,
 		onClose = function()
 			ui = {}
 		end,
 	})
-	ui.count = Kit.text("", 20, { Font = Theme.display, Size = UDim2.new(1, 0, 0, 26), Parent = content })
-	local tabs = Modal.scroll(content, { Position = UDim2.fromOffset(0, 34), Size = UDim2.new(0, 230, 1, -34) })
-	Kit.list(Enum.FillDirection.Vertical, 4).Parent = tabs
+	local head: Frame = Kit.new("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 36),
+		Parent = content,
+	}, { Kit.list(Enum.FillDirection.Horizontal, 14) });
+	(head:FindFirstChildOfClass("UIListLayout") :: UIListLayout).VerticalAlignment = Enum.VerticalAlignment.Center
+	ui.count = Kit.text("", 30, {
+		FontFace = Theme.display,
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.fromOffset(0, 36),
+		TextWrapped = false,
+		Parent = head,
+	})
+	Kit.text("descubiertos — las siluetas siguen siendo un misterio", 16, {
+		FontFace = Theme.bodyBlack,
+		TextColor3 = Theme.muted,
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.fromOffset(0, 22),
+		TextWrapped = false,
+		LayoutOrder = 2,
+		Parent = head,
+	})
+	local tabs: Frame = Kit.new("Frame", {
+		BackgroundTransparency = 1,
+		Position = UDim2.fromOffset(0, 44),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = UDim2.new(1, 0, 0, 0),
+		Parent = content,
+	})
+	local tl = Kit.list(Enum.FillDirection.Horizontal, 6)
+	tl.Wraps = true
+	tl.Parent = tabs
 	ui.tabs = tabs
-	local grid = Modal.scroll(content, { Position = UDim2.fromOffset(240, 34), Size = UDim2.new(1, -240, 1, -34) })
-	Kit.grid(UDim2.fromOffset(100, 112), 8).Parent = grid
-	Kit.pad(2, 4).Parent = grid
-	ui.grid = grid
+	local grid = Modal.scroll(content, { Position = UDim2.fromOffset(0, 150), Size = UDim2.new(1, 0, 1, -150) })
+	local function place()
+		grid.Position = UDim2.fromOffset(0, 52 + tabs.AbsoluteSize.Y)
+		grid.Size = UDim2.new(1, 0, 1, -(52 + tabs.AbsoluteSize.Y))
+	end
+	tabs:GetPropertyChangedSignal("AbsoluteSize"):Connect(place)
+	local inner: Frame = Kit.new("Frame", {
+		BackgroundTransparency = 1,
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = UDim2.new(1, -10, 0, 0),
+		Parent = grid,
+	}, { Kit.new("UIPadding", { PaddingTop = UDim.new(0, 2), PaddingBottom = UDim.new(0, 8) }) })
+	Kit.new("UIGridLayout", {
+		CellSize = UDim2.fromOffset(104, 132),
+		CellPadding = UDim2.fromOffset(9, 12),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Parent = inner,
+	})
+	ui.grid = inner
 	Audio.play("open")
 	render()
+	task.defer(place)
 end
 
 function Index.init()

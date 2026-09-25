@@ -401,7 +401,7 @@ Monetization.PRODUCTS = {
 		name = "Poción de Suerte",
 		desc = "+50% de suerte por 15 minutos (se acumula).",
 		robux = 99,
-		icon = "🧪",
+		icon = "🍀",
 		luckMinutes = 15,
 	},
 	{
@@ -1111,6 +1111,7 @@ function Profile.fresh(): Types.PlayerData
 		tutorial = 0,
 		tourSeen = false,
 		tipSquish = false,
+		muted = false,
 		lastMold = "cat",
 		lastFill = "pink_foam",
 		firstDone = false,
@@ -1577,6 +1578,7 @@ export type PlayerData = {
 	tutorial: number,
 	tourSeen: boolean,
 	tipSquish: boolean,
+	muted: boolean,
 	lastMold: string,
 	lastFill: string,
 	firstDone: boolean,
@@ -2786,6 +2788,14 @@ function InventoryService.init()
 		end
 		return { ok = true }
 	end)
+	Net.on("setMuted", function(player, payload)
+		local d = DataService.get(player)
+		if d then
+			d.muted = payload.v == true
+			DataService.changed(player)
+		end
+		return { ok = true }
+	end)
 	Net.on("tourSeen", function(player)
 		local d = DataService.get(player)
 		if d then
@@ -3080,6 +3090,7 @@ return Net
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TextService = game:GetService("TextService")
 local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage.Shared
@@ -3162,20 +3173,96 @@ local function say(n: Npc, text: string, secs: number?)
 	end)
 end
 
--- respuestas predefinidas (scriptedReply de game4.js, versión en español)
-local function scriptedReply(n: Npc): string
-	local sp = Catalog.SP[n.def.fav]
-	local opts = {
-		"¡Qué buen compañero tienes!",
-		"¿Ya probaste la Máquina 02?",
-		"¿Quieres cambiar?",
-		"¡Me encanta esta plaza!",
-		"Truco: suelta justo en la zona verde Perfect, ¡te sube la suerte!",
-		"¡La Barra de Mantequilla es la mejor, sube lentííísimo! 🧈 Los demás virales están en la Tienda.",
-		"Los legendarios son rarísimos… el relleno Misterio ayuda un poquito ✨",
-		string.format("¡Los %s son mis favoritos! ¿Tienes alguno?", sp and sp.name or "squishies"),
-	}
-	return opts[rng:NextInteger(1, #opts)]
+local function pick<T>(list: { T }): T
+	return list[rng:NextInteger(1, #list)]
+end
+
+local function has(t: string, words: { string }): boolean
+	for _, w in words do
+		if string.find(t, w, 1, true) then
+			return true
+		end
+	end
+	return false
+end
+
+--- scriptedReply(n, text) de game4.js, tal cual (detecta inglés/español).
+local function scriptedReply(n: Npc, text: string): (string, string, boolean)
+	local t = string.lower(text)
+	local padded = " " .. string.gsub(t, "[%p]", " ") .. " "
+	local en = false
+	for _, w in { "hi", "hello", "hey", "trade", "want", "how", "what", "you", "your", "the", "is", "are", "thanks" } do
+		if string.find(padded, " " .. w .. " ", 1, true) then
+			en = true
+			break
+		end
+	end
+	if has(t, { "ñ", "á", "é", "í", "ó", "ú", "¿", "¡" }) then
+		en = false
+	end
+	local es = not en
+	local function L(e: string, sp: string): string
+		return if es then sp else e
+	end
+	local fav = Catalog.SP[n.def.fav]
+	if has(t, { "trade", "cambi", "interc" }) then
+		return L("Sure! Let's see what you've got 👀", "¡Dale! Muéstrame qué tienes 👀"), "yes", true
+	end
+	if has(t, { "aplast", "apachurr", "squish", "slow", "suav", "sube" }) then
+		return L(
+			"Hold click on any squishy to squish it — press F for close-up!",
+			"¡Mantén clic sobre cualquier squishy para apachurrarlo, o presiona F para verlo de cerca! Los de Miel suben lentííísimo 🍯"
+		),
+			"yes",
+			false
+	end
+	if has(t, { "mantequilla", "butter", "viral", "famos" }) then
+		return L(
+			"The butter one is the best, it rises sooo slow 🧈",
+			"¡La Barra de Mantequilla es la mejor, sube lentííísimo! 🧈 Los demás virales están en la Tienda."
+		),
+			"yes",
+			false
+	end
+	if has(t, { "perfect", "tip", "how", "consejo", "truco", "cómo", "como" }) then
+		return L(
+			"Tip: let go right inside the green Perfect zone, it boosts your luck!",
+			"Truco: suelta justo en la zona verde Perfect, ¡te sube la suerte!"
+		),
+			"yes",
+			false
+	end
+	if has(t, { "legend", "secret", "secreto" }) then
+		return L(
+			"Legendaries are super rare… Mystery filling helps a tiny bit ✨",
+			"Los legendarios son rarísimos… el relleno Mystery ayuda un poquito ✨"
+		),
+			"none",
+			false
+	end
+	if string.find(t, n.def.fav, 1, true) and fav then
+		return L(
+			string.format("%ss are my favorite!! Got any?", fav.name),
+			string.format("¡Los %s son mis favoritos! ¿Tienes alguno?", fav.name)
+		),
+			"yes",
+			true
+	end
+	if es then
+		return pick({
+			"¡Qué buen compañero tienes!",
+			"¿Ya probaste la Máquina 02?",
+			"¿Quieres cambiar?",
+			"¡Me encanta esta plaza!",
+		}),
+			pick({ "none", "yes" }),
+			rng:NextNumber() < 0.3
+	end
+	local lines = table.clone(n.def.lines)
+	for _, l in { "Nice companion!", "Have you tried Machine 02?", "Want to trade?" } do
+		table.insert(lines, l)
+	end
+	return pick(lines), pick({ "none", "yes" }), rng:NextNumber() < 0.3
 end
 
 local function spawnNpc(i: number, def: any, folder: Folder)
@@ -3216,21 +3303,17 @@ local function spawnNpc(i: number, def: any, folder: Folder)
 	)
 
 	local root = model:FindFirstChild("HumanoidRootPart") :: BasePart
-	local function addPrompt(text: string, action: string, key: Enum.KeyCode, offsetY: number)
-		local pp = Instance.new("ProximityPrompt")
-		pp.ActionText = text
-		pp.ObjectText = def.name
-		pp.KeyboardKeyCode = key
-		pp.MaxActivationDistance = 10
-		pp.RequiresLineOfSight = false
-		pp.UIOffset = Vector2.new(0, offsetY)
-		pp:SetAttribute("Kind", "npc")
-		pp:SetAttribute("Id", def.name)
-		pp:SetAttribute("Action", action)
-		pp.Parent = root
-	end
-	addPrompt("Cambiar", "trade", Enum.KeyCode.E, 0)
-	addPrompt("Hablar", "talk", Enum.KeyCode.R, 70)
+	-- #prompt del original: "Hablar con {npc}" (E) → abre el chat (el botón Cambiar está en el chat)
+	local pp = Instance.new("ProximityPrompt")
+	pp.ActionText = "Hablar con " .. def.name
+	pp.ObjectText = ""
+	pp.KeyboardKeyCode = Enum.KeyCode.E
+	pp.MaxActivationDistance = 10
+	pp.RequiresLineOfSight = false
+	pp.Style = Enum.ProximityPromptStyle.Custom
+	pp:SetAttribute("Kind", "npc")
+	pp:SetAttribute("Id", def.name)
+	pp.Parent = root
 	model.Parent = folder
 	root:SetNetworkOwner(nil)
 
@@ -3297,10 +3380,32 @@ function NpcService.init()
 			return { ok = false }
 		end
 		stopFor(n, player, 8)
-		local text = scriptedReply(n)
-		say(n, text, 6)
-		Net.sound(player, "npc")
-		return { ok = true, say = text }
+		return { ok = true }
+	end)
+	local lastChat: { [Player]: number } = {}
+	Net.on("npcChat", function(player, payload)
+		local n = npcs[payload.npc]
+		local text = payload.text
+		if not n or type(text) ~= "string" or #text == 0 or #text > 280 then
+			return { ok = false }
+		end
+		if os.clock() - (lastChat[player] or 0) < 1 then
+			return { ok = false, err = "rate" }
+		end
+		lastChat[player] = os.clock()
+		-- todo texto de jugadores pasa por el filtro de Roblox
+		local okF, filtered = pcall(function()
+			local r = TextService:FilterStringAsync(string.sub(text, 1, 140), player.UserId)
+			return r:GetNonChatStringForBroadcastAsync()
+		end)
+		if not okF then
+			return { ok = false, err = "filtro" }
+		end
+		stopFor(n, player, 10)
+		local reply, emote, wantsTrade = scriptedReply(n, filtered :: string)
+		reply = string.sub(reply, 1, 220)
+		say(n, reply, 5)
+		return { ok = true, mine = filtered, say = reply, emote = emote, wantsTrade = wantsTrade }
 	end)
 	-- le están apachurrando el compañero: se detiene y reacciona
 	Net.on("npcSquished", function(player, payload)
@@ -4081,7 +4186,7 @@ local function prompt(pos: Vector3, kind: string, id: string, action: string, ob
 	pp.KeyboardKeyCode = Enum.KeyCode.E
 	pp.MaxActivationDistance = Config.Game.INTERACT_DIST + 3
 	pp.RequiresLineOfSight = false
-	pp.Style = Enum.ProximityPromptStyle.Default
+	pp.Style = Enum.ProximityPromptStyle.Custom -- se dibuja como el #prompt del original (Interact.luau)
 	pp.Parent = anchor
 	anchor.Parent = folder
 end
@@ -4109,7 +4214,8 @@ function WorldBuilder.build()
 	-- spawn: el Baseplate de Studio trae uno en (0,0,0) = encima de la fuente/estatua → moverlo
 	for _, d in Workspace:GetDescendants() do
 		if d:IsA("SpawnLocation") then
-			d.Position = L.spawn + Vector3.new(0, 0.2, 0)
+			-- mirando hacia las Máquinas (+Z), como el original
+			d.CFrame = CFrame.new(L.spawn + Vector3.new(0, 0.2, 0)) * CFrame.Angles(0, math.pi, 0)
 			d.Transparency = 1
 			d.CanCollide = false
 			local decal = d:FindFirstChildOfClass("Decal")
@@ -4122,7 +4228,7 @@ function WorldBuilder.build()
 		local sp = Instance.new("SpawnLocation")
 		sp.Anchored = true
 		sp.Size = Vector3.new(6, 0.4, 6)
-		sp.Position = L.spawn + Vector3.new(0, 0.2, 0)
+		sp.CFrame = CFrame.new(L.spawn + Vector3.new(0, 0.2, 0)) * CFrame.Angles(0, math.pi, 0)
 		sp.Transparency = 1
 		sp.CanCollide = false
 		sp.Duration = 0
@@ -4139,11 +4245,18 @@ function WorldBuilder.build()
 				def = md
 			end
 		end
-		prompt(m.pos + Vector3.new(0, 3, -3), "machine", m.id, "Usar", def.name, folder)
+		prompt(
+			m.pos + Vector3.new(0, 3, -3),
+			"machine",
+			m.id,
+			if m.id == "m1" then "Usar la Máquina Squishy" else "Usar " .. def.name,
+			"",
+			folder
+		)
 	end
-	prompt(L.shopCounter + Vector3.new(2.5, 3, 0), "shop", "shop", "Comprar", "Tienda", folder)
-	prompt(Vector3.new(0, 3, -67), "index", "index", "Ver", "Índice Squishy", folder)
-	prompt(Vector3.new(64, 3, 0), "tradeBoard", "board", "Intercambiar", "Plaza de Intercambio", folder)
+	prompt(L.shopCounter + Vector3.new(2.5, 3, 0), "shop", "shop", "Abrir la Tienda", "", folder)
+	prompt(Vector3.new(0, 3, -67), "index", "index", "Abrir el Índice Squishy", "", folder)
+	prompt(Vector3.new(64, 3, 0), "tradeBoard", "board", "Cambiar con jugadores", "", folder)
 	folder.Parent = Workspace
 
 	-- iluminación pastel (cielo claro, luz cálida)
@@ -4180,6 +4293,12 @@ return WorldBuilder
   <Item class="StarterPlayer" referent="42">
     <Properties>
       <string name="Name">StarterPlayer</string>
+      <float name="CameraMaxZoomDistance">24</float>
+      <float name="CameraMinZoomDistance">7</float>
+      <float name="CharacterJumpHeight">0</float>
+      <bool name="CharacterUseJumpPower">false</bool>
+      <float name="CharacterWalkSpeed">13</float>
+      <bool name="LoadCharacterAppearance">true</bool>
     </Properties>
     <Item class="StarterPlayerScripts" referent="43">
       <Properties>
@@ -4203,10 +4322,32 @@ local SoundService = game:GetService("SoundService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local State = require(script.Parent.State)
 
 local Audio = {}
 local cache: { [string]: Sound } = {}
 Audio.muted = false
+local mutedListeners: { (boolean) -> () } = {}
+
+function Audio.onMuted(fn: (boolean) -> ())
+	table.insert(mutedListeners, fn)
+end
+
+--- Silenciar/activar (se guarda en el perfil como S.muted del original).
+function Audio.setMuted(m: boolean, fromServer: boolean?)
+	Audio.muted = m
+	for _, s in cache do
+		if m then
+			s:Stop()
+		end
+	end
+	for _, fn in mutedListeners do
+		task.spawn(fn, m)
+	end
+	if not fromServer then
+		task.spawn(State.request, "setMuted", { v = m })
+	end
+end
 
 local function get(name: string): Sound?
 	local id = (Config.AssetIds.sounds :: any)[name]
@@ -4226,13 +4367,14 @@ local function get(name: string): Sound?
 	return s
 end
 
-function Audio.play(name: string, pitch: number?)
+function Audio.play(name: string, pitch: number?, volume: number?)
 	if Audio.muted then
 		return
 	end
 	local s = get(name)
 	if s then
 		s.PlaybackSpeed = pitch or 1
+		s.Volume = volume or 0.6
 		SoundService:PlayLocalSound(s)
 	end
 end
@@ -4591,6 +4733,95 @@ return Companion
           </Item>
           <Item class="ModuleScript" referent="49">
             <Properties>
+              <string name="Name">Controls</string>
+              <string name="Source"><![CDATA[--!strict
+-- Movimiento y cámara como el original (game1.js CONFIG.PLAYER / CONFIG.CAM):
+-- caminar 13, Shift = correr 22, sin salto; cámara FOV 58, distancia 14 (zoom 7–24).
+-- Velocidad base, salto y zoom min/max están en default.project.json (StarterPlayer).
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+
+local Config = require(ReplicatedStorage.Shared.Config)
+
+local Controls = {}
+
+local P = Config.Game.PLAYER
+local C = Config.Game.CAM
+local FOV = 58
+
+local running = false
+
+local function humanoid(): Humanoid?
+	local char = Players.LocalPlayer.Character
+	return char and char:FindFirstChildOfClass("Humanoid")
+end
+
+local function applySpeed()
+	local h = humanoid()
+	if h then
+		h.WalkSpeed = if running then P.run else P.walk
+	end
+end
+
+local function onCharacter(char: Model)
+	local h = char:WaitForChild("Humanoid", 10) :: Humanoid?
+	if not h then
+		return
+	end
+	h.UseJumpPower = false
+	h.JumpHeight = 0
+	h:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
+	applySpeed()
+	-- empezar a la distancia del original (14): forzar el zoom un instante
+	local lp = Players.LocalPlayer
+	lp.CameraMinZoomDistance = C.dist
+	lp.CameraMaxZoomDistance = C.dist
+	task.delay(0.2, function()
+		lp.CameraMinZoomDistance = C.min
+		lp.CameraMaxZoomDistance = C.max
+	end)
+end
+
+function Controls.init()
+	local cam = Workspace.CurrentCamera
+	if cam then
+		cam.FieldOfView = FOV
+	end
+	Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+		if Workspace.CurrentCamera then
+			Workspace.CurrentCamera.FieldOfView = FOV
+		end
+	end)
+	local lp = Players.LocalPlayer
+	if lp.Character then
+		task.spawn(onCharacter, lp.Character)
+	end
+	lp.CharacterAdded:Connect(onCharacter)
+	UserInputService.InputBegan:Connect(function(input, gp)
+		if gp then
+			return
+		end
+		if input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift then
+			running = true
+			applySpeed()
+		end
+	end)
+	UserInputService.InputEnded:Connect(function(input)
+		if input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift then
+			running = false
+			applySpeed()
+		end
+	end)
+end
+
+return Controls
+]]></string>
+            </Properties>
+          </Item>
+          <Item class="ModuleScript" referent="50">
+            <Properties>
               <string name="Name">Dialog</string>
               <string name="Source"><![CDATA[--!strict
 -- Confirmaciones (el confirm() del navegador en el prototipo).
@@ -4607,7 +4838,7 @@ function Dialog.confirm(text: string, yes: () -> ())
 		Size = UDim2.fromScale(1, 1),
 		Active = true,
 		ZIndex = 60,
-		Parent = Kit.root(),
+		Parent = Kit.root("dialog"),
 	})
 	local box: Frame = Kit.new("Frame", {
 		AnchorPoint = Vector2.new(0.5, 0.5),
@@ -4615,7 +4846,7 @@ function Dialog.confirm(text: string, yes: () -> ())
 		Size = UDim2.fromOffset(420, 190),
 		BackgroundColor3 = Theme.paper,
 		Parent = shade,
-	}, { Kit.corner(20), Kit.pad(18, 16), Kit.stroke(Theme.lav2, 3) })
+	}, { Kit.corner(20), Kit.pad(18, 16) })
 	Kit.text(text, 16, { Size = UDim2.new(1, 0, 1, -56), TextYAlignment = Enum.TextYAlignment.Top, Parent = box })
 	local ok = Kit.button(
 		"Sí",
@@ -4646,38 +4877,99 @@ return Dialog
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="50">
+          <Item class="ModuleScript" referent="51">
             <Properties>
               <string name="Name">Hud</string>
               <string name="Source"><![CDATA[--!strict
--- HUD: logo, monedas, nivel + barra de XP, menú lateral, tarjeta de misión, barra de ayuda,
--- temporizador de Poción de Suerte. Fiel a #hud de template.html.
+-- HUD (#hud de template.html): logo arriba a la izquierda, #stats (monedas, nivel+XP, sonido)
+-- arriba a la derecha en píldoras oscuras, #sideMenu con los íconos del juego, #questCard,
+-- #helpBar abajo a la izquierda. Teclas: I, C, B, T, Esc (game4.js keydown).
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TextChatService = game:GetService("TextChatService")
 local UserInputService = game:GetService("UserInputService")
 
 local Shared = ReplicatedStorage.Shared
+local Config = require(Shared.Config)
 local Format = require(Shared.Util.Format)
 local Quests = require(Shared.Logic.Quests)
 local Squishy = require(Shared.Logic.Squishy)
 local Kit = require(script.Parent.Parent.UI.Kit)
 local Modal = require(script.Parent.Parent.UI.Modal)
 local Theme = require(script.Parent.Parent.UI.Theme)
+local Toast = require(script.Parent.Parent.UI.Toast)
 local Audio = require(script.Parent.Audio)
 local Router = require(script.Parent.Router)
 local State = require(script.Parent.State)
+local Tutorial = require(script.Parent.Tutorial)
 
 local Hud = {}
+Hud.sideButtons = {} :: { [string]: any }
 
-local function pill(parent: Instance, order: number, width: number): Frame
+local PILL_BG = Theme.ink
+local PILL_T = 0.18
+
+local function pill(parent: Instance, order: number): Frame
 	return Kit.new("Frame", {
-		BackgroundColor3 = Theme.paper,
-		Size = UDim2.fromOffset(width, 40),
+		BackgroundColor3 = PILL_BG,
+		BackgroundTransparency = PILL_T,
+		AutomaticSize = Enum.AutomaticSize.XY,
+		Size = UDim2.fromOffset(0, 0),
 		LayoutOrder = order,
 		Parent = parent,
-	}, { Kit.corner(20), Kit.stroke(Theme.lav2, 2) })
+	}, { Kit.corner(16), Kit.pad(14, 8) })
+end
+
+--- Anillo rosado que late (.side.pulse) sobre un botón.
+function Hud.pulse(key: string, on: boolean)
+	local b = Hud.sideButtons[key]
+	if not b then
+		return
+	end
+	local old = b:FindFirstChild("_Pulse")
+	if old then
+		old:Destroy()
+	end
+	if not on then
+		return
+	end
+	local ring = Kit.new("UIStroke", {
+		Name = "_Pulse",
+		Color = Theme.pink,
+		Thickness = 0,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		Parent = b,
+	})
+	task.spawn(function()
+		while ring.Parent do
+			ring.Thickness = 0
+			ring.Transparency = 0.1
+			Kit.tween(ring, 1.1, { Thickness = 10, Transparency = 1 })
+			task.wait(1.1)
+		end
+	end)
+end
+
+local function sideAction(key: string)
+	if key == "trade" then
+		Tutorial.guideTo("trading")
+		Toast.show("Sigue la flecha hasta la Plaza de Intercambio")
+	elseif key == "tour" then
+		Router.open("tour")
+	else
+		Router.open(key)
+	end
 end
 
 function Hud.init()
+	-- el chat de Roblox va abajo a la derecha (esa esquina está libre en el original)
+	pcall(function()
+		local cfg = TextChatService:FindFirstChildOfClass("ChatWindowConfiguration")
+		if cfg then
+			cfg.HorizontalAlignment = Enum.HorizontalAlignment.Right
+			cfg.VerticalAlignment = Enum.VerticalAlignment.Bottom
+		end
+	end)
+
 	local root = Kit.root()
 	local frame: Frame = Kit.new("Frame", {
 		Name = "Hud",
@@ -4687,172 +4979,270 @@ function Hud.init()
 	})
 	Hud.frame = frame
 
-	-- barra de arriba
-	local top: Frame = Kit.new("Frame", {
+	-- #logo: Lilita 22 blanco con sombra rosada 0 3px 0 #E57AAE
+	local logo = Kit.new("Frame", {
 		BackgroundTransparency = 1,
-		Position = UDim2.fromOffset(14, 12),
-		Size = UDim2.new(1, -28, 0, 44),
+		Position = UDim2.fromOffset(20, 18),
+		Size = UDim2.fromOffset(200, 30),
 		Parent = frame,
-	}, { Kit.list(Enum.FillDirection.Horizontal, 10) })
-	Kit.text("Squishy World", 30, {
-		Font = Theme.display,
+	})
+	Kit.text("Squishy World", 22, {
+		FontFace = Theme.display,
 		TextColor3 = Theme.pinkD,
+		Position = UDim2.fromOffset(0, 3),
+		TextWrapped = false,
+		Parent = logo,
+	})
+	Kit.text(
+		"Squishy World",
+		22,
+		{ FontFace = Theme.display, TextColor3 = Theme.white, TextWrapped = false, Parent = logo }
+	)
+
+	-- #stats: monedas, nivel, sonido (arriba a la derecha)
+	local stats: Frame = Kit.new("Frame", {
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -16, 0, 16),
+		Size = UDim2.fromOffset(600, 46),
+		Parent = frame,
+	})
+	local sl = Kit.list(Enum.FillDirection.Horizontal, 10, Enum.HorizontalAlignment.Right)
+	sl.VerticalAlignment = Enum.VerticalAlignment.Center
+	sl.Parent = stats
+
+	local boostPill = pill(stats, 0)
+	local boost = Kit.text("", 15, {
+		FontFace = Theme.bodyBlack,
+		TextColor3 = Theme.white,
 		AutomaticSize = Enum.AutomaticSize.X,
-		Size = UDim2.fromOffset(0, 40),
-		LayoutOrder = 1,
-		Parent = top,
-	})
-	local coinPill = pill(top, 2, 150)
-	Kit.text("🪙", 22, { Position = UDim2.fromOffset(10, 6), Size = UDim2.fromOffset(28, 28), Parent = coinPill })
-	local coins = Kit.text("0", 20, {
-		Font = Theme.display,
-		Position = UDim2.fromOffset(40, 6),
-		Size = UDim2.new(1, -48, 0, 28),
-		Parent = coinPill,
-	})
-	local lvlPill = pill(top, 3, 210)
-	local lvl = Kit.text("Nv 1", 18, {
-		Font = Theme.display,
-		Position = UDim2.fromOffset(12, 3),
-		Size = UDim2.fromOffset(60, 22),
-		Parent = lvlPill,
-	})
-	local xpTxt = Kit.text("0/50 XP", 12, {
-		Position = UDim2.fromOffset(76, 4),
-		Size = UDim2.new(1, -86, 0, 18),
-		TextColor3 = Theme.muted,
-		TextXAlignment = Enum.TextXAlignment.Right,
-		Parent = lvlPill,
-	})
-	local xpBar: Frame = Kit.new("Frame", {
-		BackgroundColor3 = Theme.lav,
-		Position = UDim2.fromOffset(12, 26),
-		Size = UDim2.new(1, -24, 0, 8),
-		Parent = lvlPill,
-	}, { Kit.corner(4) })
-	local xpFill: Frame = Kit.new("Frame", {
-		BackgroundColor3 = Theme.purple,
-		Size = UDim2.fromScale(0, 1),
-		Parent = xpBar,
-	}, { Kit.corner(4) })
-	local boostPill = pill(top, 4, 170)
-	local boost = Kit.text("", 14, {
-		Position = UDim2.fromOffset(10, 4),
-		Size = UDim2.new(1, -20, 1, -8),
-		TextXAlignment = Enum.TextXAlignment.Center,
+		Size = UDim2.fromOffset(0, 22),
+		TextWrapped = false,
 		Parent = boostPill,
 	})
 	boostPill.Visible = false
-	local muteBtn = Kit.button("🔊", Theme.white, { Size = UDim2.fromOffset(40, 40), LayoutOrder = 5, Parent = top })
+
+	local coinPill = pill(stats, 1)
+	local cl = Kit.list(Enum.FillDirection.Horizontal, 8)
+	cl.VerticalAlignment = Enum.VerticalAlignment.Center
+	cl.Parent = coinPill
+	Kit.coin(22, { LayoutOrder = 1, Parent = coinPill })
+	local coins = Kit.text("0", 17, {
+		FontFace = Theme.bodyBlack,
+		TextColor3 = Theme.white,
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.fromOffset(0, 22),
+		TextWrapped = false,
+		LayoutOrder = 2,
+		Parent = coinPill,
+	})
+
+	local lvlPill = pill(stats, 2)
+	local lvlCol: Frame = Kit.new("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.fromOffset(130, 30),
+		Parent = lvlPill,
+	})
+	local lvl = Kit.text("Nivel 1", 14, {
+		FontFace = Theme.bodyBlack,
+		TextColor3 = Theme.white,
+		Size = UDim2.fromOffset(70, 16),
+		Parent = lvlCol,
+	})
+	local xpTxt = Kit.text("0/50 XP", 12, {
+		FontFace = Theme.bodyBlack,
+		TextColor3 = Theme.white,
+		TextTransparency = 0.3,
+		TextXAlignment = Enum.TextXAlignment.Right,
+		Size = UDim2.new(1, 0, 0, 16),
+		Parent = lvlCol,
+	})
+	local xpBar: Frame = Kit.new("Frame", {
+		BackgroundColor3 = Theme.white,
+		BackgroundTransparency = 0.82,
+		Position = UDim2.fromOffset(0, 21),
+		Size = UDim2.new(1, 0, 0, 7),
+		Parent = lvlCol,
+	}, { Kit.corner(5) })
+	local xpFill: Frame = Kit.new("Frame", {
+		BackgroundColor3 = Theme.white,
+		Size = UDim2.fromScale(0, 1),
+		Parent = xpBar,
+	}, {
+		Kit.corner(5),
+		Kit.new("UIGradient", { Color = ColorSequence.new(Theme.mint, Theme.blue) }),
+	})
+
+	-- .iconBtn 40x40 🔊/🔇
+	local muteBtn = Kit.button(
+		"🔊",
+		Theme.paper,
+		{ Size = UDim2.fromOffset(40, 40), TextSize = 18, LayoutOrder = 3, Parent = stats }
+	);
+	(muteBtn:FindFirstChildOfClass("UICorner") :: UICorner).CornerRadius = UDim.new(0, 13)
 	muteBtn.Activated:Connect(function()
-		Audio.muted = not Audio.muted
-		muteBtn.Text = if Audio.muted then "🔇" else "🔊"
-		Audio.loop("fillLoop", false)
+		Audio.setMuted(not Audio.muted)
+	end)
+	Audio.onMuted(function(m)
+		muteBtn.Text = if m then "🔇" else "🔊"
 	end)
 
-	-- menú lateral (Inventario, Colección, Tienda, Cambios, Robux)
+	-- #sideMenu: fondo paper igual para todos, ícono 30x30 + etiqueta 11px, atajo en la esquina
 	local side: Frame = Kit.new("Frame", {
 		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(0, 0.5),
-		Position = UDim2.new(0, 14, 0.5, 0),
-		Size = UDim2.fromOffset(86, 440),
+		Position = UDim2.new(0, 16, 0.5, 0),
+		Size = UDim2.fromOffset(74, 480),
 		Parent = frame,
-	}, { Kit.list(Enum.FillDirection.Vertical, 10) })
+	}, { Kit.list(Enum.FillDirection.Vertical, 10) });
+	(side:FindFirstChildOfClass("UIListLayout") :: UIListLayout).VerticalAlignment = Enum.VerticalAlignment.Center
 	local menu: { { any } } = {
-		{ "🎒", "Inventario", "inventory", Theme.pink, "I" },
-		{ "📖", "Colección", "index", Theme.purple, "C" },
-		{ "🛒", "Tienda", "shop", Theme.yellow, "T" },
-		{ "🤝", "Cambios", "tradePlayers", Theme.blue, nil },
-		{ "⭐", "Robux", "robux", Theme.robux, nil },
+		{ "inv", "Inventario", "inventory", "I", "🎒" },
+		{ "col", "Colección", "index", "C", "📖" },
+		{ "shop", "Tienda", "shop", "B", "🛒" },
+		{ "tour", "Tour", "tour", "🎬", "🎬" },
+		{ "trade", "Cambios", "trade", "T", "🤝" },
+		{ "", "Robux", "robux", "", "⭐" }, -- extra: monetización (no está en el original)
 	}
-	local sideButtons: { [string]: TextButton } = {}
 	for i, m in menu do
-		local b = Kit.button(m[1] .. "\n<font size='12'>" .. m[2] .. "</font>", m[4], {
-			Size = UDim2.fromOffset(86, 70),
-			TextSize = 26,
-			LayoutOrder = i,
-			Parent = side,
+		local b = Kit.button("", Theme.paper, { Size = UDim2.fromOffset(74, 70), LayoutOrder = i, Parent = side });
+		(b:FindFirstChildOfClass("UICorner") :: UICorner).CornerRadius = UDim.new(0, 20)
+		Kit.shadow(b, Color3.fromRGB(207, 208, 214), 5, 20)
+		b.BackgroundTransparency = 0.08
+		local iconId = (Config.AssetIds.icons :: any)[m[1]]
+		if iconId and iconId ~= "" then
+			Kit.new("ImageLabel", {
+				BackgroundTransparency = 1,
+				Image = iconId,
+				AnchorPoint = Vector2.new(0.5, 0),
+				Position = UDim2.new(0.5, 0, 0, 10),
+				Size = UDim2.fromOffset(30, 30),
+				Parent = b,
+			})
+		else
+			Kit.text(m[5], 24, {
+				TextXAlignment = Enum.TextXAlignment.Center,
+				Position = UDim2.fromOffset(0, 8),
+				Size = UDim2.new(1, 0, 0, 30),
+				Parent = b,
+			})
+		end
+		Kit.text(m[2], 11, {
+			FontFace = Theme.bodyBlack,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			Position = UDim2.new(0, 0, 1, -24),
+			Size = UDim2.new(1, 0, 0, 14),
+			Parent = b,
 		})
+		if m[4] ~= "" then
+			Kit.text(m[4], 10, {
+				FontFace = Theme.bodyBlack,
+				TextTransparency = 0.55,
+				TextXAlignment = Enum.TextXAlignment.Right,
+				AnchorPoint = Vector2.new(1, 0),
+				Position = UDim2.new(1, -6, 0, 4),
+				Size = UDim2.fromOffset(20, 12),
+				Parent = b,
+			})
+		end
 		b.Activated:Connect(function()
+			if Modal.current then
+				return -- como el original: solo si no hay ventana abierta
+			end
 			Audio.play("click")
-			if Modal.current == m[3] then
-				Modal.close()
-			else
-				Router.open(m[3])
-			end
+			sideAction(m[3])
 		end)
-		sideButtons[m[3]] = b
+		Hud.sideButtons[m[3]] = b
 	end
-	Hud.sideButtons = sideButtons
-	UserInputService.InputBegan:Connect(function(input, gp)
-		if gp then
-			return
-		end
-		for _, m in menu do
-			if m[5] and input.KeyCode == (Enum.KeyCode :: any)[m[5]] then
-				if Modal.current == m[3] then
-					Modal.close()
-				else
-					Router.open(m[3])
-				end
-			end
-		end
+
+	Router.register("hudPulse", function(arg)
+		Hud.pulse(arg.key, arg.on)
 	end)
 
-	-- tarjeta de misión (derecha)
+	-- #questCard (right 16, top 92, ancho 250)
 	local quest: Frame = Kit.new("Frame", {
 		BackgroundColor3 = Theme.paper,
+		BackgroundTransparency = 0.07,
 		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -14, 0, 70),
-		Size = UDim2.fromOffset(260, 108),
+		Position = UDim2.new(1, -16, 0, 76),
+		Size = UDim2.fromOffset(250, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
 		Parent = frame,
-	}, { Kit.corner(18), Kit.stroke(Theme.lav2, 2), Kit.pad(14, 10) })
-	Kit.text("📜 MISIÓN", 12, { TextColor3 = Theme.pinkD, Font = Theme.bodyBlack, Parent = quest })
-	local qTitle = Kit.text("", 16, {
-		Font = Theme.bodyBlack,
-		Position = UDim2.fromOffset(0, 18),
-		Size = UDim2.new(1, 0, 0, 40),
-		TextYAlignment = Enum.TextYAlignment.Top,
+	}, { Kit.corner(18), Kit.list(Enum.FillDirection.Vertical, 4) })
+	Kit.new("UIPadding", {
+		PaddingLeft = UDim.new(0, 14),
+		PaddingRight = UDim.new(0, 14),
+		PaddingTop = UDim.new(0, 12),
+		PaddingBottom = UDim.new(0, 13),
+		Parent = quest,
+	})
+	Kit.shadow(quest, Color3.fromRGB(207, 208, 214), 5, 18)
+	Kit.text("Misión", 15, { FontFace = Theme.display, TextColor3 = Theme.purpleD, LayoutOrder = 1, Parent = quest })
+	local qTitle = Kit.text("", 15, {
+		FontFace = Theme.bodyBlack,
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = UDim2.new(1, 0, 0, 0),
+		LayoutOrder = 2,
 		Parent = quest,
 	})
 	local qBar: Frame = Kit.new("Frame", {
 		BackgroundColor3 = Theme.lav,
-		Position = UDim2.fromOffset(0, 60),
-		Size = UDim2.new(1, 0, 0, 10),
+		Size = UDim2.new(1, 0, 0, 9),
+		LayoutOrder = 3,
 		Parent = quest,
-	}, { Kit.corner(5) })
-	local qFill: Frame = Kit.new("Frame", {
-		BackgroundColor3 = Theme.mint,
-		Size = UDim2.fromScale(0, 1),
-		Parent = qBar,
-	}, { Kit.corner(5) })
-	local qMeta = Kit.text("", 12, {
-		Position = UDim2.fromOffset(0, 72),
-		Size = UDim2.new(1, 0, 0, 16),
+	}, { Kit.corner(6) })
+	local qFill: Frame = Kit.new(
+		"Frame",
+		{ BackgroundColor3 = Theme.mint, Size = UDim2.fromScale(0, 1), Parent = qBar },
+		{ Kit.corner(6) }
+	)
+	local meta: Frame =
+		Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 16), LayoutOrder = 4, Parent = quest })
+	local qProg = Kit.text("", 12, { TextColor3 = Theme.muted, Size = UDim2.fromScale(0.4, 1), Parent = meta })
+	local qReward = Kit.text("", 12, {
 		TextColor3 = Theme.muted,
-		Parent = quest,
+		TextXAlignment = Enum.TextXAlignment.Right,
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.fromScale(1, 0),
+		Size = UDim2.fromScale(0.6, 1),
+		Parent = meta,
 	})
+	local guideBtn = Kit.button(
+		"Muéstrame",
+		Theme.lav,
+		{ Size = UDim2.fromOffset(110, 30), LayoutOrder = 5, Parent = quest },
+		"small"
+	)
+	local currentTarget: string? = nil
+	guideBtn.Activated:Connect(function()
+		if currentTarget then
+			Audio.play("click")
+			Tutorial.guideTo(currentTarget)
+		end
+	end)
 
-	-- barra de ayuda (abajo)
+	-- #helpBar (abajo a la izquierda)
+	local help: Frame = Kit.new("Frame", {
+		BackgroundColor3 = Theme.paper,
+		BackgroundTransparency = 0.3,
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 16, 1, -14),
+		AutomaticSize = Enum.AutomaticSize.XY,
+		Size = UDim2.fromOffset(0, 0),
+		Parent = frame,
+	}, { Kit.corner(10), Kit.pad(10, 5) })
 	Kit.text(
-		"<b>E</b> usar · <b>Mantén clic</b> sobre un squishy para apachurrarlo · <b>I</b> inventario · <b>T</b> tienda",
-		13,
+		"WASD moverse · Shift correr · Mouse / ← → cámara · E interactuar · Clic sostenido = apachurrar",
+		12,
 		{
-			AnchorPoint = Vector2.new(0.5, 1),
-			Position = UDim2.new(0.5, 0, 1, -10),
-			Size = UDim2.fromOffset(640, 20),
-			TextXAlignment = Enum.TextXAlignment.Center,
-			TextColor3 = Theme.ink2,
-			TextStrokeColor3 = Theme.white,
-			TextStrokeTransparency = 0.3,
-			Parent = frame,
+			TextColor3 = Theme.ink,
+			TextTransparency = 0.3,
+			AutomaticSize = Enum.AutomaticSize.XY,
+			Size = UDim2.fromOffset(0, 0),
+			TextWrapped = false,
+			Parent = help,
 		}
 	)
-
-	-- mientras hay una ventana abierta se esconde la misión (como el prototipo)
-	Modal.onChange(function(key)
-		quest.Visible = key == nil
-	end)
 
 	local lastCoins: number? = nil
 	State.onChange(function(d)
@@ -4860,21 +5250,54 @@ function Hud.init()
 		if lastCoins and d.coins ~= lastCoins then
 			local sc = coinPill:FindFirstChildOfClass("UIScale") or Kit.new("UIScale", { Parent = coinPill })
 			sc.Scale = 1.12
-			Kit.tween(sc, 0.25, { Scale = 1 })
+			Kit.tween(sc, 0.35, { Scale = 1 })
 		end
 		lastCoins = d.coins
-		lvl.Text = "Nv " .. d.level
+		lvl.Text = "Nivel " .. d.level
 		local need = Squishy.xpNeed(d.level)
 		xpTxt.Text = string.format("%d/%d XP", d.xp, need)
-		xpFill.Size = UDim2.fromScale(math.clamp(d.xp / need, 0, 1), 1)
+		Kit.tween(xpFill, 0.4, { Size = UDim2.fromScale(math.clamp(d.xp / need, 0, 1), 1) })
 		local q = Quests.current(d.quest.i)
 		local p = math.min(d.quest.p, q.goal)
 		qTitle.Text = q.title
-		qFill.Size = UDim2.fromScale(p / q.goal, 1)
-		qMeta.Text = string.format("%d / %d · Premio: %s monedas", p, q.goal, Format.int(q.reward))
+		Kit.tween(qFill, 0.3, { Size = UDim2.fromScale(p / q.goal, 1) })
+		qProg.Text = string.format("%d / %d", p, q.goal)
+		qReward.Text = string.format("Premio: %s monedas", Format.int(q.reward))
+		currentTarget = q.target
+		guideBtn.Visible = q.target ~= nil
+		if d.muted ~= nil and d.muted ~= Audio.muted then
+			Audio.setMuted(d.muted, true)
+		end
 	end)
 
-	-- temporizador de poción + moldes de oro
+	-- teclas del original (solo si no hay ventana abierta); Esc cierra la ventana
+	UserInputService.InputBegan:Connect(function(input, gp)
+		if gp or UserInputService:GetFocusedTextBox() then
+			return
+		end
+		local k = input.KeyCode
+		if k == Enum.KeyCode.Escape then
+			if Modal.current and not Modal.blocked() then
+				Modal.close()
+			end
+			return
+		end
+		if Modal.current then
+			return
+		end
+		if k == Enum.KeyCode.I then
+			Router.open("inventory")
+		elseif k == Enum.KeyCode.C then
+			Router.open("index")
+		elseif k == Enum.KeyCode.B then
+			Router.open("shop")
+		elseif k == Enum.KeyCode.T then
+			Tutorial.guideTo("trading")
+			Toast.show("Ve a la Plaza de Intercambio")
+		end
+	end)
+
+	-- Poción de suerte / Molde de Oro / VIP (extra de monetización)
 	task.spawn(function()
 		while true do
 			local d = State.data
@@ -4882,7 +5305,7 @@ function Hud.init()
 				local left = (d.luckLeft or 0) - (os.time() - (d.serverTime or os.time()))
 				local parts = {}
 				if left > 0 then
-					table.insert(parts, string.format("🧪 %d:%02d", left // 60, left % 60))
+					table.insert(parts, string.format("🍀 %d:%02d", left // 60, left % 60))
 				end
 				if (d.legendFills or 0) > 0 then
 					table.insert(parts, "🌟 x" .. d.legendFills)
@@ -4902,11 +5325,12 @@ return Hud
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="51">
+          <Item class="ModuleScript" referent="52">
             <Properties>
               <string name="Name">Index</string>
               <string name="Source"><![CDATA[--!strict
--- Índice Squishy (renderIndex de game5.js): 413 entradas, siluetas "???" hasta descubrirlas.
+-- Índice Squishy (renderIndex de game5.js + #indexWrap): "N / 413 descubiertos — las siluetas
+-- siguen siendo un misterio", pestañas por especie (con wrap), celdas con barra de color arriba.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage.Shared
@@ -4931,11 +5355,7 @@ local function render()
 	if not d or Modal.current ~= "index" or not ui.grid then
 		return
 	end
-	ui.count.Text = string.format(
-		"%d / %d  <font size='13' color='#6d7285'>descubiertos — las siluetas siguen siendo un misterio</font>",
-		Profile.discoveredCount(d),
-		Catalog.indexTotal()
-	)
+	ui.count.Text = string.format("%d / %d", Profile.discoveredCount(d), Catalog.indexTotal())
 	Kit.clear(ui.tabs)
 	for i, sp in Config.Species do
 		local vs = Catalog.variantsFor(sp.id)
@@ -4945,7 +5365,7 @@ local function render()
 				c += 1
 			end
 		end
-		local b = Kit.button(
+		local b = Kit.tab(
 			string.format(
 				"%s%s <font transparency='0.4'>%d/%d</font>",
 				if sp.famous then "✨ " else "",
@@ -4953,16 +5373,10 @@ local function render()
 				c,
 				#vs
 			),
-			if current == sp.id then Theme.purple else Theme.white,
-			{
-				Size = UDim2.new(1, -8, 0, 30),
-				TextSize = 12,
-				TextXAlignment = Enum.TextXAlignment.Left,
-				LayoutOrder = i,
-				Parent = ui.tabs,
-			}
+			current == sp.id,
+			sp.famous,
+			{ LayoutOrder = i, Parent = ui.tabs }
 		)
-		Kit.pad(8, 0).Parent = b
 		b.Activated:Connect(function()
 			current = sp.id
 			Audio.play("click")
@@ -4982,27 +5396,40 @@ local function render()
 			local v = Catalog.VAR[vid]
 			local known = d.discovered[current .. "|" .. vid] == true
 			local r = Catalog.R[v.rarity]
+			-- .idx: blanca, radius 15, borde superior de 5px del color de la rareza, sombra lav2
 			local cell: Frame = Kit.new("Frame", {
 				BackgroundColor3 = Theme.white,
+				ClipsDescendants = false,
 				LayoutOrder = i,
 				Parent = ui.grid,
-			}, { Kit.corner(12), Kit.stroke(Color3.fromHex(r.color), 2) })
+			}, { Kit.corner(15) })
+			Kit.shadow(cell, Theme.lav2, 3, 15)
+			Kit.new("Frame", {
+				BackgroundColor3 = Color3.fromHex(r.color),
+				BorderSizePixel = 0,
+				Position = UDim2.fromOffset(6, 0),
+				Size = UDim2.new(1, -12, 0, 5),
+				Parent = cell,
+			}, { Kit.corner(3) })
 			local th: Frame = Kit.new("Frame", {
 				BackgroundTransparency = 1,
-				Position = UDim2.fromOffset(6, 4),
-				Size = UDim2.new(1, -12, 0, 70),
+				AnchorPoint = Vector2.new(0.5, 0),
+				Position = UDim2.new(0.5, 0, 0, 8),
+				Size = UDim2.fromOffset(84, 84),
 				Parent = cell,
 			})
 			Thumb.make({ species = current, variant = vid }, th, not known)
 			Kit.text(
 				if known then Squishy.name({ species = current, variant = vid, mutation = "normal" }) else "???",
-				11,
+				11.5,
 				{
-					Font = Theme.bodyBlack,
+					FontFace = Theme.bodyBlack,
 					TextColor3 = if known then Theme.ink else Color3.fromHex("#a7abb9"),
 					TextXAlignment = Enum.TextXAlignment.Center,
-					Position = UDim2.new(0, 4, 1, -32),
-					Size = UDim2.new(1, -8, 0, 28),
+					TextYAlignment = Enum.TextYAlignment.Top,
+					Position = UDim2.new(0, 4, 1, -34),
+					Size = UDim2.new(1, -8, 0, 30),
+					LineHeight = 0.95,
 					Parent = cell,
 				}
 			)
@@ -5016,21 +5443,66 @@ end
 local function open()
 	local content = Modal.open("index", "Índice Squishy", {
 		width = 900,
-		height = 580,
+		height = 660,
 		onClose = function()
 			ui = {}
 		end,
 	})
-	ui.count = Kit.text("", 20, { Font = Theme.display, Size = UDim2.new(1, 0, 0, 26), Parent = content })
-	local tabs = Modal.scroll(content, { Position = UDim2.fromOffset(0, 34), Size = UDim2.new(0, 230, 1, -34) })
-	Kit.list(Enum.FillDirection.Vertical, 4).Parent = tabs
+	local head: Frame = Kit.new("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 36),
+		Parent = content,
+	}, { Kit.list(Enum.FillDirection.Horizontal, 14) });
+	(head:FindFirstChildOfClass("UIListLayout") :: UIListLayout).VerticalAlignment = Enum.VerticalAlignment.Center
+	ui.count = Kit.text("", 30, {
+		FontFace = Theme.display,
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.fromOffset(0, 36),
+		TextWrapped = false,
+		Parent = head,
+	})
+	Kit.text("descubiertos — las siluetas siguen siendo un misterio", 16, {
+		FontFace = Theme.bodyBlack,
+		TextColor3 = Theme.muted,
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.fromOffset(0, 22),
+		TextWrapped = false,
+		LayoutOrder = 2,
+		Parent = head,
+	})
+	local tabs: Frame = Kit.new("Frame", {
+		BackgroundTransparency = 1,
+		Position = UDim2.fromOffset(0, 44),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = UDim2.new(1, 0, 0, 0),
+		Parent = content,
+	})
+	local tl = Kit.list(Enum.FillDirection.Horizontal, 6)
+	tl.Wraps = true
+	tl.Parent = tabs
 	ui.tabs = tabs
-	local grid = Modal.scroll(content, { Position = UDim2.fromOffset(240, 34), Size = UDim2.new(1, -240, 1, -34) })
-	Kit.grid(UDim2.fromOffset(100, 112), 8).Parent = grid
-	Kit.pad(2, 4).Parent = grid
-	ui.grid = grid
+	local grid = Modal.scroll(content, { Position = UDim2.fromOffset(0, 150), Size = UDim2.new(1, 0, 1, -150) })
+	local function place()
+		grid.Position = UDim2.fromOffset(0, 52 + tabs.AbsoluteSize.Y)
+		grid.Size = UDim2.new(1, 0, 1, -(52 + tabs.AbsoluteSize.Y))
+	end
+	tabs:GetPropertyChangedSignal("AbsoluteSize"):Connect(place)
+	local inner: Frame = Kit.new("Frame", {
+		BackgroundTransparency = 1,
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = UDim2.new(1, -10, 0, 0),
+		Parent = grid,
+	}, { Kit.new("UIPadding", { PaddingTop = UDim.new(0, 2), PaddingBottom = UDim.new(0, 8) }) })
+	Kit.new("UIGridLayout", {
+		CellSize = UDim2.fromOffset(104, 132),
+		CellPadding = UDim2.fromOffset(9, 12),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Parent = inner,
+	})
+	ui.grid = inner
 	Audio.play("open")
 	render()
+	task.defer(place)
 end
 
 function Index.init()
@@ -5041,14 +5513,17 @@ return Index
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="52">
+          <Item class="ModuleScript" referent="53">
             <Properties>
               <string name="Name">Interact</string>
               <string name="Source"><![CDATA[--!strict
--- ProximityPrompts del mundo (WorldBuilder / NpcService) → abrir la pantalla que toca.
--- También pone los letreros "Nivel N" sobre las máquinas bloqueadas (refreshMachineLocks).
+-- Interacción (#prompt de template.html + interact() de game5.js): los ProximityPrompt del mundo
+-- van en estilo Custom y se dibujan como el aviso del original, abajo al centro:
+--   [E] Usar la Máquina Squishy · "Máquina 02 — requiere nivel 5" (bloqueado, fondo rojizo)
+-- Al tocar el aviso (celular) también se activa.
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
 local Config = require(ReplicatedStorage.Shared.Config)
@@ -5056,41 +5531,142 @@ local Kit = require(script.Parent.Parent.UI.Kit)
 local Modal = require(script.Parent.Parent.UI.Modal)
 local Theme = require(script.Parent.Parent.UI.Theme)
 local Toast = require(script.Parent.Parent.UI.Toast)
+local Audio = require(script.Parent.Audio)
 local Router = require(script.Parent.Router)
 local State = require(script.Parent.State)
 
 local Interact = {}
 
-function Interact.init()
-	ProximityPromptService.PromptTriggered:Connect(function(prompt)
-		local kind = prompt:GetAttribute("Kind") or (prompt.Parent and prompt.Parent:GetAttribute("Kind"))
-		local id = prompt:GetAttribute("Id") or (prompt.Parent and prompt.Parent:GetAttribute("Id"))
-		local why = Modal.blocked()
-		if why then
-			Toast.show(why)
-			return
-		end
-		if Modal.current then
-			Modal.close()
-		end
+local machineDefs: { [string]: any } = {}
+for _, m in Config.Machines do
+	machineDefs[m.id] = m
+end
+
+local function lockedText(prompt: ProximityPrompt): string?
+	local d = State.data
+	if not d then
+		return nil
+	end
+	if prompt:GetAttribute("Kind") == nil and prompt.Parent then
+		local kind = prompt.Parent:GetAttribute("Kind")
+		local id = prompt.Parent:GetAttribute("Id")
 		if kind == "machine" then
-			Router.open("machine", id)
-		elseif kind == "shop" then
-			Router.open("shop")
-		elseif kind == "index" then
-			Router.open("index")
-		elseif kind == "tradeBoard" then
-			Router.open("tradePlayers")
-		elseif kind == "npc" then
-			if prompt:GetAttribute("Action") == "talk" then
-				State.request("npcTalk", { npc = id })
-			else
-				Router.open("npcTrade", id)
+			local def = machineDefs[tostring(id)]
+			if def and d.level < def.level then
+				return string.format("%s — requiere nivel %d", def.name, def.level)
 			end
 		end
-	end)
+	end
+	return nil
+end
 
-	-- letreros de nivel en máquinas bloqueadas
+local function trigger(prompt: ProximityPrompt)
+	local kind = prompt:GetAttribute("Kind") or (prompt.Parent and prompt.Parent:GetAttribute("Kind"))
+	local id = prompt:GetAttribute("Id") or (prompt.Parent and prompt.Parent:GetAttribute("Id"))
+	if Modal.current then
+		return
+	end
+	local why = Modal.blocked()
+	if why then
+		Toast.show(why)
+		return
+	end
+	if lockedText(prompt) then
+		Audio.play("error")
+		return
+	end
+	if kind == "machine" then
+		Router.open("machine", id)
+	elseif kind == "shop" then
+		Router.open("shop")
+	elseif kind == "index" then
+		Router.open("index")
+	elseif kind == "tradeBoard" then
+		Router.open("tradePlayers")
+	elseif kind == "npc" then
+		Router.open("npcChat", id)
+	end
+end
+
+function Interact.init()
+	-- #prompt: bottom 120, fondo rgba(40,45,58,.88), radius 14, Nunito 900 16 blanco, tecla en ficha blanca
+	local pill: TextButton = Kit.new("TextButton", {
+		Name = "Prompt",
+		Text = "",
+		AutoButtonColor = false,
+		BackgroundColor3 = Theme.ink,
+		BackgroundTransparency = 0.12,
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -120),
+		AutomaticSize = Enum.AutomaticSize.XY,
+		Size = UDim2.fromOffset(0, 0),
+		Visible = false,
+		Parent = Kit.root(),
+	}, { Kit.corner(14), Kit.pad(16, 10) })
+	local row: Frame = Kit.new("Frame", {
+		BackgroundTransparency = 1,
+		AutomaticSize = Enum.AutomaticSize.XY,
+		Size = UDim2.fromOffset(0, 0),
+		Parent = pill,
+	}, { Kit.list(Enum.FillDirection.Horizontal, 10) });
+	(row:FindFirstChildOfClass("UIListLayout") :: UIListLayout).VerticalAlignment = Enum.VerticalAlignment.Center
+	local key: TextLabel = Kit.new("TextLabel", {
+		BackgroundColor3 = Theme.white,
+		TextColor3 = Theme.ink,
+		FontFace = Theme.display,
+		TextSize = 16,
+		Text = "E",
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.fromOffset(0, 24),
+		LayoutOrder = 1,
+		Parent = row,
+	}, { Kit.corner(8), Kit.pad(9, 0) })
+	Kit.shadow(key, Color3.fromHex("#b7bccb"), 3, 8)
+	local label = Kit.text("", 16, {
+		FontFace = Theme.bodyBlack,
+		TextColor3 = Theme.white,
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.fromOffset(0, 24),
+		TextWrapped = false,
+		LayoutOrder = 2,
+		Parent = row,
+	})
+
+	local current: ProximityPrompt? = nil
+	local function refresh()
+		local p = current
+		if not p or Modal.current then
+			pill.Visible = false
+			return
+		end
+		local locked = lockedText(p)
+		label.Text = locked or p.ActionText
+		key.Visible = locked == nil
+		pill.BackgroundColor3 = if locked then Color3.fromRGB(120, 70, 80) else Theme.ink
+		key.Text = if UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled then "👆" else "E"
+		pill.Visible = true
+	end
+	ProximityPromptService.PromptShown:Connect(function(prompt)
+		current = prompt
+		refresh()
+	end)
+	ProximityPromptService.PromptHidden:Connect(function(prompt)
+		if current == prompt then
+			current = nil
+			refresh()
+		end
+	end)
+	ProximityPromptService.PromptTriggered:Connect(trigger)
+	pill.Activated:Connect(function()
+		local p = current
+		if p then
+			trigger(p)
+		end
+	end)
+	Modal.onChange(refresh)
+	State.onChange(refresh)
+
+	-- letreros "Requiere nivel N" en máquinas bloqueadas (LockSign del original)
 	local signs: { [string]: BillboardGui } = {}
 	local interact = Workspace:WaitForChild("Interact", 60)
 	local function applyLocks()
@@ -5113,20 +5689,20 @@ function Interact.init()
 				return
 			end
 			signs[m.id] = Kit.new("BillboardGui", {
-				Size = UDim2.fromOffset(150, 40),
+				Size = UDim2.fromOffset(190, 40),
 				StudsOffsetWorldSpace = Vector3.new(0, 7.5, 3),
 				MaxDistance = 90,
 				Enabled = false,
 				Parent = anchor,
 			}, {
-				Kit.text("🔒 Nivel " .. m.level, 20, {
-					BackgroundTransparency = 0,
+				Kit.new("TextLabel", {
 					BackgroundColor3 = Theme.ink,
 					TextColor3 = Theme.white,
-					Font = Theme.display,
-					TextXAlignment = Enum.TextXAlignment.Center,
+					FontFace = Theme.display,
+					TextSize = 20,
+					Text = "🔒 Requiere nivel " .. m.level,
 					Size = UDim2.fromScale(1, 1),
-				}),
+				}, { Kit.corner(10) }),
 			})
 			applyLocks()
 		end)
@@ -5138,12 +5714,13 @@ return Interact
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="53">
+          <Item class="ModuleScript" referent="54">
             <Properties>
               <string name="Name">Inventory</string>
               <string name="Source"><![CDATA[--!strict
--- Inventario (renderInventory / renderInvDetail de game5.js): filtros por rareza y favoritos,
--- detalle, equipar, favorito, vender y "Vender repetidos".
+-- Inventario (renderInventory / renderInvDetail de game5.js + #invWrap de template.html):
+-- 4 columnas + detalle de 290, filtros por rareza y ⭐ Favoritos, equipar, favorito, vender,
+-- "Vender repetidos" y 🖐️ Apachurrar.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage.Shared
@@ -5163,93 +5740,137 @@ local Inventory = {}
 local Inv = { filter = "all", sel = nil :: string? }
 local ui: { [string]: any } = {}
 
---- Tarjeta con miniatura (se reutiliza en intercambios).
-function Inventory.card(parent: Instance, s: any, d: any?, selected: boolean?): TextButton
-	local r = Catalog.R[s.rarity]
-	local b = Kit.button("", if selected then Theme.lav else Theme.white, {
-		Size = UDim2.fromOffset(104, 128),
-		Parent = parent,
-	})
-	local th: Frame = Kit.new("Frame", {
-		BackgroundTransparency = 1,
-		Position = UDim2.fromOffset(8, 6),
-		Size = UDim2.fromOffset(88, 70),
-		Parent = b,
-	})
-	Thumb.make(s, th)
-	Kit.text(s.name, 11, {
-		Font = Theme.bodyBlack,
-		Position = UDim2.fromOffset(4, 76),
-		Size = UDim2.new(1, -8, 0, 28),
-		TextXAlignment = Enum.TextXAlignment.Center,
-		TextYAlignment = Enum.TextYAlignment.Top,
-		Parent = b,
-	})
-	Kit.text(r.name, 10, {
-		BackgroundTransparency = 0,
+local MONTHS = { "ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sept", "oct", "nov", "dic" }
+--- toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' }) → "25 sept 2026"
+local function fmtDate(t: number): string
+	local d = os.date("*t", t) :: any
+	return string.format("%d %s %d", d.day, MONTHS[d.month], d.year)
+end
+
+--- Chip de rareza (.rr): ancho automático, 11px, radius 7, texto blanco.
+function Inventory.rarityChip(parent: Instance, rarity: string, props: { [string]: any }?): TextLabel
+	local r = Catalog.R[rarity]
+	local p: { [string]: any } = {
 		BackgroundColor3 = Color3.fromHex(r.color),
 		TextColor3 = Theme.white,
-		Font = Theme.bodyBlack,
+		FontFace = Theme.bodyBlack,
+		TextSize = 11,
+		Text = r.name,
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.fromOffset(0, 17),
+		Parent = parent,
+	}
+	if props then
+		for k, v in props do
+			p[k] = v
+		end
+	end
+	return Kit.new("TextLabel", p, { Kit.corner(7), Kit.pad(8, 0) })
+end
+
+--- Carta .card (se reutiliza en intercambios): blanca, radius 18, sombra lav2, elegida = borde ink.
+function Inventory.card(parent: Instance, s: any, d: any?, selected: boolean?, compact: boolean?): TextButton
+	local b = Kit.new("TextButton", {
+		Text = "",
+		AutoButtonColor = true,
+		BackgroundColor3 = Theme.white,
+		Size = if compact then UDim2.fromOffset(78, 100) else UDim2.fromOffset(120, 170),
+		Parent = parent,
+	}, {
+		Kit.corner(if compact then 14 else 18),
+		Kit.new("UIStroke", {
+			Color = if compact then Theme.mintD else Theme.ink,
+			Thickness = 3,
+			Transparency = if selected then 0 else 1,
+			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		}),
+	})
+	Kit.shadow(b, Theme.lav2, 4, 18)
+	local th: Frame = Kit.new("Frame", {
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, 6),
+		Size = UDim2.new(1, -16, 1, if compact then -34 else -52),
+		Parent = b,
+	}, { Kit.new("UIAspectRatioConstraint", { AspectRatio = 1 }) })
+	Thumb.make(s, th)
+	Kit.text(s.name, if compact then 10.5 else 12.5, {
+		FontFace = Theme.bodyBlack,
+		Position = UDim2.new(0, 4, 1, if compact then -28 else -46),
+		Size = UDim2.new(1, -8, 0, 26),
 		TextXAlignment = Enum.TextXAlignment.Center,
-		Position = UDim2.new(0, 8, 1, -22),
-		Size = UDim2.new(1, -16, 0, 16),
+		TextYAlignment = Enum.TextYAlignment.Top,
+		LineHeight = 0.95,
 		Parent = b,
 	})
+	if not compact then
+		Inventory.rarityChip(b, s.rarity, { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -6) })
+	end
 	if s.fav then
-		Kit.text("★", 16, {
-			Position = UDim2.fromOffset(6, 2),
-			Size = UDim2.fromOffset(20, 20),
-			TextColor3 = Theme.yellowD,
-			Parent = b,
-		})
+		Kit.star(true, 15, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -6, 0, 4), Parent = b })
 	end
 	if d and d.equipped == s.id then
-		Kit.text("Equipado", 10, {
-			BackgroundTransparency = 0,
-			BackgroundColor3 = Theme.mintD,
+		Kit.new("TextLabel", {
+			BackgroundColor3 = Theme.ink,
 			TextColor3 = Theme.white,
-			Font = Theme.bodyBlack,
-			TextXAlignment = Enum.TextXAlignment.Center,
-			AnchorPoint = Vector2.new(1, 0),
-			Position = UDim2.new(1, -4, 0, 4),
-			Size = UDim2.fromOffset(58, 16),
+			FontFace = Theme.bodyBlack,
+			TextSize = 10,
+			Text = "Equipado",
+			AutomaticSize = Enum.AutomaticSize.X,
+			Position = UDim2.fromOffset(8, 6),
+			Size = UDim2.fromOffset(0, 16),
 			Parent = b,
-		})
+		}, { Kit.corner(7), Kit.pad(6, 0) })
 	end
 	return b
 end
 
 local render: () -> ()
 
+local function kv(parent: Instance, order: number, k: string, v: string)
+	local row: Frame = Kit.new("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 20),
+		LayoutOrder = order,
+		Parent = parent,
+	})
+	Kit.text(k, 14, { TextColor3 = Theme.ink2, Size = UDim2.fromScale(0.5, 1), Parent = row })
+	Kit.text(v, 14, {
+		FontFace = Theme.bodyBlack,
+		TextXAlignment = Enum.TextXAlignment.Right,
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.fromScale(1, 0),
+		Size = UDim2.fromScale(0.6, 1),
+		Parent = row,
+	})
+end
+
 local function detail(d: any)
 	Kit.clear(ui.detail)
 	local s = Inv.sel and Profile.find(d, Inv.sel)
 	if not s then
 		Kit.text("Elige un squishy para verlo aquí.", 14, {
-			TextColor3 = Theme.muted,
+			TextColor3 = Theme.grey,
 			TextXAlignment = Enum.TextXAlignment.Center,
 			Size = UDim2.new(1, 0, 0, 60),
 			Parent = ui.detail,
 		})
 		return
 	end
-	local r = Catalog.R[s.rarity]
-	local th: Frame = Kit.new(
-		"Frame",
-		{ BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 150), LayoutOrder = 1, Parent = ui.detail }
-	)
-	Thumb.make(s, th)
-	Kit.text(s.name, 20, { Font = Theme.display, LayoutOrder = 2, Parent = ui.detail })
-	Kit.text(r.name, 12, {
-		BackgroundTransparency = 0,
-		BackgroundColor3 = Color3.fromHex(r.color),
-		TextColor3 = Theme.white,
-		Font = Theme.bodyBlack,
-		AutomaticSize = Enum.AutomaticSize.X,
-		Size = UDim2.fromOffset(0, 20),
-		LayoutOrder = 3,
+	local th: Frame = Kit.new("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.fromOffset(190, 190),
+		LayoutOrder = 1,
 		Parent = ui.detail,
 	})
+	Thumb.make(s, th)
+	Kit.text(s.name, 24, {
+		FontFace = Theme.display,
+		AutomaticSize = Enum.AutomaticSize.Y,
+		LayoutOrder = 2,
+		Parent = ui.detail,
+	})
+	Inventory.rarityChip(ui.detail, s.rarity, { LayoutOrder = 3, TextSize = 12, Size = UDim2.fromOffset(0, 20) })
 	local copies = 0
 	for _, x in d.inventory do
 		if Profile.idxKey(x) == Profile.idxKey(s) then
@@ -5257,35 +5878,31 @@ local function detail(d: any)
 		end
 	end
 	local mut = Catalog.MUT[s.mutation]
-	local rows = {
-		{ "Encontrado", os.date("%d/%m/%Y", s.dateFound) :: string },
-		{ "Valor", Format.int(s.value) .. " monedas" },
-		{ "Relleno", if Catalog.FIL[s.filling] then Catalog.FIL[s.filling].name else "—" },
-		{ "Tamaño", string.format("%.2f×", s.size * ((mut and mut.size) or 1)) },
-		{ "Copias", tostring(copies) },
-	}
-	for i, kv in rows do
-		Kit.text(
-			string.format('<font color="#6d7285">%s</font>   <b>%s</b>', kv[1], kv[2]),
-			13,
-			{ LayoutOrder = 10 + i, Parent = ui.detail }
-		)
-	end
+	kv(ui.detail, 11, "Encontrado", fmtDate(s.dateFound))
+	kv(ui.detail, 12, "Valor", Format.int(s.value) .. " monedas")
+	kv(ui.detail, 13, "Relleno", if Catalog.FIL[s.filling] then Catalog.FIL[s.filling].name else "—")
+	kv(ui.detail, 14, "Tamaño", string.format("%.2f×", s.size * ((mut and mut.size) or 1)))
+	kv(ui.detail, 15, "Copias", tostring(copies))
+	local sq = Kit.button("🖐️ Apachurrar", Theme.purple, { LayoutOrder = 29, Parent = ui.detail })
+	sq.Activated:Connect(function()
+		Modal.close()
+		Router.open("studio", { squishy = s, owner = "Tuyo" })
+	end)
 	local row: Frame = Kit.new("Frame", {
 		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 0, 40),
+		Size = UDim2.new(1, 0, 0, 44),
 		LayoutOrder = 30,
 		Parent = ui.detail,
-	}, { Kit.list(Enum.FillDirection.Horizontal, 6) })
+	}, { Kit.list(Enum.FillDirection.Horizontal, 8) })
 	local eq = Kit.button(
 		if d.equipped == s.id then "Quitar" else "Equipar",
 		Theme.mint,
-		{ Size = UDim2.new(0.5, -3, 1, 0), Parent = row }
+		{ Size = UDim2.new(0.5, -4, 0, 40), Parent = row }
 	)
 	local fav = Kit.button(
-		if s.fav then "★ Quitar fav" else "☆ Favorito",
+		if s.fav then "⭐ Quitar fav" else "Favorito",
 		Theme.white,
-		{ Size = UDim2.new(0.5, -3, 1, 0), TextSize = 14, Parent = row }
+		{ Size = UDim2.new(0.5, -4, 0, 40), TextSize = 14, Parent = row }
 	)
 	local sell =
 		Kit.button("Vender por " .. Format.int(s.value), Theme.yellow, { LayoutOrder = 31, Parent = ui.detail })
@@ -5314,8 +5931,15 @@ render = function()
 		return
 	end
 	ui.count.Text = string.format("%d/%d", #d.inventory, d.capacity or 20)
-	for id, b in ui.tabs do
-		b.BackgroundColor3 = if Inv.filter == id then Theme.pink else Theme.white
+	Kit.clear(ui.tabs)
+	for i, id in ui.tabIds do
+		local label = if id == "all" then "Todos" elseif id == "favorites" then "⭐ Favoritos" else Catalog.R[id].name
+		local b = Kit.tab(label, Inv.filter == id, false, { LayoutOrder = i, Parent = ui.tabs })
+		b.Activated:Connect(function()
+			Inv.filter = id
+			Audio.play("click")
+			render()
+		end)
 	end
 	local list = table.clone(d.inventory)
 	table.sort(list, function(a: any, b: any)
@@ -5337,8 +5961,20 @@ render = function()
 				then "Nada con este filtro."
 				else "Aún no tienes squishies. ¡Ve a las Máquinas y llena el primero!",
 			14,
-			{ TextColor3 = Theme.muted, Size = UDim2.fromOffset(400, 60), Parent = ui.grid }
+			{
+				FontFace = Theme.body,
+				TextColor3 = Theme.grey,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				Size = UDim2.new(1, 0, 0, 80),
+				Parent = ui.grid.Parent,
+				Name = "_Empty",
+			}
 		)
+	else
+		local e = ui.grid.Parent:FindFirstChild("_Empty")
+		if e then
+			e:Destroy()
+		end
 	end
 	if not Inv.sel or not Profile.find(d, Inv.sel) then
 		Inv.sel = if filtered[1] then filtered[1].id else nil
@@ -5356,27 +5992,34 @@ render = function()
 end
 
 local function open()
-	local content = Modal.open("inventory", "Inventario", {
-		width = 900,
-		height = 580,
+	local content, title = Modal.open("inventory", "Inventario", {
+		width = 980,
+		height = 660,
 		onClose = function()
 			ui = {}
 		end,
 	})
-	ui.count = Kit.text("", 16, {
-		Font = Theme.display,
-		TextColor3 = Theme.muted,
-		Position = UDim2.new(0, 150, 0, -46),
-		Size = UDim2.fromOffset(100, 30),
-		Parent = content,
+	-- "Inventario " + #invCount en 18px con opacidad .55
+	title.AutomaticSize = Enum.AutomaticSize.X
+	title.Size = UDim2.fromOffset(0, 34)
+	ui.count = Kit.text("", 18, {
+		FontFace = Theme.display,
+		TextTransparency = 0.45,
+		TextWrapped = false,
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.fromOffset(0, 34),
+		Parent = title.Parent,
 	})
+	title:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+		ui.count.Position = UDim2.fromOffset(22 + title.AbsoluteSize.X + 8, 20)
+	end)
+	ui.count.Position = UDim2.fromOffset(150, 20)
 	local dupes = Kit.button("Vender repetidos", Theme.yellow, {
 		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -50, 0, -48),
-		Size = UDim2.fromOffset(170, 36),
-		TextSize = 14,
+		Position = UDim2.new(1, -46, 0, -44),
+		Size = UDim2.fromOffset(150, 30),
 		Parent = content,
-	})
+	}, "small")
 	dupes.Activated:Connect(function()
 		local prev = State.request("inv", { op = "sellDupes", preview = true })
 		if not prev.ok then
@@ -5394,52 +6037,46 @@ local function open()
 			end,
 		})
 	end)
-	local tabs: Frame = Kit.new("Frame", {
+	ui.tabs = Kit.new("Frame", {
 		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 0, 32),
+		Size = UDim2.new(1, 0, 0, 30),
 		Parent = content,
 	}, { Kit.list(Enum.FillDirection.Horizontal, 6) })
-	ui.tabs = {}
-	local ids = { "all" }
+	ui.tabIds = { "all" }
 	for _, r in Config.Rarities do
-		table.insert(ids, r.id)
+		table.insert(ui.tabIds, r.id)
 	end
-	table.insert(ids, "favorites")
-	for i, id in ids do
-		local label = if id == "all" then "Todos" elseif id == "favorites" then "★ Favoritos" else Catalog.R[id].name
-		local b = Kit.button(label, Theme.white, {
-			Size = UDim2.fromOffset(0, 30),
-			AutomaticSize = Enum.AutomaticSize.X,
-			TextSize = 13,
-			LayoutOrder = i,
-			Parent = tabs,
-		})
-		Kit.pad(10, 0).Parent = b
-		ui.tabs[id] = b
-		b.Activated:Connect(function()
-			Inv.filter = id
-			Audio.play("click")
-			render()
-		end)
-	end
+	table.insert(ui.tabIds, "favorites")
 	local gridHolder = Modal.scroll(content, {
-		Position = UDim2.fromOffset(0, 40),
-		Size = UDim2.new(1, -280, 1, -40),
+		Position = UDim2.fromOffset(0, 42),
+		Size = UDim2.new(1, -304, 1, -42),
 	})
-	Kit.grid(UDim2.fromOffset(104, 128), 8).Parent = gridHolder
-	Kit.pad(2, 4).Parent = gridHolder
-	ui.grid = gridHolder
+	local inner: Frame = Kit.new("Frame", {
+		BackgroundTransparency = 1,
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = UDim2.new(1, -10, 0, 0),
+		Parent = gridHolder,
+	})
+	Kit.new("UIGridLayout", {
+		CellSize = UDim2.new(0.25, -8, 0, 176),
+		CellPadding = UDim2.fromOffset(10, 12),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Parent = inner,
+	})
+	Kit.new("UIPadding", { PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 8), Parent = inner })
+	ui.grid = inner
 	local det: Frame = Kit.new("Frame", {
 		BackgroundColor3 = Theme.lav,
 		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, 0, 0, 40),
-		Size = UDim2.new(0, 266, 1, -40),
+		Position = UDim2.new(1, 0, 0, 42),
+		Size = UDim2.new(0, 290, 1, -42),
 		Parent = content,
-	}, { Kit.corner(16), Kit.pad(12, 10) })
+	}, { Kit.corner(20), Kit.pad(16, 16) })
 	local detScroll = Modal.scroll(det)
-	Kit.list(Enum.FillDirection.Vertical, 6).Parent = detScroll
+	Kit.list(Enum.FillDirection.Vertical, 8, Enum.HorizontalAlignment.Center).Parent = detScroll
 	ui.detail = detScroll
 	Audio.play("open")
+	Router.open("hudPulse", { key = "inventory", on = false })
 	render()
 end
 
@@ -5454,7 +6091,7 @@ return Inventory
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="54">
+          <Item class="ModuleScript" referent="55">
             <Properties>
               <string name="Name">Machine</string>
               <string name="Source"><![CDATA[--!strict
@@ -5463,6 +6100,7 @@ return Inventory
 -- (under/perfect/over/POP y la rareza) lo decide el servidor (FillService).
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage.Shared
@@ -5585,6 +6223,8 @@ local function resultText(txt: string, color: Color3)
 	if ui.result then
 		ui.result.Text = txt
 		ui.result.TextColor3 = color
+		ui.result.FontFace = Theme.display
+		ui.result.TextSize = 20
 	end
 end
 
@@ -5592,36 +6232,60 @@ local render: () -> ()
 
 local function moldButton(parent: Instance, sp: any, d: any, locked: boolean)
 	local avail = Profile.moldAvailable(d, sp.id)
-	local b = Kit.button("", if Fill.species == sp.id then Theme.pink else Theme.white, {
-		Size = UDim2.fromOffset(92, 92),
+	local on = Fill.species == sp.id
+	-- .mold: fondo lav, radius 16, borde transparente 3px; .on = borde ink + fondo blanco
+	local b = Kit.new("TextButton", {
+		Text = "",
+		AutoButtonColor = true,
+		BackgroundColor3 = if on then Theme.white else Theme.lav,
 		Parent = parent,
+	}, { Kit.corner(16) })
+	if sp.famous and not on then
+		Kit.new("UIGradient", {
+			Rotation = 90,
+			Color = ColorSequence.new(Theme.white, Color3.fromHex("#fff4fb")),
+			Parent = b,
+		})
+	end
+	Kit.new("UIStroke", {
+		Color = Theme.ink,
+		Thickness = 3,
+		Transparency = if on then 0 else 1,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		Parent = b,
 	})
 	local thumbHolder: Frame = Kit.new("Frame", {
 		BackgroundTransparency = 1,
-		Position = UDim2.fromOffset(12, 2),
-		Size = UDim2.fromOffset(68, 60),
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, 5),
+		Size = UDim2.fromOffset(52, 52),
 		Parent = b,
 	})
-	Thumb.make({ species = sp.id, variant = if sp.famous then "original" else "classic" }, thumbHolder)
+	-- bloqueado = silueta (brightness(0) opacity(.25))
+	Thumb.make({ species = sp.id, variant = if sp.famous then "original" else "classic" }, thumbHolder, not avail)
 	Kit.text(sp.name, 11, {
-		Position = UDim2.new(0, 4, 1, -30),
-		Size = UDim2.new(1, -8, 0, 28),
+		Position = UDim2.new(0, 2, 1, -24),
+		Size = UDim2.new(1, -4, 0, 22),
 		TextXAlignment = Enum.TextXAlignment.Center,
 		TextYAlignment = Enum.TextYAlignment.Top,
-		Font = Theme.bodyBlack,
+		LineHeight = 0.9,
+		FontFace = Theme.bodyBlack,
 		Parent = b,
 	})
 	if not avail then
-		Kit.text(if sp.famous then "🛒 " .. Format.int(sp.price) else "Nv " .. sp.unlockLevel, 11, {
-			BackgroundTransparency = 0,
+		-- .lk: centrada a top 22, 11px, ink, radius 8
+		Kit.new("TextLabel", {
 			BackgroundColor3 = Theme.ink,
 			TextColor3 = Theme.white,
+			Text = if sp.famous then "🛒 " .. Format.int(sp.price) else "Nv " .. sp.unlockLevel,
+			TextSize = 11,
+			FontFace = Theme.bodyBlack,
 			AutomaticSize = Enum.AutomaticSize.X,
+			AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.new(0.5, 0, 0, 22),
 			Size = UDim2.fromOffset(0, 18),
-			Position = UDim2.fromOffset(4, 4),
 			Parent = b,
-		})
-		b.BackgroundTransparency = 0.35
+		}, { Kit.corner(8), Kit.pad(6, 0) })
 	end
 	b.Activated:Connect(function()
 		if locked or Fill.state ~= "idle" then
@@ -5670,29 +6334,60 @@ render = function()
 	for _, sp in virals do
 		moldButton(ui.virals, sp, d, locked)
 	end
-	-- rellenos
+	-- rellenos (.fill: chips lav de ancho automático con círculo de color de 20px)
 	Kit.clear(ui.fills)
-	for _, f in Config.Fillings do
+	for i, f in Config.Fillings do
 		local own = table.find(d.fillings, f.id) ~= nil
+		local on = Fill.filling == f.id
 		local label = f.name
 		if own and f.perUse then
-			label ..= if d.passes and d.passes.vip then " (gratis 👑)" else string.format(" (%d)", f.perUse)
+			label ..= if d.passes and d.passes.vip
+				then " <font size='11'>(gratis 👑)</font>"
+				else string.format(" <font size='11'>(%d)</font>", f.perUse)
 		elseif not own then
 			label ..= " 🔒"
 		end
-		local b = Kit.button(label, if Fill.filling == f.id then Theme.pink else Theme.white, {
-			Size = UDim2.fromOffset(128, 34),
-			TextSize = 12,
+		local chip = Kit.new("TextButton", {
+			Text = "",
+			AutoButtonColor = true,
+			BackgroundColor3 = if on then Theme.white else Theme.lav,
+			BackgroundTransparency = if own then 0 else 0.5,
+			AutomaticSize = Enum.AutomaticSize.X,
+			Size = UDim2.fromOffset(0, 32),
+			LayoutOrder = i,
 			Parent = ui.fills,
+		}, {
+			Kit.corner(13),
+			Kit.new("UIStroke", {
+				Color = Theme.ink,
+				Thickness = 3,
+				Transparency = if on then 0 else 1,
+				ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+			}),
+			Kit.new("UIPadding", { PaddingLeft = UDim.new(0, 7), PaddingRight = UDim.new(0, 10) }),
 		})
+		local row = Kit.new("Frame", {
+			BackgroundTransparency = 1,
+			AutomaticSize = Enum.AutomaticSize.X,
+			Size = UDim2.fromScale(0, 1),
+			Parent = chip,
+		}, { Kit.list(Enum.FillDirection.Horizontal, 6) });
+		(row:FindFirstChildOfClass("UIListLayout") :: UIListLayout).VerticalAlignment = Enum.VerticalAlignment.Center
 		local sw = Color3.fromHex(f.color3 or (string.sub(f.color, 1, 1) == "#" and f.color) or "#ffd36e")
-		Kit.new("Frame", {
-			BackgroundColor3 = sw,
-			Size = UDim2.fromOffset(12, 12),
-			Position = UDim2.new(0, 6, 0.5, -6),
-			Parent = b,
-		}, { Kit.corner(6) })
-		b.Activated:Connect(function()
+		Kit.new("Frame", { BackgroundColor3 = sw, Size = UDim2.fromOffset(20, 20), LayoutOrder = 1, Parent = row }, {
+			Kit.round(),
+			Kit.stroke(Color3.fromRGB(215, 212, 222), 1),
+		})
+		Kit.text(label, 13, {
+			FontFace = Theme.bodyBlack,
+			AutomaticSize = Enum.AutomaticSize.X,
+			Size = UDim2.fromOffset(0, 20),
+			TextWrapped = false,
+			TextTransparency = if own then 0 else 0.3,
+			LayoutOrder = 2,
+			Parent = row,
+		})
+		chip.Activated:Connect(function()
 			if Fill.state ~= "idle" then
 				return
 			end
@@ -5716,36 +6411,36 @@ render = function()
 	end
 	for i, r in Config.Rarities do
 		local pct = w[i] / tot * 100
-		Kit.text(
-			string.format(
+		-- name.split(' ')[0].slice(0,4) + toFixed(tier > 2 ? 1 : 0)
+		Kit.new("TextLabel", {
+			BackgroundColor3 = Color3.fromHex(r.color),
+			TextColor3 = Theme.white,
+			FontFace = Theme.bodyBlack,
+			TextSize = 10.5,
+			Text = string.format(
 				"%s %s%%",
-				string.sub(r.name, 1, 4),
+				Kit.shortName(r.name, 4),
 				if i > 3 then string.format("%.1f", pct) else string.format("%d", math.round(pct))
 			),
-			11,
-			{
-				BackgroundTransparency = 0,
-				BackgroundColor3 = Color3.fromHex(r.color),
-				TextColor3 = Theme.white,
-				Font = Theme.bodyBlack,
-				TextXAlignment = Enum.TextXAlignment.Center,
-				Size = UDim2.fromOffset(62, 20),
-				Parent = ui.odds,
-			}
-		)
+			Size = UDim2.new(1 / 6, -4, 1, 0),
+			LayoutOrder = i,
+			Parent = ui.odds,
+		}, { Kit.corner(8) })
 	end
 	-- botón
 	local full = #d.inventory >= (d.capacity or 20)
-	ui.hold.Text = if Fill.state == "filling" and Fill.holding then "Llenando… ¡suelta!" else "Mantén para llenar"
+	ui.hold.Text = if Fill.state == "filling" then "Llenando… ¡suelta!" else "Mantén para llenar"
 	Kit.setEnabled(ui.hold, Fill.state == "idle" or Fill.state == "filling")
 	if full and Fill.state == "idle" then
 		resultText(
 			string.format("Inventario lleno (%d). Vende algunos squishies primero.", d.capacity or 20),
-			Theme.red
+			Theme.popRed
 		)
+		ui.result.FontFace = Theme.bodyBlack
+		ui.result.TextSize = 15
 		Kit.setEnabled(ui.hold, false)
 	elseif Fill.state == "idle" and ui.result.Text ~= "" and not ui.keepResult then
-		resultText("", Theme.muted)
+		resultText("", Theme.grey)
 	end
 end
 
@@ -5753,7 +6448,7 @@ local function processing(res: { [string]: any })
 	Fill.state = "processing"
 	render()
 	local labels: { [string]: { any } } = {
-		under = { "Le faltó", Theme.muted },
+		under = { "Le faltó", Theme.grey },
 		perfect = { "¡PERFECTO!", Theme.green },
 		over = { "Se pasó", Theme.orange },
 	}
@@ -5774,7 +6469,7 @@ local function popped()
 	Fill.state = "processing"
 	Audio.play("pop")
 	clearInside()
-	resultText("¡POP! Se reventó — demasiado lleno.", Theme.red)
+	resultText("¡POP! Se reventó — demasiado lleno.", Theme.popRed)
 	task.delay(1.4, function()
 		Fill.state = "idle"
 		Fill.p = 0
@@ -5818,7 +6513,7 @@ local function holdEnd()
 	Fill.p = res.p or Fill.p
 	setGauge(Fill.p)
 	if res.result == "short" then
-		resultText("Sigue manteniendo…", Theme.muted)
+		resultText("Sigue manteniendo…", Theme.grey)
 		ui.keepResult = true
 		render()
 	elseif res.result == "pop" then
@@ -5903,11 +6598,15 @@ local function open(machineId: string)
 		Fill.species = "cat"
 		Fill.filling = "pink_foam"
 	end
+	local vpX = if Workspace.CurrentCamera then Workspace.CurrentCamera.ViewportSize.X else 1600
+	local vpY = if Workspace.CurrentCamera then Workspace.CurrentCamera.ViewportSize.Y else 900
+	local width = if vpX < 1400 then 390 else 430 -- #machinePanel: 430 (390 en pantallas < 1400)
 	local content = Modal.open("machine", if def.id == "m1" then "Crea un Squishy" else def.name, {
-		width = 470,
-		height = 660,
+		width = width,
+		height = math.floor(vpY * 0.92),
 		anchor = Vector2.new(1, 0.5),
-		position = UDim2.new(1, -16, 0.5, 10),
+		position = UDim2.new(1, -18, 0.5, 0),
+		noOverlay = true, -- el panel de la máquina va sin overlay
 		onClose = function()
 			if Fill.holding then
 				Fill.holding = false
@@ -5924,7 +6623,8 @@ local function open(machineId: string)
 		end,
 	})
 	local scroll = Modal.scroll(content)
-	Kit.list(Enum.FillDirection.Vertical, 8).Parent = scroll
+	Kit.list(Enum.FillDirection.Vertical, 6).Parent = scroll
+	Kit.new("UIPadding", { PaddingRight = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8), Parent = scroll })
 	ui.body = scroll
 	local info = string.format("%s · %s", def.name, def.sub)
 	if def.luck and def.luck > 0 then
@@ -5935,21 +6635,17 @@ local function open(machineId: string)
 	end
 	Kit.text(info, 13, { TextColor3 = Theme.muted, LayoutOrder = 1, Parent = scroll })
 
-	local function section(title: string, order: number, color: Color3?): Frame
-		Kit.text(
-			title,
-			15,
-			{ Font = Theme.display, TextColor3 = color or Theme.ink, LayoutOrder = order, Parent = scroll }
-		)
+	-- .molds: 5 columnas, gap 8
+	local function grid(order: number): Frame
 		local f: Frame = Kit.new("Frame", {
 			BackgroundTransparency = 1,
 			AutomaticSize = Enum.AutomaticSize.Y,
-			Size = UDim2.new(1, -8, 0, 0),
-			LayoutOrder = order + 1,
+			Size = UDim2.new(1, 0, 0, 0),
+			LayoutOrder = order,
 			Parent = scroll,
 		})
 		local g = Kit.new("UIGridLayout", {
-			CellSize = UDim2.fromOffset(92, 92),
+			CellSize = UDim2.new(0.2, -7, 0, if vpX < 1400 then 80 else 88),
 			CellPadding = UDim2.fromOffset(8, 8),
 			SortOrder = Enum.SortOrder.LayoutOrder,
 			Parent = f,
@@ -5957,26 +6653,63 @@ local function open(machineId: string)
 		ui["grid" .. order] = g
 		return f
 	end
-	ui.molds = section("Moldes", 10)
-	ui.virals = section("✨ Moldes virales", 20, Color3.fromHex("#a86ad0"))
-	ui.fills = section("Relleno", 30)
-	ui["grid30"].CellSize = UDim2.fromOffset(128, 34)
-
-	Kit.text("Probabilidades", 13, { TextColor3 = Theme.muted, LayoutOrder = 40, Parent = scroll })
+	Kit.h3("1. Elige el molde", { LayoutOrder = 10, Parent = scroll })
+	ui.molds = grid(11)
+	Kit.text(
+		"✨ Moldes virales",
+		14,
+		{ FontFace = Theme.bodyBlack, TextColor3 = Theme.viral, LayoutOrder = 20, Parent = scroll }
+	)
+	-- .viralRow: scroll propio de alto 190
+	local viralScroll = Modal.scroll(scroll, {
+		Size = UDim2.new(1, 0, 0, 190),
+		LayoutOrder = 21,
+	})
+	viralScroll.AutomaticSize = Enum.AutomaticSize.None
+	ui.virals = Kit.new("Frame", {
+		BackgroundTransparency = 1,
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = UDim2.new(1, -8, 0, 0),
+		Parent = viralScroll,
+	})
+	Kit.new("UIGridLayout", {
+		CellSize = UDim2.new(0.2, -7, 0, if vpX < 1400 then 80 else 88),
+		CellPadding = UDim2.fromOffset(8, 8),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Parent = ui.virals,
+	})
+	Kit.h3("2. Elige el relleno", { LayoutOrder = 30, Parent = scroll })
+	ui.fills = Kit.new("Frame", {
+		BackgroundTransparency = 1,
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = UDim2.new(1, 0, 0, 0),
+		LayoutOrder = 31,
+		Parent = scroll,
+	})
+	local fl = Kit.list(Enum.FillDirection.Horizontal, 6)
+	fl.Wraps = true
+	fl.Parent = ui.fills
+	Kit.h3("3. Mantén para llenar — suelta en la zona Perfecto", { LayoutOrder = 40, Parent = scroll })
 	ui.odds = Kit.new("Frame", {
 		BackgroundTransparency = 1,
-		Size = UDim2.new(1, -8, 0, 22),
+		Size = UDim2.new(1, 0, 0, 20),
 		LayoutOrder = 41,
 		Parent = scroll,
 	}, { Kit.list(Enum.FillDirection.Horizontal, 4) })
 
-	-- medidor con zonas (gauge del prototipo)
-	local gauge: Frame = Kit.new("Frame", {
-		BackgroundColor3 = Color3.fromHex("#e9e4f2"),
-		Size = UDim2.new(1, -8, 0, 30),
-		ClipsDescendants = true,
+	-- .gauge: alto 30, radius 15, #e9e4f2 con zonas
+	local gaugeWrap: Frame = Kit.new("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 34),
 		LayoutOrder = 50,
 		Parent = scroll,
+	})
+	local gauge: Frame = Kit.new("Frame", {
+		BackgroundColor3 = Color3.fromHex("#e9e4f2"),
+		Position = UDim2.fromOffset(0, 2),
+		Size = UDim2.new(1, 0, 0, 30),
+		ClipsDescendants = true,
+		Parent = gaugeWrap,
 	}, { Kit.corner(15) })
 	local span = FILL.pop
 	local function zone(a: number, b: number, col: string)
@@ -5992,48 +6725,58 @@ local function open(machineId: string)
 	zone(FILL.perfect[2], span * 0.97, "#ffd9a8")
 	zone(span * 0.97, span, "#ff9aa8")
 	ui.prog = Kit.new("Frame", {
-		BackgroundColor3 = Theme.pink,
-		BackgroundTransparency = 0.55,
+		BackgroundColor3 = Theme.ink,
+		BackgroundTransparency = 0.92,
 		BorderSizePixel = 0,
 		Size = UDim2.fromScale(0, 1),
 		Parent = gauge,
 	})
+	-- .needle: 5px, sobresale 2px, anillo blanco de 2px (fuera del recorte)
 	ui.needle = Kit.new("Frame", {
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		BackgroundColor3 = Theme.ink,
-		Size = UDim2.new(0, 4, 1, 4),
+		Size = UDim2.new(0, 5, 0, 34),
 		Position = UDim2.fromScale(0, 0.5),
-		Parent = gauge,
-	})
+		ZIndex = 3,
+		Parent = gaugeWrap,
+	}, { Kit.corner(3), Kit.new("UIStroke", { Color = Theme.white, Thickness = 2 }) })
+	-- .glabels: space-between
 	local lbl: Frame = Kit.new("Frame", {
 		BackgroundTransparency = 1,
-		Size = UDim2.new(1, -8, 0, 16),
+		Size = UDim2.new(1, 0, 0, 16),
 		LayoutOrder = 51,
 		Parent = scroll,
 	})
+	local gl = Kit.list(Enum.FillDirection.Horizontal, 0)
+	gl.HorizontalFlex = Enum.UIFlexAlignment.SpaceBetween
+	gl.Parent = lbl
 	local gaugeLabels: { { any } } = {
-		{ "Le falta", 0 },
-		{ "Perfecto", FILL.perfect[1] / span },
-		{ "Se pasa", FILL.perfect[2] / span },
-		{ "¡POP!", 0.97 },
+		{ "Le falta", Theme.grey },
+		{ "Perfecto", Theme.perfectLbl },
+		{ "Se pasa", Theme.grey },
+		{ "¡Pop!", Theme.popRed },
 	}
-	for _, info2 in gaugeLabels do
+	for i, info2 in gaugeLabels do
 		Kit.text(info2[1] :: string, 11, {
-			Position = UDim2.fromScale(info2[2] :: number, 0),
-			Size = UDim2.fromOffset(70, 16),
-			TextColor3 = Theme.muted,
-			Font = Theme.bodyBlack,
+			AutomaticSize = Enum.AutomaticSize.X,
+			Size = UDim2.fromOffset(0, 16),
+			TextWrapped = false,
+			TextColor3 = info2[2] :: Color3,
+			FontFace = Theme.bodyBlack,
+			LayoutOrder = i,
 			Parent = lbl,
 		})
 	end
 
+	-- #holdBtn: btn pink, Lilita 26, radius 20
 	ui.hold = Kit.button("Mantén para llenar", Theme.pink, {
-		Size = UDim2.new(1, -8, 0, 56),
-		TextSize = 20,
-		Font = Theme.display,
+		Size = UDim2.new(1, 0, 0, 66),
+		TextSize = 26,
+		FontFace = Theme.display,
 		LayoutOrder = 60,
 		Parent = scroll,
-	})
+	});
+	(ui.hold:FindFirstChildOfClass("UICorner") :: UICorner).CornerRadius = UDim.new(0, 20)
 	ui.hold.MouseButton1Down:Connect(holdStart)
 	ui.hold.MouseButton1Up:Connect(function()
 		task.spawn(holdEnd)
@@ -6043,10 +6786,10 @@ local function open(machineId: string)
 			task.spawn(holdEnd)
 		end
 	end)
-	ui.result = Kit.text("", 18, {
-		Font = Theme.display,
+	ui.result = Kit.text("", 20, {
+		FontFace = Theme.display,
 		TextXAlignment = Enum.TextXAlignment.Center,
-		Size = UDim2.new(1, -8, 0, 44),
+		Size = UDim2.new(1, 0, 0, 30),
 		LayoutOrder = 61,
 		Parent = scroll,
 	})
@@ -6099,6 +6842,17 @@ function Machine.init()
 			render()
 		end
 	end)
+	-- Espacio = mantener para llenar (como el original)
+	UserInputService.InputBegan:Connect(function(input, gp)
+		if not gp and input.KeyCode == Enum.KeyCode.Space and Modal.current == "machine" then
+			holdStart()
+		end
+	end)
+	UserInputService.InputEnded:Connect(function(input)
+		if input.KeyCode == Enum.KeyCode.Space and Fill.holding then
+			task.spawn(holdEnd)
+		end
+	end)
 	RunService.RenderStepped:Connect(function(dt: number)
 		if Fill.holding and Fill.state == "filling" then
 			local d = State.data
@@ -6121,20 +6875,24 @@ return Machine
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="55">
+          <Item class="ModuleScript" referent="56">
             <Properties>
               <string name="Name">Reveal</string>
               <string name="Source"><![CDATA[--!strict
--- Revelación (showReveal / endReveal de game5.js): "Te salió…", rareza con su color, nombre,
--- badges (nuevo, mutación, viral, valor) y Guardar / Vender. Pantalla negra para el Secreto.
+-- Revelación (#reveal + showReveal / updateReveal / spawnRevealFx de game5.js):
+-- fondo oscuro radial por rareza, "Te salió…", el squishy aparece 0→1.15→1 a los 0.55 s y se
+-- mece (sin(t·0.9)·0.5), rareza en Lilita 64 con pop, glitch + pantallazo negro en el Secreto,
+-- badges, partículas por rareza y Guardar / Vender.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage.Shared
 local Catalog = require(Shared.Logic.Catalog)
 local Format = require(Shared.Util.Format)
 local Thumb = require(script.Parent.Parent.Engine.Thumb)
 local Kit = require(script.Parent.Parent.UI.Kit)
+local Modal = require(script.Parent.Parent.UI.Modal)
 local Theme = require(script.Parent.Parent.UI.Theme)
 local Audio = require(script.Parent.Audio)
 local Machine = require(script.Parent.Machine)
@@ -6142,18 +6900,146 @@ local Router = require(script.Parent.Router)
 local State = require(script.Parent.State)
 
 local Reveal = {}
+Reveal.open = false
 local overlay: Frame? = nil
-local spinConn: RBXScriptConnection? = nil
+local conns: { RBXScriptConnection } = {}
+
+-- radial-gradient(circle at 50% 45%, centro, borde) de template.html
+local BG: { [string]: { Color3 | number } } = {
+	base = { Color3.fromRGB(40, 45, 58), 0.65, Color3.fromRGB(20, 22, 30), 0.18 },
+	rare = { Color3.fromRGB(92, 168, 255), 0.55, Color3.fromRGB(15, 25, 50), 0.16 },
+	epic = { Color3.fromRGB(180, 92, 255), 0.5, Color3.fromRGB(30, 15, 50), 0.14 },
+	legendary = { Color3.fromRGB(255, 214, 90), 0.25, Color3.fromRGB(120, 70, 10), 0.15 },
+	secret = { Color3.fromHex("#07060c"), 0, Color3.fromHex("#07060c"), 0 },
+}
+local FX: { [string]: { n: number, cols: { string } } } = {
+	rare = { n = 40, cols = { "#bfe0ff", "#ffffff", "#4C9BFF" } },
+	epic = { n = 80, cols = { "#e2c6ff", "#A95CFF", "#ffffff" } },
+	legendary = { n = 140, cols = { "#FFC83A", "#FF8FA3", "#8BE3A5", "#8BC7E8", "#ffffff", "#B999E8" } },
+	secret = { n = 120, cols = { "#000000", "#ff2a6d", "#05d9e8" } },
+}
+
+local function Debris(inst: Instance, t: number)
+	task.delay(t, function()
+		if inst.Parent then
+			inst:Destroy()
+		end
+	end)
+end
 
 local function close()
-	if spinConn then
-		spinConn:Disconnect()
-		spinConn = nil
+	for _, c in conns do
+		c:Disconnect()
 	end
+	table.clear(conns)
 	if overlay then
 		overlay:Destroy()
 		overlay = nil
 	end
+	Reveal.open = false
+end
+
+local function background(parent: Frame, rarity: string)
+	local bg = BG[rarity] or BG.base
+	local inner, innerT, outer, outerT = bg[1] :: Color3, bg[2] :: number, bg[3] :: Color3, bg[4] :: number
+	parent.BackgroundColor3 = outer
+	parent.BackgroundTransparency = outerT
+	if rarity == "secret" then
+		return
+	end
+	-- aproximación del gradiente radial con círculos concéntricos
+	local rings = 7
+	for i = rings, 1, -1 do
+		local k = i / rings
+		Kit.new("Frame", {
+			BackgroundColor3 = inner:Lerp(outer, k),
+			BackgroundTransparency = 1 - (1 - innerT) * (1 - k) * 0.55 - 0.45 * k,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.45),
+			Size = UDim2.fromScale(0.35 + 1.2 * k, 0.35 + 1.2 * k),
+			Parent = parent,
+		}, { Kit.round(), Kit.new("UIAspectRatioConstraint", { AspectRatio = 1 }) })
+	end
+end
+
+local function particles(parent: Frame, rarity: string)
+	local cfg = FX[rarity]
+	if not cfg then
+		return
+	end
+	local vp = Workspace.CurrentCamera and Workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
+	local cx, cy = vp.X / 2, vp.Y * 0.45
+	local ps = {}
+	for i = 1, cfg.n do
+		local a = math.random() * math.pi * 2
+		local sp = 2 + math.random() * (if rarity == "legendary" then 11 else 6)
+		local kind = if rarity == "legendary"
+			then (if i % 3 ~= 0 then "confetti" else "star")
+			elseif rarity == "secret" then "glitch"
+			else "spark"
+		local s = 4 + math.random() * 5
+		local col = Color3.fromHex(cfg.cols[math.random(1, #cfg.cols)])
+		local f: any
+		if kind == "star" then
+			f = Kit.text("⭐", s * 2, {
+				TextXAlignment = Enum.TextXAlignment.Center,
+				Size = UDim2.fromOffset(s * 2, s * 2),
+				TextColor3 = col,
+				Parent = parent,
+			})
+		else
+			f = Kit.new("Frame", {
+				BackgroundColor3 = col,
+				BorderSizePixel = 0,
+				Size = if kind == "confetti"
+					then UDim2.fromOffset(s, s / 2)
+					elseif kind == "glitch" then UDim2.fromOffset(s * 2, 3)
+					else UDim2.fromOffset(s * 0.7, s * 0.7),
+				Parent = parent,
+			})
+			if kind == "spark" then
+				Kit.round().Parent = f
+			end
+		end
+		f.AnchorPoint = Vector2.new(0.5, 0.5)
+		table.insert(ps, {
+			f = f,
+			x = cx,
+			y = cy,
+			vx = math.cos(a) * sp,
+			vy = math.sin(a) * sp - (if rarity == "legendary" then 5 else 1),
+			life = 1.2 + math.random() * 1.4,
+			rot = math.random() * 6,
+			kind = kind,
+		})
+	end
+	table.insert(
+		conns,
+		RunService.RenderStepped:Connect(function(dt: number)
+			for i = #ps, 1, -1 do
+				local p = ps[i]
+				p.life -= dt
+				if p.life <= 0 then
+					p.f:Destroy()
+					table.remove(ps, i)
+					continue
+				end
+				p.vy += (if p.kind == "confetti" then 9 else 2) * dt
+				p.vx *= 0.99
+				p.x += p.vx * 60 * dt
+				p.y += p.vy * 60 * dt
+				p.rot += dt * 5
+				p.f.Position = UDim2.fromOffset(p.x, p.y)
+				p.f.Rotation = math.deg(p.rot)
+				local alpha = 1 - math.min(1, p.life)
+				if p.f:IsA("TextLabel") then
+					p.f.TextTransparency = alpha
+				else
+					p.f.BackgroundTransparency = alpha
+				end
+			end
+		end)
+	)
 end
 
 local function show(arg: any)
@@ -6162,138 +7048,195 @@ local function show(arg: any)
 		return
 	end
 	close()
+	Reveal.open = true
 	local r = Catalog.R[d.rarity]
 	local tier = Catalog.RTier[d.rarity]
 	local secret = d.rarity == "secret"
 	local rc = Color3.fromHex(r.color)
+	local root = Kit.root("full")
 	local ov: Frame = Kit.new("Frame", {
 		Name = "Reveal",
-		BackgroundColor3 = if secret then Color3.fromHex("#07060c") else Color3.fromHex("#FFF6FB"),
-		BackgroundTransparency = if secret then 0 else 0.08,
 		Size = UDim2.fromScale(1, 1),
-		ZIndex = 40,
 		Active = true,
-		Parent = Kit.root(),
+		Parent = root,
 	})
 	overlay = ov
+	background(ov, if tier >= 2 then d.rarity else "base")
+	local fxLayer: Frame =
+		Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 3, Parent = ov })
+	local vpY = Workspace.CurrentCamera and Workspace.CurrentCamera.ViewportSize.Y or 720
+	local stage = math.min(420, vpY * 0.6)
 	local col: Frame = Kit.new("Frame", {
 		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromOffset(520, 640),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = UDim2.fromOffset(640, 0),
+		ZIndex = 2,
 		Parent = ov,
-	}, { Kit.list(Enum.FillDirection.Vertical, 8, Enum.HorizontalAlignment.Center) })
-	Kit.new("UIScale", { Parent = col, Scale = 1 })
-	local txtColor = if secret then Theme.white else Theme.ink
-	Kit.text("Te salió…", 22, {
-		Font = Theme.display,
-		TextColor3 = txtColor,
+	}, { Kit.list(Enum.FillDirection.Vertical, 4, Enum.HorizontalAlignment.Center) })
+	Kit.text("Te salió…", 26, {
+		FontFace = Theme.display,
+		TextColor3 = Theme.white,
+		TextTransparency = 0.1,
 		TextXAlignment = Enum.TextXAlignment.Center,
+		Size = UDim2.new(1, 0, 0, 32),
 		LayoutOrder = 1,
 		Parent = col,
 	})
 	local view: Frame = Kit.new("Frame", {
 		BackgroundTransparency = 1,
-		Size = UDim2.fromOffset(340, 340),
+		Size = UDim2.fromOffset(stage, stage),
 		LayoutOrder = 2,
 		Parent = col,
 	})
 	local vf = Thumb.make({ species = d.species, variant = d.variant, mutation = d.mutation }, view)
-	local rarity = Kit.text("", 44, {
-		Font = Theme.display,
-		TextColor3 = rc,
-		TextStrokeColor3 = Theme.white,
-		TextStrokeTransparency = if secret then 1 else 0.2,
-		TextXAlignment = Enum.TextXAlignment.Center,
-		Size = UDim2.new(1, 0, 0, 52),
+	-- rareza: Lilita 64, color de la rareza, sombra 0 5px 0 rgba(0,0,0,.25), pop
+	local rarityHolder: Frame = Kit.new("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, if vpY < 800 then 58 else 72),
 		LayoutOrder = 3,
 		Parent = col,
 	})
-	local name = Kit.text("", 24, {
-		Font = Theme.display,
-		TextColor3 = txtColor,
+	local rsize = if vpY < 800 then 50 else 64
+	local rShadow = Kit.text("", rsize, {
+		FontFace = Theme.display,
+		TextColor3 = Color3.new(0, 0, 0),
+		TextTransparency = 0.75,
 		TextXAlignment = Enum.TextXAlignment.Center,
+		Position = UDim2.fromOffset(0, 5),
+		Size = UDim2.fromScale(1, 1),
+		TextWrapped = false,
+		Parent = rarityHolder,
+	})
+	local rarity = Kit.text("", rsize, {
+		FontFace = Theme.display,
+		TextColor3 = rc,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Size = UDim2.fromScale(1, 1),
+		TextWrapped = false,
+		Parent = rarityHolder,
+	})
+	local rScale = Kit.new("UIScale", { Scale = 1, Parent = rarityHolder })
+	local name = Kit.text("", 30, {
+		FontFace = Theme.display,
+		TextColor3 = Theme.white,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Size = UDim2.new(1, 0, 0, 38),
 		LayoutOrder = 4,
 		Parent = col,
 	})
 	local badges: Frame = Kit.new("Frame", {
 		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 0, 30),
+		Size = UDim2.new(1, 0, 0, 34),
 		LayoutOrder = 5,
 		Parent = col,
-	}, { Kit.list(Enum.FillDirection.Horizontal, 6, Enum.HorizontalAlignment.Center) })
+	}, { Kit.list(Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Center) })
 	local btns: Frame = Kit.new("Frame", {
 		BackgroundTransparency = 1,
-		Size = UDim2.fromOffset(420, 56),
+		Size = UDim2.fromOffset(420, 60),
 		LayoutOrder = 6,
 		Visible = false,
 		Parent = col,
-	}, { Kit.list(Enum.FillDirection.Horizontal, 12, Enum.HorizontalAlignment.Center) })
+	}, { Kit.list(Enum.FillDirection.Horizontal, 14, Enum.HorizontalAlignment.Center) })
 
-	-- giro + aparición del squishy
-	local cam = vf.CurrentCamera
+	-- 0→1.15→1 después del "Te salió…" (0.55 s) + mecerse
 	local model = vf:FindFirstChildWhichIsA("Model")
 	local t = 0
-	if model and cam then
+	if model then
 		local base = model:GetPivot()
 		model:ScaleTo(0.01)
-		spinConn = RunService.RenderStepped:Connect(function(dt)
-			t += dt
-			local grow = math.min(1, t / 0.5)
-			local e = 1 - (1 - grow) ^ 3
-			model:ScaleTo(math.max(0.01, e * (1 + 0.08 * math.sin(t * 9) * (1 - grow))))
-			model:PivotTo(base * CFrame.Angles(0, t * 0.9, 0))
-		end)
+		table.insert(
+			conns,
+			RunService.RenderStepped:Connect(function(dt: number)
+				t += dt
+				local k = math.clamp((t - 0.55) / 0.55, 0, 1)
+				local s = if k < 0.6 then 1.15 * (k / 0.6) else 1.15 + (1 - 1.15) * ((k - 0.6) / 0.4)
+				model:ScaleTo(math.max(0.01, s))
+				model:PivotTo(base * CFrame.Angles(0, math.sin(t * 0.9) * 0.5, 0))
+				if d.rarity == "legendary" and vf.CurrentCamera then
+					-- zoom 7.4 → 6.2
+					vf.CurrentCamera.FieldOfView = 30 - 5 * math.clamp((t - 0.6) / 1.2, 0, 1)
+				end
+			end)
+		)
 	end
 
 	if secret then
+		-- .blackout: negro 0.9 s (opaco hasta el 55 %) + secretSting
+		local black: Frame = Kit.new("Frame", {
+			BackgroundColor3 = Color3.new(0, 0, 0),
+			Size = UDim2.fromScale(1, 1),
+			ZIndex = 10,
+			Parent = ov,
+		})
+		task.delay(0.5, function()
+			Kit.tween(black, 0.4, { BackgroundTransparency = 1 })
+		end)
+		Debris(black, 1)
 		Audio.play("secretSting")
 	end
 	task.delay(if secret then 0.9 else 0.65, function()
 		if overlay ~= ov then
 			return
 		end
-		rarity.Text = if secret then "¡SECRETO ENCONTRADO!" else "¡" .. r.name .. "!"
+		local txt = if secret then "¡SECRETO ENCONTRADO!" else "¡" .. r.name .. "!"
+		rarity.Text = txt
+		rShadow.Text = txt
+		rScale.Scale = 0
+		Kit.tween(rScale, 0.6, { Scale = 1 }, Enum.EasingStyle.Back)
 		name.Text = d.name
-		local function badge(text: string, color: Color3?)
-			Kit.text(text, 13, {
-				BackgroundTransparency = 0,
-				BackgroundColor3 = color or Theme.paper,
-				TextColor3 = if color then Theme.white else Theme.ink,
-				Font = Theme.bodyBlack,
+		if secret then
+			-- glitch: copias magenta/cian ±3px y saltitos
+			local g1 = rarity:Clone()
+			g1.TextColor3 = Color3.fromHex("#ff2a6d")
+			g1.Parent = rarityHolder
+			local g2 = rarity:Clone()
+			g2.TextColor3 = Color3.fromHex("#05d9e8")
+			g2.Parent = rarityHolder
+			rarity.ZIndex = 3
+			table.insert(
+				conns,
+				RunService.Heartbeat:Connect(function()
+					local ph = math.floor(os.clock() * 8) % 4
+					local dx = if ph == 0 then 3 elseif ph == 2 then -3 else 0
+					g1.Position = UDim2.fromOffset(dx, 0)
+					g2.Position = UDim2.fromOffset(-dx, 0)
+					rarity.Position = UDim2.fromOffset(if ph == 1 then -2 elseif ph == 3 then 2 else 0, 0)
+				end)
+			)
+		end
+		-- .badge: blanco con texto ink; .new en amarillo
+		local function badge(text: string, new: boolean?)
+			Kit.new("TextLabel", {
+				BackgroundColor3 = if new then Theme.yellow else Theme.white,
+				TextColor3 = Theme.ink,
+				FontFace = Theme.bodyBlack,
+				TextSize = 13,
+				Text = text,
 				AutomaticSize = Enum.AutomaticSize.X,
 				Size = UDim2.fromOffset(0, 26),
-				TextXAlignment = Enum.TextXAlignment.Center,
 				Parent = badges,
-			}).Parent =
-				badges
+			}, { Kit.corner(10), Kit.pad(10, 0) })
 		end
 		if arg.isNew then
-			badge("¡Squishy nuevo descubierto!", Theme.pinkD)
+			badge("¡Squishy nuevo descubierto!", true)
 		end
 		if d.mutation ~= "normal" and Catalog.MUT[d.mutation] then
-			badge(Catalog.MUT[d.mutation].name, Theme.purple)
+			badge(Catalog.MUT[d.mutation].name)
 		end
 		if Catalog.SP[d.species] and Catalog.SP[d.species].famous then
-			badge("✨ Viral", Theme.yellowD)
+			badge("✨ Viral")
 		end
 		badge(string.format("Vale %s monedas", Format.int(d.value)))
-		for _, ch in badges:GetChildren() do
-			if ch:IsA("TextLabel") then
-				Kit.pad(10, 3).Parent = ch
-				Kit.corner(10).Parent = ch
-			end
-		end
 
 		local data = State.data
 		local full = data and #data.inventory >= (data.capacity or 20)
-		local keep =
-			Kit.button("Guardar", Theme.mint, { Size = UDim2.fromOffset(190, 52), TextSize = 20, Parent = btns })
+		local keep = Kit.button("Guardar", Theme.mint, { Size = UDim2.fromOffset(170, 52), Parent = btns }, "big")
 		local sell = Kit.button("Vender +" .. Format.int(d.value), Theme.yellow, {
 			Size = UDim2.fromOffset(190, 52),
-			TextSize = 20,
 			Parent = btns,
-		})
+		}, "big")
 		if full then
 			Kit.setEnabled(keep, false)
 		end
@@ -6310,7 +7253,9 @@ local function show(arg: any)
 				close()
 				Machine.revealDone()
 				local st = State.data
-				if k and st and st.tutorial == 4 then
+				if st and st.tutorial == 4 then
+					-- paso 4 del tutorial: cerrar la máquina y pedir que lo equipe
+					Modal.close()
 					Router.open("tutorialEquip")
 				end
 			else
@@ -6338,9 +7283,10 @@ local function show(arg: any)
 		elseif tier == 3 then
 			Audio.play("epic")
 			Audio.play("sparkle")
-		elseif tier >= 4 then
+		elseif tier == 4 then
 			Audio.play("fanfare")
 		end
+		particles(fxLayer, d.rarity)
 	end)
 end
 
@@ -6359,7 +7305,7 @@ return Reveal
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="56">
+          <Item class="ModuleScript" referent="57">
             <Properties>
               <string name="Name">Router</string>
               <string name="Source"><![CDATA[--!strict
@@ -6369,7 +7315,7 @@ local Toast = require(script.Parent.Parent.UI.Toast)
 
 local Router = {}
 -- estas se pueden abrir aunque haya algo en curso (no reemplazan la ventana actual)
-local OVERLAYS = { reveal = true, confirm = true, tutorialEquip = true }
+local OVERLAYS = { reveal = true, confirm = true, tutorialEquip = true, hudPulse = true }
 local routes: { [string]: (any?) -> () } = {}
 
 function Router.register(name: string, fn: (any?) -> ())
@@ -6396,11 +7342,12 @@ return Router
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="57">
+          <Item class="ModuleScript" referent="58">
             <Properties>
               <string name="Name">Shop</string>
               <string name="Source"><![CDATA[--!strict
--- Tienda (renderShop de game5.js): ✨ Moldes Virales, Rellenos, Mejoras + ⭐ Robux (pases y productos).
+-- Tienda (renderShop de game5.js + #shopWrap): ✨ Moldes Virales, Rellenos (por defecto), Mejoras.
+-- + ⭐ Robux (extra de monetización: pases y productos).
 local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -6431,73 +7378,92 @@ local TABS = {
 	{ "robux", "⭐ Robux" },
 }
 
-local function item(
-	parent: Instance,
+type ItemOpts = {
 	order: number,
 	title: string,
 	desc: string,
-	buttonText: string,
+	icon: ((Frame) -> ())?,
+	price: string?, -- número con moneda
+	label: string?, -- texto sin moneda ("Tuyo", "Nivel máximo", "R$ 99")
 	color: Color3,
 	enabled: boolean,
-	onBuy: () -> ()
-): Frame
+	levels: { number }?, -- { hechos, total } para .lv
+	onBuy: () -> (),
+}
+
+-- .item: blanca, radius 18, padding 14, sombra 0 4px 0 lav2; .t Nunito 900 16; .d 12.5 700 #6d7285
+local function item(o: ItemOpts): Frame
 	local f: Frame = Kit.new("Frame", {
 		BackgroundColor3 = Theme.white,
-		LayoutOrder = order,
-		Parent = parent,
-	}, { Kit.corner(16), Kit.stroke(Theme.lav2, 2), Kit.pad(12, 10) })
-	Kit.text(
-		title,
-		16,
-		{ Font = Theme.display, Position = UDim2.fromOffset(62, 0), Size = UDim2.new(1, -62, 0, 22), Parent = f }
-	)
-	Kit.text(desc, 12, {
+		LayoutOrder = o.order,
+		Parent = ui.grid,
+	}, { Kit.corner(18), Kit.pad(14, 14) })
+	Kit.shadow(f, Theme.lav2, 4, 18)
+	local head: Frame = Kit.new("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 46),
+		Parent = f,
+	}, { Kit.list(Enum.FillDirection.Horizontal, 8) });
+	(head:FindFirstChildOfClass("UIListLayout") :: UIListLayout).VerticalAlignment = Enum.VerticalAlignment.Center
+	if o.icon then
+		local holder: Frame = Kit.new(
+			"Frame",
+			{ BackgroundTransparency = 1, Size = UDim2.fromOffset(46, 46), LayoutOrder = 1, Parent = head }
+		)
+		o.icon(holder)
+	end
+	Kit.text(o.title, 16, {
+		FontFace = Theme.bodyBlack,
+		Size = UDim2.new(1, if o.icon then -54 else 0, 1, 0),
+		LayoutOrder = 2,
+		Parent = head,
+	})
+	Kit.text(o.desc, 12.5, {
+		FontFace = Theme.bodyBold,
 		TextColor3 = Theme.muted,
-		Position = UDim2.fromOffset(62, 24),
-		Size = UDim2.new(1, -62, 1, -70),
+		Position = UDim2.fromOffset(0, 50),
+		Size = UDim2.new(1, 0, 1, -100),
 		TextYAlignment = Enum.TextYAlignment.Top,
 		Parent = f,
 	})
-	local b = Kit.button(buttonText, color, {
+	if o.levels then
+		local lv: Frame = Kit.new("Frame", {
+			BackgroundTransparency = 1,
+			AnchorPoint = Vector2.new(0, 1),
+			Position = UDim2.new(0, 0, 1, -44),
+			Size = UDim2.new(1, 0, 0, 7),
+			Parent = f,
+		}, { Kit.list(Enum.FillDirection.Horizontal, 3) })
+		local total = o.levels[2]
+		for i = 1, total do
+			Kit.new("Frame", {
+				BackgroundColor3 = if i <= o.levels[1] then Theme.mint else Theme.lav,
+				Size = UDim2.new(1 / total, -3, 1, 0),
+				LayoutOrder = i,
+				Parent = lv,
+			}, { Kit.corner(4) })
+		end
+	end
+	local props = {
 		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, 0, 1, 0),
+		Position = UDim2.new(0, 0, 1, -4),
 		Size = UDim2.new(1, 0, 0, 36),
-		TextSize = 15,
 		Parent = f,
-	})
-	Kit.setEnabled(b, enabled)
+	}
+	local b = if o.price then Kit.priceButton(o.price, o.color, props) else Kit.button(o.label or "", o.color, props)
+	Kit.setEnabled(b, o.enabled)
 	b.Activated:Connect(function()
-		if enabled then
-			onBuy()
+		if o.enabled then
+			o.onBuy()
 		end
 	end)
 	return f
-end
-
-local function icon(f: Frame, text: string?, bg: Color3?)
-	local holder: Frame = Kit.new("Frame", {
-		BackgroundColor3 = bg or Theme.lav,
-		BackgroundTransparency = if bg then 0 else 1,
-		Size = UDim2.fromOffset(54, 54),
-		Parent = f,
-	}, { Kit.corner(14) })
-	if text then
-		Kit.text(
-			text,
-			30,
-			{ Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, Parent = holder }
-		)
-	end
-	return holder
 end
 
 local function buy(kind: string, id: string)
 	local res = State.request("shop", { kind = kind, id = id })
 	if not res.ok then
 		Audio.play("error")
-		if res.err == "monedas" then
-			Toast.show("No te alcanzan las monedas")
-		end
 	end
 end
 
@@ -6540,14 +7506,25 @@ local function priceOf(entry: any, isPass: boolean): number
 	return entry.robux
 end
 
+local function emojiIcon(e: string): (Frame) -> ()
+	return function(h: Frame)
+		Kit.text(e, 30, { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, Parent = h })
+	end
+end
+
 local function render()
 	local d = State.data
 	if not d or Modal.current ~= "shop" or not ui.grid then
 		return
 	end
-	for id, b in ui.tabs do
-		b.BackgroundColor3 = if tab == id then (if id == "robux" then Theme.robux else Theme.pink) else Theme.white
-		b.TextColor3 = if tab == id then Theme.white else Theme.ink
+	Kit.clear(ui.tabs)
+	for i, t in TABS do
+		local b = Kit.tab(t[2], tab == t[1], false, { LayoutOrder = i, Parent = ui.tabs })
+		b.Activated:Connect(function()
+			tab = t[1]
+			Audio.play("click")
+			render()
+		end)
 	end
 	Kit.clear(ui.grid)
 	if tab == "molds" then
@@ -6555,44 +7532,58 @@ local function render()
 			if sp.famous then
 				local own = table.find(d.molds, sp.id) ~= nil
 				local firm = if sp.soft >= 1.2 then "súper suave" elseif sp.soft >= 1 then "suave" else "firme"
-				local f = item(
-					ui.grid,
-					i,
-					sp.name,
-					string.format("%s\n<b>Slow rise %ss · %s</b>", sp.desc, tostring(sp.rise), firm),
-					if own then "Tuyo" else "🪙 " .. Format.int(sp.price),
-					if own then Theme.white else Theme.pink,
-					not own and d.coins >= sp.price,
-					function()
+				item({
+					order = i,
+					title = sp.name,
+					desc = string.format(
+						'%s\n<font color="#282D3A"><b>Slow rise %ss · %s</b></font>',
+						sp.desc,
+						tostring(sp.rise),
+						firm
+					),
+					icon = function(h)
+						Thumb.make({ species = sp.id, variant = "original" }, h)
+					end,
+					price = if own then nil else Format.int(sp.price),
+					label = if own then "Tuyo" else nil,
+					color = if own then Theme.lav else Theme.pink,
+					enabled = not own and d.coins >= sp.price,
+					onBuy = function()
 						buy("mold", sp.id)
-					end
-				)
-				Thumb.make({ species = sp.id, variant = "original" }, icon(f))
+					end,
+				})
 			end
 		end
 	elseif tab == "fillings" then
 		for i, fl in Config.Fillings do
 			if fl.price > 0 then
 				local own = table.find(d.fillings, fl.id) ~= nil
-				local f = item(
-					ui.grid,
-					i,
-					fl.name,
-					fl.desc or "",
-					if own then "Tuyo" else "🪙 " .. Format.int(fl.price),
-					if own then Theme.white else Theme.pink,
-					not own and d.coins >= fl.price,
-					function()
-						buy("filling", fl.id)
-					end
-				)
 				local col = Color3.fromHex(fl.color3 or (string.sub(fl.color, 1, 1) == "#" and fl.color) or "#ffd36e")
-				icon(f, nil, col)
+				item({
+					order = i,
+					title = fl.name,
+					desc = fl.desc or "",
+					icon = function(h)
+						Kit.new("Frame", {
+							BackgroundColor3 = col,
+							AnchorPoint = Vector2.new(0.5, 0.5),
+							Position = UDim2.fromScale(0.5, 0.5),
+							Size = UDim2.fromOffset(26, 26),
+							Parent = h,
+						}, { Kit.round(), Kit.stroke(Color3.fromRGB(215, 212, 222), 1) })
+					end,
+					price = if own then nil else Format.int(fl.price),
+					label = if own then "Tuyo" else nil,
+					color = if own then Theme.lav else Theme.pink,
+					enabled = not own and d.coins >= fl.price,
+					onBuy = function()
+						buy("filling", fl.id)
+					end,
+				})
 			end
 		end
 	elseif tab == "upgrades" then
-		local order = { "fillSpeed", "luck", "storage" }
-		for i, k in order do
+		for i, k in { "fillSpeed", "luck", "storage" } do
 			local u = (Config.Upgrades :: any)[k]
 			local lvl = if k == "fillSpeed" then d.upgrades.fillSpeed - 1 else d.upgrades[k]
 			local maxed = lvl >= #u.costs
@@ -6608,57 +7599,49 @@ local function render()
 				cur = string.format("Velocidad %d", lvl + 1)
 					.. (if maxed then "" else string.format(" → %d", lvl + 2))
 			end
-			local dots = string.rep("●", lvl) .. string.rep("○", #u.costs - lvl)
-			local f = item(
-				ui.grid,
-				i,
-				u.name,
-				string.format("%s\n<b>%s</b>\n%s", u.desc, cur, dots),
-				if maxed then "Nivel máximo" else "🪙 " .. Format.int(cost),
-				if maxed then Theme.white else Theme.mint,
-				not maxed and d.coins >= cost,
-				function()
+			item({
+				order = i,
+				title = u.name,
+				desc = string.format('%s\n<font color="#282D3A"><b>%s</b></font>', u.desc, cur),
+				levels = { lvl, #u.costs },
+				price = if maxed then nil else Format.int(cost),
+				label = if maxed then "Nivel máximo" else nil,
+				color = if maxed then Theme.lav else Theme.mint,
+				enabled = not maxed and d.coins >= cost,
+				onBuy = function()
 					buy("upgrade", k)
-				end
-			)
-			icon(f, ({ fillSpeed = "⚡", luck = "🍀", storage = "🎒" })[k])
+				end,
+			})
 		end
 	else
-		Kit.text(
-			"Pases (para siempre)",
-			16,
-			{ Font = Theme.display, LayoutOrder = 0, Size = UDim2.fromOffset(300, 24), Parent = ui.grid }
-		)
 		for i, p in M.PASSES do
 			local own = d.passes and d.passes[p.key]
-			local f = item(
-				ui.grid,
-				i,
-				p.name,
-				p.desc,
-				if own then "¡Ya lo tienes!" else string.format("R$ %d", priceOf(p, true)),
-				if own then Theme.white else Theme.robux,
-				not own and (p.id ~= 0 or RunService:IsStudio()),
-				function()
+			item({
+				order = i,
+				title = p.name,
+				desc = p.desc .. '\n<font color="#282D3A"><b>Pase: para siempre</b></font>',
+				icon = emojiIcon(p.icon),
+				label = if own then "¡Ya lo tienes!" else string.format("R$ %d", priceOf(p, true)),
+				color = if own then Theme.lav else Theme.robux,
+				enabled = not own and (p.id ~= 0 or RunService:IsStudio()),
+				onBuy = function()
 					buyRobux(p, true)
-				end
-			)
-			icon(f, p.icon)
+				end,
+			})
 		end
 		for i, p in M.PRODUCTS do
-			local f = item(
-				ui.grid,
-				100 + i,
-				p.name,
-				p.desc,
-				string.format("R$ %d", priceOf(p, false)),
-				Theme.robux,
-				p.id ~= 0 or RunService:IsStudio(),
-				function()
+			item({
+				order = 100 + i,
+				title = p.name,
+				desc = p.desc,
+				icon = emojiIcon(p.icon),
+				label = string.format("R$ %d", priceOf(p, false)),
+				color = Theme.robux,
+				enabled = p.id ~= 0 or RunService:IsStudio(),
+				onBuy = function()
 					buyRobux(p, false)
-				end
-			)
-			icon(f, p.icon)
+				end,
+			})
 		end
 	end
 end
@@ -6668,42 +7651,34 @@ local function open(startTab: any?)
 		tab = startTab
 	end
 	local content = Modal.open("shop", "Tienda", {
-		width = 860,
-		height = 560,
+		width = 760,
+		height = 600,
 		onClose = function()
 			ui = {}
 		end,
 	})
-	local tabs: Frame = Kit.new("Frame", {
+	ui.tabs = Kit.new("Frame", {
 		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 0, 34),
+		Size = UDim2.new(1, 0, 0, 30),
 		Parent = content,
 	}, { Kit.list(Enum.FillDirection.Horizontal, 6) })
-	ui.tabs = {}
-	for i, t in TABS do
-		local b = Kit.button(t[2], Theme.white, {
-			Size = UDim2.fromOffset(0, 32),
-			AutomaticSize = Enum.AutomaticSize.X,
-			TextSize = 14,
-			LayoutOrder = i,
-			Parent = tabs,
-		})
-		Kit.pad(12, 0).Parent = b
-		ui.tabs[t[1]] = b
-		b.Activated:Connect(function()
-			tab = t[1]
-			Audio.play("click")
-			render()
-		end)
-	end
-	local grid = Modal.scroll(content, { Position = UDim2.fromOffset(0, 44), Size = UDim2.new(1, 0, 1, -44) })
-	Kit.grid(UDim2.fromOffset(260, 150), 10).Parent = grid
-	Kit.pad(2, 4).Parent = grid
-	ui.grid = grid
+	local scroll = Modal.scroll(content, { Position = UDim2.fromOffset(0, 42), Size = UDim2.new(1, 0, 1, -42) })
+	local inner: Frame = Kit.new("Frame", {
+		BackgroundTransparency = 1,
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = UDim2.new(1, -10, 0, 0),
+		Parent = scroll,
+	}, { Kit.new("UIPadding", { PaddingBottom = UDim.new(0, 10) }) })
+	Kit.new("UIGridLayout", {
+		CellSize = UDim2.new(1 / 3, -8, 0, 196),
+		CellPadding = UDim2.fromOffset(12, 14),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Parent = inner,
+	})
+	ui.grid = inner
 	Audio.play("open")
 	render()
-	-- precios reales del Marketplace llegan async
-	task.delay(1.5, render)
+	task.delay(1.5, render) -- precios reales del Marketplace llegan async
 end
 
 function Shop.init()
@@ -6720,7 +7695,7 @@ return Shop
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="58">
+          <Item class="ModuleScript" referent="59">
             <Properties>
               <string name="Name">Squish</string>
               <string name="Source"><![CDATA[--!strict
@@ -6949,7 +7924,7 @@ return Squish
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="59">
+          <Item class="ModuleScript" referent="60">
             <Properties>
               <string name="Name">State</string>
               <string name="Source"><![CDATA[--!strict
@@ -7007,18 +7982,22 @@ return State
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="60">
+          <Item class="ModuleScript" referent="61">
             <Properties>
               <string name="Name">Trade</string>
               <string name="Source"><![CDATA[--!strict
--- Intercambios: con NPC (medidor 0.8 / 1.15, "¿y otro?") y con jugadores reales
--- (solicitud → ofertas → Listo → Confirmar; el servidor hace el cambio de una sola vez).
+-- Chat con NPC (#npcWrap) y Cambio con NPC (#tradeWrap) como el original (game5.js openNPC /
+-- sendChat / openTrade), + intercambio entre jugadores reales (extra multijugador, mismo estilo).
+local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage.Shared
+local Catalog = require(Shared.Logic.Catalog)
 local Format = require(Shared.Util.Format)
 local Remotes = require(Shared.Remotes)
+local Thumb = require(script.Parent.Parent.Engine.Thumb)
 local Kit = require(script.Parent.Parent.UI.Kit)
 local Modal = require(script.Parent.Parent.UI.Modal)
 local Theme = require(script.Parent.Parent.UI.Theme)
@@ -7031,73 +8010,148 @@ local State = require(script.Parent.State)
 local Trade = {}
 Trade.roomContent = (nil :: any) :: Frame
 
-local function slotRow(parent: Instance, items: { any }, max: number, order: number, onClick: ((any) -> ())?): Frame
+local GREY2 = Color3.fromHex("#8b90a3")
+
+-- ─────────────── piezas comunes ───────────────
+local function valueRow(parent: Instance, order: number, title: string, value: number): Frame
 	local row: Frame = Kit.new("Frame", {
 		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 0, 132),
+		Size = UDim2.new(1, 0, 0, 22),
+		LayoutOrder = order,
+		Parent = parent,
+	})
+	Kit.h3(title, { Size = UDim2.fromScale(0.6, 1), Parent = row })
+	if value > 0 then
+		local v: Frame = Kit.new("Frame", {
+			BackgroundTransparency = 1,
+			AnchorPoint = Vector2.new(1, 0.5),
+			Position = UDim2.fromScale(1, 0.5),
+			AutomaticSize = Enum.AutomaticSize.X,
+			Size = UDim2.fromOffset(0, 18),
+			Parent = row,
+		}, { Kit.list(Enum.FillDirection.Horizontal, 5) });
+		(v:FindFirstChildOfClass("UIListLayout") :: UIListLayout).VerticalAlignment = Enum.VerticalAlignment.Center
+		Kit.text(Format.int(value), 15, {
+			FontFace = Theme.bodyBlack,
+			AutomaticSize = Enum.AutomaticSize.X,
+			Size = UDim2.fromOffset(0, 18),
+			TextWrapped = false,
+			LayoutOrder = 1,
+			Parent = v,
+		})
+		Kit.coin(14, { LayoutOrder = 2, Parent = v })
+	end
+	return row
+end
+
+-- .slot: flex 1, min-height 120, borde lav2, fondo blanco .6, 12px 900 #8b90a3
+local function slots(
+	parent: Instance,
+	order: number,
+	items: { any },
+	max: number,
+	emptyText: string,
+	showRarity: boolean,
+	onClick: ((any) -> ())?
+)
+	local row: Frame = Kit.new("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 124),
 		LayoutOrder = order,
 		Parent = parent,
 	}, { Kit.list(Enum.FillDirection.Horizontal, 8) })
 	for i = 1, max do
 		local s = items[i]
+		local slot = Kit.new("TextButton", {
+			Text = "",
+			AutoButtonColor = s ~= nil and onClick ~= nil,
+			BackgroundColor3 = Theme.white,
+			BackgroundTransparency = if s then 0 else 0.4,
+			Size = UDim2.new(1 / max, -8 * (max - 1) / max, 1, 0),
+			LayoutOrder = i,
+			Parent = row,
+		}, { Kit.corner(16), Kit.stroke(Theme.lav2, 3) })
 		if s then
-			local b = Inventory.card(row, s, nil, false)
-			b.LayoutOrder = i
+			local th: Frame = Kit.new("Frame", {
+				BackgroundTransparency = 1,
+				AnchorPoint = Vector2.new(0.5, 0),
+				Position = UDim2.new(0.5, 0, 0, 6),
+				Size = UDim2.fromOffset(74, 74),
+				Parent = slot,
+			})
+			Thumb.make(s, th)
+			Kit.text(s.name, 11, {
+				FontFace = Theme.bodyBlack,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				Position = UDim2.new(0, 4, 0, 80),
+				Size = UDim2.new(1, -8, 0, 24),
+				LineHeight = 0.95,
+				Parent = slot,
+			})
+			if showRarity then
+				local r = Catalog.R[s.rarity]
+				Kit.text(r.name, 11, {
+					FontFace = Theme.bodyBlack,
+					TextColor3 = Color3.fromHex(r.color),
+					TextXAlignment = Enum.TextXAlignment.Center,
+					Position = UDim2.new(0, 4, 1, -18),
+					Size = UDim2.new(1, -8, 0, 14),
+					Parent = slot,
+				})
+			end
 			if onClick then
-				b.Activated:Connect(function()
+				slot.Activated:Connect(function()
 					onClick(s)
 				end)
 			end
 		else
-			Kit.new("Frame", {
-				BackgroundColor3 = Theme.white,
-				BackgroundTransparency = 0.4,
-				Size = UDim2.fromOffset(104, 128),
-				LayoutOrder = i,
-				Parent = row,
-			}, {
-				Kit.corner(14),
-				Kit.stroke(Theme.lav2, 2),
-				Kit.text("Vacío", 12, {
-					TextColor3 = Theme.muted,
-					Size = UDim2.fromScale(1, 1),
-					TextXAlignment = Enum.TextXAlignment.Center,
-				}),
+			Kit.text(emptyText, 12, {
+				FontFace = Theme.bodyBlack,
+				TextColor3 = GREY2,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				Size = UDim2.fromScale(1, 1),
+				Parent = slot,
 			})
 		end
 	end
-	return row
 end
 
-local function pickerGrid(
+-- .miniGrid: mínimo 78px, gap 7; elegida = borde mintD
+local function miniGrid(
 	parent: Instance,
+	order: number,
 	d: any,
 	chosen: { string },
 	max: number,
-	onToggle: (string) -> (),
-	size: UDim2,
-	pos: UDim2
+	onToggle: (string) -> ()
 )
-	local sc = Modal.scroll(parent, { Size = size, Position = pos })
-	Kit.grid(UDim2.fromOffset(104, 128), 6).Parent = sc
+	local sc = Modal.scroll(parent, { Size = UDim2.new(1, 0, 1, -236), LayoutOrder = order })
+	sc.AutomaticSize = Enum.AutomaticSize.None
+	local inner: Frame = Kit.new("Frame", {
+		BackgroundTransparency = 1,
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = UDim2.new(1, -8, 0, 0),
+		Parent = sc,
+	})
+	Kit.grid(UDim2.fromOffset(78, 100), 7).Parent = inner
 	local avail = {}
 	for _, s in d.inventory do
 		if s.id ~= d.equipped then
 			table.insert(avail, s)
 		end
 	end
-	table.sort(avail, function(a, b)
+	table.sort(avail, function(a: any, b: any)
 		return a.value > b.value
 	end)
 	if #avail == 0 then
 		Kit.text(
 			"No tienes squishies para ofrecer (el equipado se queda contigo).",
 			13,
-			{ TextColor3 = Theme.muted, Size = UDim2.fromOffset(300, 50), Parent = sc }
+			{ TextColor3 = Theme.grey, Size = UDim2.fromOffset(300, 50), Parent = inner }
 		)
 	end
 	for i, s in avail do
-		local b = Inventory.card(sc, s, d, table.find(chosen, s.id) ~= nil)
+		local b = Inventory.card(inner, s, nil, table.find(chosen, s.id) ~= nil, true)
 		b.LayoutOrder = i
 		b.Activated:Connect(function()
 			if not table.find(chosen, s.id) and #chosen >= max then
@@ -7110,8 +8164,46 @@ local function pickerGrid(
 	end
 end
 
--- ─────────────── NPC ───────────────
-local function openNpc(npcName: any)
+local function column(parent: Instance, x: number, w: number): Frame
+	local col: Frame = Kit.new("Frame", {
+		BackgroundColor3 = Theme.lav,
+		Position = UDim2.new(x, if x > 0 then 7 else 0, 0, 0),
+		Size = UDim2.new(w, -7, 1, -64),
+		Parent = parent,
+	}, { Kit.corner(20), Kit.pad(14, 14), Kit.list(Enum.FillDirection.Vertical, 8) })
+	return col
+end
+
+local function fairness(parent: Instance, order: number, ratio: number, hasTheirs: boolean)
+	Kit.text("Medidor del trato", 12, { TextColor3 = Theme.muted, LayoutOrder = order, Parent = parent })
+	local bar: Frame = Kit.new("Frame", {
+		BackgroundColor3 = Theme.white,
+		Size = UDim2.new(1, 0, 0, 12),
+		LayoutOrder = order + 1,
+		Parent = parent,
+	}, { Kit.corner(7) })
+	local fill: Frame = Kit.new("Frame", {
+		BackgroundColor3 = if ratio >= 1.15
+			then Color3.fromHex("#FFC83A")
+			elseif ratio >= 0.8 then Theme.mint
+			else Color3.fromHex("#ff9aa8"),
+		Size = UDim2.fromScale(0, 1),
+		Parent = bar,
+	}, { Kit.corner(7) })
+	Kit.tween(fill, 0.3, { Size = UDim2.fromScale(math.clamp(ratio / 1.5, 0, 1), 1) })
+	Kit.text(
+		if not hasTheirs
+			then ""
+			elseif ratio >= 1.15 then "Súper trato para ellos: van a decir que sí."
+			elseif ratio >= 0.8 then "Cambio justo: seguramente aceptan."
+			else "Quieren más. Agrega otro squishy.",
+		13,
+		{ FontFace = Theme.bodyBlack, LayoutOrder = order + 2, Parent = parent }
+	)
+end
+
+-- ─────────────── Cambio con NPC ───────────────
+local function openNpcTrade(npcName: any)
 	local res = State.request("npcTrade", { op = "open", npc = npcName })
 	if not res.ok then
 		if res.err then
@@ -7121,31 +8213,23 @@ local function openNpc(npcName: any)
 	end
 	local st = res
 	local mine: { string } = {}
-	local content = Modal.open("trade", "Intercambio con " .. tostring(npcName), {
-		width = 900,
-		height = 600,
+	local d0 = State.data
+	local content = Modal.open("trade", "Cambio con " .. tostring(npcName), {
+		width = 960,
+		height = 640,
 		onClose = function()
 			State.request("npcTrade", { op = "close" })
 		end,
 	})
-	local msg = "Elige lo que quieres ofrecer."
+	local msg = if d0 and #d0.inventory > 0
+		then "Elige lo que quieres ofrecer."
+		else "¡Todavía no tienes nada para cambiar!"
 	local function render()
 		local d = State.data
 		if Modal.current ~= "trade" or not d then
 			return
 		end
 		Kit.clear(content)
-		local left: Frame = Kit.new(
-			"Frame",
-			{ BackgroundTransparency = 1, Size = UDim2.new(0, 470, 1, 0), Parent = content },
-			{ Kit.list(Enum.FillDirection.Vertical, 6) }
-		)
-		Kit.text(msg, 14, { Font = Theme.bodyBlack, LayoutOrder = 1, Size = UDim2.new(1, 0, 0, 36), Parent = left })
-		Kit.text(
-			"Tu oferta " .. (if st.myVal > 0 then Format.int(st.myVal) .. " 🪙" else ""),
-			14,
-			{ Font = Theme.display, LayoutOrder = 2, Parent = left }
-		)
 		local mineItems = {}
 		for _, id in mine do
 			for _, s in d.inventory do
@@ -7154,54 +8238,41 @@ local function openNpc(npcName: any)
 				end
 			end
 		end
-		slotRow(left, mineItems, 3, 3, function(s)
+		-- columna izquierda: Tu oferta + inventario
+		local left = column(content, 0, 0.5)
+		valueRow(left, 1, "Tu oferta", st.myVal)
+		slots(left, 2, mineItems, 3, "Vacío", false, function(s)
 			table.remove(mine, table.find(mine, s.id) or 0)
 			st = State.request("npcTrade", { op = "set", ids = mine })
 			render()
 		end)
-		Kit.text(
-			tostring(npcName) .. " ofrece " .. (if st.theirVal > 0 then Format.int(st.theirVal) .. " 🪙" else ""),
-			14,
-			{ Font = Theme.display, LayoutOrder = 4, Parent = left }
-		)
-		slotRow(left, if st.theirs then { st.theirs } else {}, 1, 5)
-		-- medidor
+		Kit.text("Elige hasta 3 squishies", 12, { TextColor3 = Theme.muted, LayoutOrder = 3, Parent = left })
+		miniGrid(left, 4, d, mine, 3, function(id)
+			local at = table.find(mine, id)
+			if at then
+				table.remove(mine, at)
+			else
+				table.insert(mine, id)
+			end
+			st = State.request("npcTrade", { op = "set", ids = mine })
+			if st.msg then
+				msg = st.msg
+			end
+			render()
+		end)
+		-- columna derecha: Su oferta + medidor
+		local right = column(content, 0.5, 0.5)
+		valueRow(right, 1, "Su oferta", st.theirVal)
+		slots(right, 2, if st.theirs then { st.theirs } else {}, 1, "Esperando tu oferta…", true)
 		local ratio = if st.theirVal > 0 then st.myVal / st.theirVal else 0
-		local bar: Frame = Kit.new(
-			"Frame",
-			{ BackgroundColor3 = Theme.lav, Size = UDim2.new(1, -10, 0, 12), LayoutOrder = 6, Parent = left },
-			{ Kit.corner(6) }
-		)
-		Kit.new("Frame", {
-			BackgroundColor3 = if ratio >= 1.15
-				then Color3.fromHex("#FFC83A")
-				elseif ratio >= 0.8 then Theme.mint
-				else Color3.fromHex("#ff9aa8"),
-			Size = UDim2.fromScale(math.clamp(ratio / 1.5, 0, 1), 1),
-			Parent = bar,
-		}, { Kit.corner(6) })
-		Kit.text(
-			if st.theirVal <= 0
-				then ""
-				elseif ratio >= 1.15 then "Súper trato para ellos: van a decir que sí."
-				elseif ratio >= 0.8 then "Cambio justo: seguramente aceptan."
-				else "Quieren más. Agrega otro squishy.",
-			13,
-			{ TextColor3 = Theme.muted, LayoutOrder = 7, Parent = left }
-		)
-		local btns: Frame = Kit.new(
-			"Frame",
-			{ BackgroundTransparency = 1, Size = UDim2.new(1, -10, 0, 44), LayoutOrder = 8, Parent = left },
-			{ Kit.list(Enum.FillDirection.Horizontal, 8) }
-		)
+		fairness(right, 3, ratio, st.theirVal > 0)
 		local reroll = Kit.button(
-			string.format("¿Y otro? (%d)", 3 - st.rerolls),
+			"Pedir otra cosa",
 			Theme.white,
-			{ Size = UDim2.new(0.5, -4, 1, 0), Parent = btns }
+			{ Size = UDim2.new(1, 0, 0, 30), LayoutOrder = 10, Parent = right },
+			"small"
 		)
-		local accept = Kit.button("Proponer cambio", Theme.mint, { Size = UDim2.new(0.5, -4, 1, 0), Parent = btns })
 		Kit.setEnabled(reroll, #mine > 0 and st.rerolls < 3)
-		Kit.setEnabled(accept, #mine > 0 and st.theirs ~= nil)
 		reroll.Activated:Connect(function()
 			if #mine == 0 or st.rerolls >= 3 then
 				return
@@ -7214,6 +8285,38 @@ local function openNpc(npcName: any)
 				render()
 			end
 		end)
+		-- .tradeFoot: mensaje + Cancelar + Aceptar
+		local foot: Frame = Kit.new("Frame", {
+			BackgroundTransparency = 1,
+			AnchorPoint = Vector2.new(0, 1),
+			Position = UDim2.fromScale(0, 1),
+			Size = UDim2.new(1, 0, 0, 52),
+			Parent = content,
+		})
+		Kit.text(msg, 15, {
+			FontFace = Theme.bodyBlack,
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.fromScale(0, 0.5),
+			Size = UDim2.new(1, -340, 0, 40),
+			Parent = foot,
+		})
+		local btns: Frame = Kit.new("Frame", {
+			BackgroundTransparency = 1,
+			AnchorPoint = Vector2.new(1, 0.5),
+			Position = UDim2.fromScale(1, 0.5),
+			Size = UDim2.fromOffset(320, 50),
+			Parent = foot,
+		}, { Kit.list(Enum.FillDirection.Horizontal, 10, Enum.HorizontalAlignment.Right) })
+		local cancel =
+			Kit.button("Cancelar", Theme.white, { Size = UDim2.fromOffset(130, 46), LayoutOrder = 1, Parent = btns })
+		local accept = Kit.button(
+			"Aceptar",
+			Theme.mint,
+			{ Size = UDim2.fromOffset(160, 50), LayoutOrder = 2, Parent = btns },
+			"big"
+		)
+		Kit.setEnabled(accept, #mine > 0 and st.theirs ~= nil)
+		cancel.Activated:Connect(Modal.close)
 		accept.Activated:Connect(function()
 			if #mine == 0 or not st.theirs then
 				return
@@ -7228,42 +8331,236 @@ local function openNpc(npcName: any)
 				render()
 			end
 		end)
-		pickerGrid(content, d, mine, 3, function(id)
-			local at = table.find(mine, id)
-			if at then
-				table.remove(mine, at)
-			else
-				table.insert(mine, id)
-			end
-			st = State.request("npcTrade", { op = "set", ids = mine })
-			if st.msg then
-				msg = st.msg
-			end
-			render()
-		end, UDim2.new(1, -490, 1, 0), UDim2.fromOffset(490, 0))
 	end
 	render()
 end
 
--- ─────────────── Jugador ↔ jugador ───────────────
+-- ─────────────── Chat con NPC ───────────────
+type ChatMsg = { me: boolean, text: string }
+local chats: { [string]: { ChatMsg } } = {}
+
+local function npcModel(name: string): Model?
+	local f = Workspace:FindFirstChild("NPCs")
+	local m = f and f:FindFirstChild(name)
+	return if m and m:IsA("Model") then m else nil
+end
+
+local function openChat(npcName: any)
+	local name = tostring(npcName)
+	local model = npcModel(name)
+	local sqd: any = nil
+	if model then
+		local j = model:GetAttribute("Companion")
+		if type(j) == "string" then
+			local ok, v = pcall(HttpService.JSONDecode, HttpService, j)
+			if ok then
+				sqd = v
+			end
+		end
+	end
+	task.spawn(State.request, "npcTalk", { npc = name })
+	local log: { ChatMsg } = chats[name] or {}
+	if not chats[name] then
+		chats[name] = log
+		local greet = {
+			string.format("¡Holi! Soy %s 👋", name),
+			"¡Hola! ¡Mucho gusto!",
+			if sqd
+				then string.format("¡Ey! ¿Quieres ver mi %s? Puedes apachurrarlo 😄", sqd.name)
+				else "¡Hola! ¡Mucho gusto!",
+		}
+		table.insert(log, { me = false, text = greet[math.random(1, #greet)] })
+	end
+	local content, title = Modal.open("npc", name, { width = 560, height = 560 })
+	title.Position = UDim2.fromOffset(84, 14)
+	title.TextSize = 24
+	-- .npcAv: miniatura del squishy que presume
+	local av: Frame = Kit.new("Frame", {
+		BackgroundColor3 = Theme.lav,
+		Position = UDim2.fromOffset(22, 14),
+		Size = UDim2.fromOffset(48, 48),
+		Parent = title.Parent,
+	}, { Kit.corner(14) })
+	if sqd then
+		Thumb.make(sqd, av)
+		Kit.text(
+			string.format("Presumiendo: %s · %s", sqd.name, Catalog.R[sqd.rarity] and Catalog.R[sqd.rarity].name or ""),
+			12.5,
+			{
+				TextColor3 = Theme.muted,
+				Position = UDim2.fromOffset(84, 44),
+				Size = UDim2.new(1, -330, 0, 16),
+				Parent = title.Parent,
+			}
+		)
+	end
+	title.Size = UDim2.new(1, -330, 0, 30)
+	local btns: Frame = Kit.new("Frame", {
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -64, 0, 18),
+		Size = UDim2.fromOffset(250, 30),
+		Parent = title.Parent,
+	}, { Kit.list(Enum.FillDirection.Horizontal, 6, Enum.HorizontalAlignment.Right) })
+	local sqBtn = Kit.button(
+		"🖐️ Apachurrar",
+		Theme.purple,
+		{ Size = UDim2.fromOffset(120, 30), LayoutOrder = 1, Parent = btns },
+		"small"
+	)
+	local tradeBtn =
+		Kit.button("Cambiar", Theme.mint, { Size = UDim2.fromOffset(86, 30), LayoutOrder = 2, Parent = btns }, "small")
+	sqBtn.Activated:Connect(function()
+		Modal.close()
+		if sqd then
+			Router.open("studio", { squishy = sqd, owner = "De " .. name })
+		end
+	end)
+	tradeBtn.Activated:Connect(function()
+		Modal.close()
+		openNpcTrade(name)
+	end)
+	content.Position = UDim2.fromOffset(20, 74)
+	content.Size = UDim2.new(1, -40, 1, -88)
+	local logFrame = Modal.scroll(content, { Size = UDim2.new(1, 0, 1, -78) })
+	Kit.list(Enum.FillDirection.Vertical, 8).Parent = logFrame
+	Kit.new("UIPadding", { PaddingRight = UDim.new(0, 8), PaddingBottom = UDim.new(0, 6), Parent = logFrame })
+	local busy = false
+	local function renderLog()
+		Kit.clear(logFrame)
+		local items = table.clone(log)
+		if busy then
+			table.insert(items, { me = false, text = "escribiendo…" })
+		end
+		for i, m in items do
+			local holder: Frame = Kit.new("Frame", {
+				BackgroundTransparency = 1,
+				AutomaticSize = Enum.AutomaticSize.Y,
+				Size = UDim2.new(1, 0, 0, 0),
+				LayoutOrder = i,
+				Parent = logFrame,
+			})
+			-- .msg: máx 80%, padding 9/13, radius 16, 700 14.5; NPC lav a la izquierda, tú ink a la derecha
+			Kit.new("TextLabel", {
+				BackgroundColor3 = if m.me then Theme.ink else Theme.lav,
+				TextColor3 = if m.me then Theme.white else Theme.ink,
+				TextTransparency = if busy and i == #items then 0.4 else 0,
+				FontFace = Theme.bodyBold,
+				TextSize = 14.5,
+				TextWrapped = true,
+				Text = m.text,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				AutomaticSize = Enum.AutomaticSize.XY,
+				Size = UDim2.fromOffset(0, 0),
+				AnchorPoint = Vector2.new(if m.me then 1 else 0, 0),
+				Position = UDim2.fromScale(if m.me then 1 else 0, 0),
+				Parent = holder,
+			}, {
+				Kit.corner(16),
+				Kit.pad(13, 9),
+				Kit.new("UISizeConstraint", { MaxSize = Vector2.new(390, 1000) }),
+			})
+		end
+		task.defer(function()
+			logFrame.CanvasPosition = Vector2.new(0, 1e6)
+		end)
+	end
+	-- barra de escritura: input con borde lav2 3px + "Enviar" (purple)
+	local bar: Frame = Kit.new("Frame", {
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 0, 1, -20),
+		Size = UDim2.new(1, 0, 0, 44),
+		Parent = content,
+	})
+	local input: TextBox = Kit.new("TextBox", {
+		BackgroundColor3 = Theme.white,
+		PlaceholderText = "Escribe algo…",
+		PlaceholderColor3 = Theme.grey,
+		Text = "",
+		ClearTextOnFocus = false,
+		FontFace = Theme.bodyBold,
+		TextSize = 15,
+		TextColor3 = Theme.ink,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Size = UDim2.new(1, -100, 1, 0),
+		Parent = bar,
+	}, { Kit.corner(14), Kit.stroke(Theme.lav2, 3), Kit.pad(12, 0) })
+	local send = Kit.button("Enviar", Theme.purple, {
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.fromScale(1, 0),
+		Size = UDim2.new(0, 90, 1, 0),
+		Parent = bar,
+	})
+	Kit.text("Chat en modo offline (respuestas predefinidas).", 11, {
+		FontFace = Theme.body,
+		TextColor3 = GREY2,
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.fromScale(0, 1),
+		Size = UDim2.new(1, 0, 0, 14),
+		Parent = content,
+	})
+	local function sendChat()
+		local text = string.sub((string.gsub(input.Text, "^%s+", "")), 1, 140)
+		if text == "" or busy then
+			return
+		end
+		input.Text = ""
+		busy = true
+		Audio.play("click")
+		table.insert(log :: { ChatMsg }, { me = true, text = text })
+		renderLog()
+		local r = State.request("npcChat", { npc = name, text = text })
+		busy = false
+		if r.ok then
+			local mine = log[#log]
+			mine.text = r.mine or mine.text
+			table.insert(log :: { ChatMsg }, { me = false, text = r.say })
+			Audio.play("npc", nil, 0.35)
+			if r.wantsTrade then
+				local stroke = Kit.new("UIStroke", { Color = Theme.pink, Thickness = 0, Parent = tradeBtn })
+				task.spawn(function()
+					local t0 = os.clock()
+					while os.clock() - t0 < 4 and stroke.Parent do
+						stroke.Thickness = 0
+						stroke.Transparency = 0.1
+						Kit.tween(stroke, 1.1, { Thickness = 8, Transparency = 1 })
+						task.wait(1.1)
+					end
+					stroke:Destroy()
+				end)
+			end
+		else
+			table.remove(log)
+		end
+		if Modal.current == "npc" then
+			renderLog()
+		end
+	end
+	send.Activated:Connect(sendChat)
+	input.FocusLost:Connect(function(enter)
+		if enter then
+			sendChat()
+		end
+	end)
+	renderLog()
+	Audio.play("open")
+	task.defer(function()
+		input:CaptureFocus()
+	end)
+end
+
+-- ─────────────── Jugador ↔ jugador (extra) ───────────────
 local room: any = nil
 local myIds: { string } = {}
 
 local function renderRoom()
 	local d = State.data
-	if not room or not d then
-		return
-	end
-	if Modal.current ~= "tradeRoom" then
+	if not room or not d or Modal.current ~= "tradeRoom" then
 		return
 	end
 	local content = Trade.roomContent
 	Kit.clear(content)
-	local left: Frame = Kit.new(
-		"Frame",
-		{ BackgroundTransparency = 1, Size = UDim2.new(0, 470, 1, 0), Parent = content },
-		{ Kit.list(Enum.FillDirection.Vertical, 6) }
-	)
 	local function total(items: { any }): number
 		local v = 0
 		for _, s in items do
@@ -7271,62 +8568,16 @@ local function renderRoom()
 		end
 		return v
 	end
-	Kit.text(
-		string.format(
-			"Tú ofreces · %s 🪙 %s",
-			Format.int(total(room.me.items)),
-			if room.me.confirmed then "✅" elseif room.me.ready then "👍" else ""
-		),
-		14,
-		{ Font = Theme.display, LayoutOrder = 1, Parent = left }
+	local left = column(content, 0, 0.5)
+	valueRow(
+		left,
+		1,
+		"Tu oferta" .. (if room.me.confirmed then " ✅" elseif room.me.ready then " 👍" else ""),
+		total(room.me.items)
 	)
-	slotRow(left, room.me.items, 4, 2)
-	Kit.text(
-		string.format(
-			"%s ofrece · %s 🪙 %s",
-			room.them.name,
-			Format.int(total(room.them.items)),
-			if room.them.confirmed then "✅" elseif room.them.ready then "👍" else ""
-		),
-		14,
-		{ Font = Theme.display, LayoutOrder = 3, Parent = left }
-	)
-	slotRow(left, room.them.items, 4, 4)
-	local btns: Frame = Kit.new(
-		"Frame",
-		{ BackgroundTransparency = 1, Size = UDim2.new(1, -10, 0, 44), LayoutOrder = 5, Parent = left },
-		{ Kit.list(Enum.FillDirection.Horizontal, 8) }
-	)
-	if room.phase == "confirm" then
-		Kit.text(
-			"Revisen bien: al confirmar los dos, el cambio es definitivo.",
-			13,
-			{ TextColor3 = Theme.pinkD, LayoutOrder = 6, Parent = left }
-		)
-		local c = Kit.button(
-			if room.me.confirmed then "Esperando…" else "✅ Confirmar",
-			Theme.mint,
-			{ Size = UDim2.new(0.5, -4, 1, 0), Parent = btns }
-		)
-		Kit.setEnabled(c, not room.me.confirmed)
-		c.Activated:Connect(function()
-			State.request("trade", { op = "confirm" })
-		end)
-	else
-		local r = Kit.button(
-			if room.me.ready then "Quitar listo" else "👍 Listo",
-			Theme.mint,
-			{ Size = UDim2.new(0.5, -4, 1, 0), Parent = btns }
-		)
-		r.Activated:Connect(function()
-			State.request("trade", { op = "ready", v = not room.me.ready })
-		end)
-	end
-	local cancel = Kit.button("Cancelar", Theme.white, { Size = UDim2.new(0.5, -4, 1, 0), Parent = btns })
-	cancel.Activated:Connect(function()
-		State.request("trade", { op = "cancel" })
-	end)
-	pickerGrid(content, d, myIds, 6, function(id)
+	slots(left, 2, room.me.items, 4, "Vacío", false)
+	Kit.text("Elige hasta 6 squishies", 12, { TextColor3 = Theme.muted, LayoutOrder = 3, Parent = left })
+	miniGrid(left, 4, d, myIds, 6, function(id)
 		local at = table.find(myIds, id)
 		if at then
 			table.remove(myIds, at)
@@ -7334,21 +8585,72 @@ local function renderRoom()
 			table.insert(myIds, id)
 		end
 		State.request("trade", { op = "set", ids = myIds })
-	end, UDim2.new(1, -490, 1, 0), UDim2.fromOffset(490, 0))
+	end)
+	local right = column(content, 0.5, 0.5)
+	valueRow(
+		right,
+		1,
+		"Oferta de "
+			.. room.them.name
+			.. (if room.them.confirmed then " ✅" elseif room.them.ready then " 👍" else ""),
+		total(room.them.items)
+	)
+	slots(right, 2, room.them.items, 4, "Esperando su oferta…", true)
+	if room.phase == "confirm" then
+		Kit.text("Revisen bien: al confirmar los dos, el cambio es definitivo.", 13, {
+			FontFace = Theme.bodyBlack,
+			TextColor3 = Theme.pinkD,
+			LayoutOrder = 3,
+			Parent = right,
+		})
+	end
+	local foot: Frame = Kit.new("Frame", {
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(1, 1),
+		Position = UDim2.fromScale(1, 1),
+		Size = UDim2.fromOffset(360, 50),
+		Parent = content,
+	}, { Kit.list(Enum.FillDirection.Horizontal, 10, Enum.HorizontalAlignment.Right) })
+	local cancel =
+		Kit.button("Cancelar", Theme.white, { Size = UDim2.fromOffset(130, 46), LayoutOrder = 1, Parent = foot })
+	cancel.Activated:Connect(function()
+		State.request("trade", { op = "cancel" })
+	end)
+	if room.phase == "confirm" then
+		local c = Kit.button(if room.me.confirmed then "Esperando…" else "Confirmar", Theme.mint, {
+			Size = UDim2.fromOffset(180, 50),
+			LayoutOrder = 2,
+			Parent = foot,
+		}, "big")
+		Kit.setEnabled(c, not room.me.confirmed)
+		c.Activated:Connect(function()
+			State.request("trade", { op = "confirm" })
+		end)
+	else
+		local r = Kit.button(if room.me.ready then "Quitar listo" else "¡Listo!", Theme.mint, {
+			Size = UDim2.fromOffset(180, 50),
+			LayoutOrder = 2,
+			Parent = foot,
+		}, "big")
+		r.Activated:Connect(function()
+			State.request("trade", { op = "ready", v = not room.me.ready })
+		end)
+	end
 end
 
 local function openPlayers()
 	local content = Modal.open("tradePlayers", "Cambiar con jugadores", { width = 520, height = 480 })
 	local sc = Modal.scroll(content)
-	Kit.list(Enum.FillDirection.Vertical, 8).Parent = sc
+	Kit.list(Enum.FillDirection.Vertical, 10).Parent = sc
+	Kit.new("UIPadding", { PaddingRight = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8), Parent = sc })
 	local others = 0
 	for _, p in Players:GetPlayers() do
 		if p ~= Players.LocalPlayer then
 			others += 1
 			local b = Kit.button(
-				"🤝  " .. p.DisplayName .. "  <font color='#6d7285'>@" .. p.Name .. "</font>",
+				string.format("🤝  %s  <font color='#6d7285'>@%s</font>", p.DisplayName, p.Name),
 				Theme.white,
-				{ Size = UDim2.new(1, -8, 0, 46), Parent = sc }
+				{ Size = UDim2.new(1, 0, 0, 46), Parent = sc }
 			)
 			b.Activated:Connect(function()
 				local r = State.request("trade", { op = "request", userId = p.UserId })
@@ -7363,7 +8665,7 @@ local function openPlayers()
 	end
 	if others == 0 then
 		Kit.text(
-			"No hay otros jugadores en este servidor. ¡Invita a tus amigos! (o cambia con los NPCs de la Plaza de Intercambio)",
+			"No hay otros jugadores en este servidor. ¡Invita a tus amigos! (o cambia con los jugadores de la Plaza de Intercambio)",
 			14,
 			{ TextColor3 = Theme.muted, Size = UDim2.new(1, 0, 0, 60), Parent = sc }
 		)
@@ -7374,11 +8676,12 @@ local function incomingRequest(from: number, name: string)
 	Audio.play("npc")
 	local card: Frame = Kit.new("Frame", {
 		BackgroundColor3 = Theme.paper,
-		AnchorPoint = Vector2.new(1, 1),
-		Position = UDim2.new(1, -16, 1, -60),
-		Size = UDim2.fromOffset(320, 110),
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -180),
+		Size = UDim2.fromOffset(340, 116),
 		Parent = Kit.root(),
-	}, { Kit.corner(18), Kit.stroke(Theme.blue, 3), Kit.pad(12, 10) })
+	}, { Kit.corner(18), Kit.pad(14, 12) })
+	Kit.shadow(card, Color3.fromRGB(207, 208, 214), 5, 18)
 	Kit.text(
 		string.format("<b>%s</b> quiere intercambiar contigo 🤝", name),
 		15,
@@ -7387,12 +8690,12 @@ local function incomingRequest(from: number, name: string)
 	local yes = Kit.button(
 		"Aceptar",
 		Theme.mint,
-		{ Position = UDim2.new(0, 0, 1, -40), Size = UDim2.new(0.5, -4, 0, 40), Parent = card }
+		{ Position = UDim2.new(0, 0, 1, -40), Size = UDim2.new(0.5, -5, 0, 40), Parent = card }
 	)
 	local no = Kit.button(
 		"No",
 		Theme.white,
-		{ Position = UDim2.new(0.5, 4, 1, -40), Size = UDim2.new(0.5, -4, 0, 40), Parent = card }
+		{ Position = UDim2.new(0.5, 5, 1, -40), Size = UDim2.new(0.5, -5, 0, 40), Parent = card }
 	)
 	local function answer(v: boolean)
 		if card.Parent then
@@ -7420,7 +8723,8 @@ function Trade.init()
 	Modal.addGuard(function()
 		return if room then "Termina o cancela el intercambio primero" else nil
 	end)
-	Router.register("npcTrade", openNpc)
+	Router.register("npcTrade", openNpcTrade)
+	Router.register("npcChat", openChat)
 	Router.register("tradePlayers", openPlayers)
 	Remotes.event("TradeEvent").OnClientEvent:Connect(function(ev)
 		if ev.t == "request" then
@@ -7433,9 +8737,9 @@ function Trade.init()
 				table.insert(myIds, s.id)
 			end
 			if first or Modal.current ~= "tradeRoom" then
-				Trade.roomContent = Modal.open("tradeRoom", "Intercambio con " .. ev.them.name, {
-					width = 900,
-					height = 620,
+				Trade.roomContent = Modal.open("tradeRoom", "Cambio con " .. ev.them.name, {
+					width = 960,
+					height = 640,
 					onClose = function()
 						if room then
 							room = nil
@@ -7464,90 +8768,145 @@ return Trade
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="61">
+          <Item class="ModuleScript" referent="62">
             <Properties>
               <string name="Name">Tutorial</string>
               <string name="Source"><![CDATA[--!strict
--- Tutorial de 5 pasos (Tut de game5.js) con flecha rosada que guía a la zona.
+-- Tutorial de 5 pasos (Tut de game5.js) + marcador de guía (chevron rosado que gira y flota
+-- sobre el objetivo + flecha en el piso que orbita al jugador apuntando al objetivo).
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local Quests = require(ReplicatedStorage.Shared.Logic.Quests)
 local Toast = require(script.Parent.Parent.UI.Toast)
 local Router = require(script.Parent.Router)
 local State = require(script.Parent.State)
 
 local Tutorial = {}
-local guideTarget: Vector3? = nil
+local L = Config.WorldLayout
+local PINK = Color3.fromHex("#FF7BB5")
 
-local function guideTo(key: string?)
-	if not key then
-		guideTarget = nil
-		return
+local guide: { key: string?, target: Vector3? } = { key = nil, target = nil }
+
+-- zoneTarget(key) del original
+local function zoneTarget(key: string): Vector3?
+	if key == "machines" then
+		local m = L.machines[1].pos
+		return Vector3.new(m.X, 13, m.Z)
+	elseif key == "shop" then
+		return Vector3.new(L.shopCounter.X, 9, L.shopCounter.Z)
+	elseif key == "trading" then
+		local z = L.zones.trading.center
+		return Vector3.new(z.X, 10, z.Z)
+	elseif key == "collection" then
+		return Vector3.new(0, 12, -76.9)
 	end
-	local z = (Config.WorldLayout.zones :: any)[key]
-	guideTarget = if z then z.center else nil
+	return nil
 end
-Tutorial.guideTo = guideTo
+
+function Tutorial.guideTo(key: string?, msg: string?)
+	guide.key = key
+	guide.target = if key then zoneTarget(key) else nil
+	if msg then
+		Toast.show(msg)
+	end
+end
+
+-- Punta de flecha "V" hecha con dos barras (2D, sin glifos): apunta hacia abajo de su contenedor.
+local function chevronGui(parent: GuiObject, thickness: number)
+	for side = -1, 1, 2 do
+		local bar = Instance.new("Frame")
+		bar.BackgroundColor3 = PINK
+		bar.BorderSizePixel = 0
+		bar.AnchorPoint = Vector2.new(0.5, 0.5)
+		bar.Position = UDim2.fromScale(0.5 + side * 0.18, 0.45)
+		bar.Size = UDim2.new(0.62, 0, 0, thickness)
+		bar.Rotation = if side < 0 then 50 else -50
+		local c = Instance.new("UICorner")
+		c.CornerRadius = UDim.new(1, 0)
+		c.Parent = bar
+		bar.Parent = parent
+	end
+end
 
 function Tutorial.init()
-	local a = Instance.new("Part")
-	a.Name = "GuideArrow"
-	a.Shape = Enum.PartType.Ball
-	a.Size = Vector3.new(1.6, 1.6, 1.6)
-	a.Color = Color3.fromHex("#FF7BB5")
-	a.Material = Enum.Material.Neon
-	a.Anchored = true
-	a.CanCollide = false
-	a.CanQuery = false
-	a.Transparency = 1
-	a.Parent = Workspace
-	-- flechita con Beam desde el jugador hasta la zona
-	local a0 = Instance.new("Attachment")
-	a0.Parent = a
-	local beamTarget = Instance.new("Part")
-	beamTarget.Anchored = true
-	beamTarget.CanCollide = false
-	beamTarget.CanQuery = false
-	beamTarget.Transparency = 1
-	beamTarget.Size = Vector3.one
-	beamTarget.Parent = Workspace
-	local a1 = Instance.new("Attachment")
-	a1.Parent = beamTarget
-	local beam = Instance.new("Beam")
-	beam.Attachment0 = a0
-	beam.Attachment1 = a1
-	beam.Color = ColorSequence.new(Color3.fromHex("#FF7BB5"))
-	beam.Width0 = 1.2
-	beam.Width1 = 1.2
-	beam.FaceCamera = true
-	beam.Texture = "rbxasset://textures/particles/sparkles_main.dds"
-	beam.TextureMode = Enum.TextureMode.Static
-	beam.TextureSpeed = 1
-	beam.Transparency = NumberSequence.new(0.25)
-	beam.Enabled = false
-	beam.Parent = a
+	local folder = Instance.new("Folder")
+	folder.Name = "Guide"
+	folder.Parent = Workspace
+	local function anchorPart(name: string): Part
+		local p = Instance.new("Part")
+		p.Name = name
+		p.Anchored = true
+		p.CanCollide = false
+		p.CanQuery = false
+		p.CanTouch = false
+		p.Transparency = 1
+		p.Size = Vector3.new(1, 0.1, 1)
+		p.Parent = folder
+		return p
+	end
+	-- chevron sobre el objetivo (sube y baja)
+	local chev = anchorPart("Chevron")
+	local bb = Instance.new("BillboardGui")
+	bb.Size = UDim2.fromScale(3.2, 3.2)
+	bb.AlwaysOnTop = false
+	bb.LightInfluence = 0
+	bb.Enabled = false
+	bb.Parent = chev
+	local holder = Instance.new("Frame")
+	holder.BackgroundTransparency = 1
+	holder.Size = UDim2.fromScale(1, 1)
+	holder.Parent = bb
+	chevronGui(holder, 16)
+	-- flecha en el piso que orbita al jugador apuntando al objetivo
+	local arrowPart = anchorPart("GroundArrow")
+	arrowPart.Size = Vector3.new(2.2, 0.1, 2.2)
+	local sg = Instance.new("SurfaceGui")
+	sg.Face = Enum.NormalId.Top
+	sg.LightInfluence = 0
+	sg.CanvasSize = Vector2.new(200, 200)
+	sg.Enabled = false
+	sg.Parent = arrowPart
+	local ah = Instance.new("Frame")
+	ah.BackgroundTransparency = 1
+	ah.Size = UDim2.fromScale(1, 1)
+	ah.Rotation = 180 -- la "V" apunta hacia el frente de la parte
+	ah.Parent = sg
+	chevronGui(ah, 30)
 
 	RunService.RenderStepped:Connect(function()
+		local t = os.clock()
+		local tg = guide.target
 		local char = Players.LocalPlayer.Character
 		local root = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
-		if guideTarget and root then
-			local dist = (Vector3.new(guideTarget.X, root.Position.Y, guideTarget.Z) - root.Position).Magnitude
-			if dist < 14 then
-				beam.Enabled = false
-			else
-				beam.Enabled = true
-				a.Position = root.Position - Vector3.new(0, 2.6, 0)
-				beamTarget.Position = guideTarget + Vector3.new(0, 0.4, 0)
-			end
-		else
-			beam.Enabled = false
+		if not tg or not root then
+			bb.Enabled = false
+			sg.Enabled = false
+			return
+		end
+		local p = root.Position
+		local d = Vector2.new(p.X - tg.X, p.Z - tg.Z).Magnitude
+		if d < 12 and guide.key ~= "machines" then
+			guide.target = nil
+			guide.key = nil
+			return
+		end
+		chev.CFrame = CFrame.new(tg.X, tg.Y + math.sin(t * 3) * 0.8, tg.Z)
+		bb.Enabled = true
+		sg.Enabled = d > 14
+		if d > 14 then
+			local yaw = math.atan2(tg.X - p.X, tg.Z - p.Z)
+			local fwd = Vector3.new(math.sin(yaw), 0, math.cos(yaw))
+			local pos = Vector3.new(p.X, p.Y - 2.8, p.Z) + fwd * (4.2 + math.sin(t * 5) * 0.4)
+			arrowPart.CFrame = CFrame.lookAt(pos, pos + fwd)
 		end
 	end)
 
 	local shown = -1
+	local startPos = L.spawn
 	State.onChange(function(d)
 		if d.tutorial == shown then
 			return
@@ -7555,27 +8914,53 @@ function Tutorial.init()
 		local prev = shown
 		shown = d.tutorial
 		local s = d.tutorial
-		if s == 0 and prev == -1 then
-			Toast.show("¡Bienvenido a Squishy World!", true, 3500)
-			task.delay(1.2, function()
-				Toast.show(
-					"Hagamos tu primer squishy. Sigue la flecha rosada hasta las Máquinas. 🖐️ Por el camino, mantén clic sobre los squishies para apachurrarlos.",
-					false,
-					5500
-				)
-			end)
-			guideTo("machines")
-			State.request("tutorial", { step = 1 })
-		elseif s == 1 then
-			guideTo("machines")
+		if prev == -1 then
+			if s == 0 then
+				Toast.show("¡Bienvenido a Squishy World!", true, 3500)
+				task.delay(1.2, function()
+					Toast.show(
+						"Hagamos tu primer squishy. Sigue la flecha rosada hasta las Máquinas. 🖐️ Por el camino, mantén clic sobre los squishies de la Vitrina Viral para apachurrarlos.",
+						false,
+						5500
+					)
+				end)
+				Tutorial.guideTo("machines")
+			else
+				Toast.show("¡Bienvenido de vuelta a Squishy World!", true)
+				local q = Quests.current(d.quest.i)
+				if q.target and s < 5 then
+					Tutorial.guideTo("machines")
+				end
+			end
+			return
+		end
+		if s == 1 then
+			Tutorial.guideTo("machines")
 		elseif s == 3 then
-			guideTo(nil)
-		elseif s == 5 and prev ~= -1 then
+			guide.target = nil
+		elseif s == 5 then
 			Toast.show("Tu squishy ya te sigue. ¡Mantén clic encima para apachurrarlo!", false, 4500)
 			task.delay(2.8, function()
 				Toast.show("Las misiones de la derecha dan monedas. ¡A jugar!")
 			end)
-			guideTo(nil)
+			guide.target = nil
+		end
+	end)
+	-- paso 0 → 1 cuando el jugador se mueve más de 4 del inicio
+	task.spawn(function()
+		while true do
+			task.wait(0.5)
+			local d = State.data
+			local char = Players.LocalPlayer.Character
+			local root = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
+			if d and d.tutorial == 0 and root then
+				local p = root.Position
+				if Vector2.new(p.X - startPos.X, p.Z - startPos.Z).Magnitude > 4 then
+					State.request("tutorial", { step = 1 })
+				end
+			elseif d and d.tutorial > 0 then
+				break
+			end
 		end
 	end)
 	Router.register("tutorialEquip", function()
@@ -7583,6 +8968,7 @@ function Tutorial.init()
 		task.delay(1.4, function()
 			Toast.show("Abre tu Inventario (I) y presiona Equipar.")
 		end)
+		Router.open("hudPulse", { key = "inventory", on = true })
 	end)
 end
 
@@ -7591,11 +8977,11 @@ return Tutorial
             </Properties>
           </Item>
         </Item>
-        <Item class="Folder" referent="62">
+        <Item class="Folder" referent="63">
           <Properties>
             <string name="Name">Engine</string>
           </Properties>
-          <Item class="ModuleScript" referent="63">
+          <Item class="ModuleScript" referent="64">
             <Properties>
               <string name="Name">SquishyFactory</string>
               <string name="Source"><![CDATA[--!strict
@@ -7868,7 +9254,7 @@ return SquishyFactory
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="64">
+          <Item class="ModuleScript" referent="65">
             <Properties>
               <string name="Name">Thumb</string>
               <string name="Source"><![CDATA[--!strict
@@ -7920,7 +9306,7 @@ return Thumb
             </Properties>
           </Item>
         </Item>
-        <Item class="LocalScript" referent="65">
+        <Item class="LocalScript" referent="66">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[--!strict
@@ -7949,12 +9335,15 @@ local Interact = require(Controllers.Interact)
 local Companion = require(Controllers.Companion)
 local Squish = require(Controllers.Squish)
 local Tutorial = require(Controllers.Tutorial)
+local Controls = require(Controllers.Controls)
+local Router = require(Controllers.Router)
 
 pcall(function()
 	StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, false)
 end)
 
 State.init()
+Controls.init()
 Audio.init()
 Toast.init()
 Hud.init()
@@ -7970,21 +9359,31 @@ Squish.init()
 Tutorial.init()
 task.spawn(Interact.init)
 
+-- Pendientes (fases 8 y 10): por ahora avisan en vez de fallar en silencio
+Router.register("studio", function()
+	Toast.show(
+		"🖐️ El Estudio Squish (ver de cerca) llega en la Fase 8. ¡Por ahora mantén clic sobre el squishy!"
+	)
+end)
+Router.register("tour", function()
+	Toast.show("🎬 El Tour de bienvenida llega en la Fase 10")
+end)
+
 print("[Squishy World] Cliente listo —", #Config.Species, "moldes cargados")
 -- TODO Fase 7: manos que rodean el contorno + EditableMesh (DeformEngine), apuntar, fantasma
 -- TODO Fase 8–10: Estudio Squish, Cera de vela, Tour de bienvenida
 ]]></string>
           </Properties>
         </Item>
-        <Item class="Folder" referent="66">
+        <Item class="Folder" referent="67">
           <Properties>
             <string name="Name">UI</string>
           </Properties>
-          <Item class="ModuleScript" referent="67">
+          <Item class="ModuleScript" referent="68">
             <Properties>
               <string name="Name">Kit</string>
               <string name="Source"><![CDATA[--!strict
--- Mini librería de UI por código (el prototipo arma su UI con HTML; aquí con Instances).
+-- Mini librería de UI por código, calcada del CSS de template.html (.btn, .tab, .coin, .pill…).
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 
@@ -7994,7 +9393,7 @@ local Kit = {}
 
 export type Props = { [string]: any }
 
---- Kit.new("Frame", { Size = …, [Kit.children] = {…} })
+--- Kit.new("Frame", { Size = … }, { hijos })
 function Kit.new(className: string, props: Props?, children: { any }?): any
 	local inst: any = Instance.new(className)
 	local parent = nil
@@ -8020,6 +9419,10 @@ end
 
 function Kit.corner(r: number): any
 	return Kit.new("UICorner", { CornerRadius = UDim.new(0, r) })
+end
+
+function Kit.round(): any
+	return Kit.new("UICorner", { CornerRadius = UDim.new(1, 0) })
 end
 
 function Kit.stroke(col: Color3, t: number?): any
@@ -8053,12 +9456,12 @@ function Kit.grid(cell: UDim2, gap: number?): any
 	})
 end
 
-function Kit.text(text: string, size: number, props: Props?): TextLabel
+function Kit.text(text: string, size: number, props: Props?): any
 	local p: Props = {
 		BackgroundTransparency = 1,
 		Text = text,
 		TextSize = size,
-		Font = Theme.body,
+		FontFace = Theme.body,
 		TextColor3 = Theme.ink,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextWrapped = true,
@@ -8073,18 +9476,55 @@ function Kit.text(text: string, size: number, props: Props?): TextLabel
 	return Kit.new("TextLabel", p)
 end
 
---- Botón redondeado con "sombra" abajo como .btn del prototipo.
-function Kit.button(text: string, color: Color3?, props: Props?): TextButton
+--- Subtítulo h3 del panel: Lilita 17 color purpleD.
+function Kit.h3(text: string, props: Props?): any
+	local p: Props = { FontFace = Theme.display, TextColor3 = Theme.purpleD }
+	if props then
+		for k, v in props do
+			p[k] = v
+		end
+	end
+	return Kit.text(text, 17, p)
+end
+
+--- "Sombra" sólida de abajo (box-shadow: 0 Npx 0 color) como franja bajo el borde inferior.
+function Kit.shadow(parent: GuiObject, col: Color3, px: number?, radius: number?)
+	local old = parent:FindFirstChild("_Shadow")
+	if old then
+		old:Destroy()
+	end
+	local h = px or 4
+	local r = radius or 14
+	Kit.new("Frame", {
+		Name = "_Shadow",
+		BackgroundColor3 = col,
+		BorderSizePixel = 0,
+		Position = UDim2.new(0, math.floor(r * 0.35), 1, -2),
+		Size = UDim2.new(1, -math.floor(r * 0.7), 0, h + 2),
+		Parent = parent,
+	}, { Kit.corner(math.max(3, h)) })
+end
+
+local INK_TEXT_EXCEPT = {} :: { [Color3]: boolean }
+INK_TEXT_EXCEPT[Theme.purple] = true
+INK_TEXT_EXCEPT[Theme.ink] = true
+INK_TEXT_EXCEPT[Theme.robux] = true
+
+--- Botón .btn: radius 14, Nunito 900 15, fondo de color con sombra sólida abajo, texto ink
+--- (blanco solo en .purple/.dark). variant: "small" | "big".
+function Kit.button(text: string, color: Color3?, props: Props?, variant: string?): any
 	local col = color or Theme.white
-	local dark = col == Theme.white
+	local big = variant == "big"
+	local small = variant == "small"
+	local radius = if big then 18 elseif small then 11 else 14
 	local p: Props = {
 		AutoButtonColor = true,
 		BackgroundColor3 = col,
 		Text = text,
-		TextSize = 16,
-		Font = Theme.bodyBlack,
-		TextColor3 = if dark or col == Theme.yellow or col == Theme.mint then Theme.ink else Theme.white,
-		Size = UDim2.new(1, 0, 0, 40),
+		TextSize = if big then 20 elseif small then 13 else 15,
+		FontFace = if big then Theme.display else Theme.bodyBlack,
+		TextColor3 = if INK_TEXT_EXCEPT[col] then Theme.white else Theme.ink,
+		Size = UDim2.new(1, 0, 0, if big then 50 elseif small then 30 else 40),
 		RichText = true,
 	}
 	if props then
@@ -8092,15 +9532,122 @@ function Kit.button(text: string, color: Color3?, props: Props?): TextButton
 			p[k] = v
 		end
 	end
-	local b: TextButton = Kit.new("TextButton", p, {
-		Kit.corner(12),
-		Kit.new("UIStroke", {
-			Color = if dark then Theme.lav2 else Theme.dark(col),
-			Thickness = 2,
-			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+	local b = Kit.new("TextButton", p, { Kit.corner(radius) })
+	Kit.shadow(b, Theme.shadowOf(col), if small then 3 else 4, radius)
+	-- al presionar baja 3px (como .btn:active)
+	local down = false
+	b.MouseButton1Down:Connect(function()
+		if down then
+			return
+		end
+		down = true
+		b.Position += UDim2.fromOffset(0, 2)
+	end)
+	local function up()
+		if down then
+			down = false
+			b.Position -= UDim2.fromOffset(0, 2)
+		end
+	end
+	b.MouseButton1Up:Connect(up)
+	b.MouseLeave:Connect(up)
+	return b
+end
+
+--- Cambia el color de un botón ya creado (actualiza la sombra y el color del texto).
+function Kit.recolor(b: any, col: Color3)
+	b.BackgroundColor3 = col
+	b.TextColor3 = if INK_TEXT_EXCEPT[col] then Theme.white else Theme.ink
+	local sh = b:FindFirstChild("_Shadow")
+	if sh then
+		sh.BackgroundColor3 = Theme.shadowOf(col)
+	end
+end
+
+--- Pestaña .tab: radius 11, 900 13, fondo lav; activa = ink con texto blanco; viral = #fff4fb.
+function Kit.tab(text: string, on: boolean, viral: boolean?, props: Props?): any
+	local p: Props = {
+		AutoButtonColor = true,
+		BackgroundColor3 = if on then Theme.ink elseif viral then Color3.fromHex("#fff4fb") else Theme.lav,
+		TextColor3 = if on then Theme.white else Theme.ink,
+		Text = text,
+		TextSize = 13,
+		FontFace = Theme.bodyBlack,
+		RichText = true,
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.fromOffset(0, 30),
+	}
+	if props then
+		for k, v in props do
+			p[k] = v
+		end
+	end
+	return Kit.new("TextButton", p, { Kit.corner(11), Kit.pad(12, 0) })
+end
+
+--- Moneda .coin: círculo con gradiente #fff3b8 → #f4c542 → #d19b1c (el emoji 🪙 sale en cuadrito).
+function Kit.coin(size: number, props: Props?): any
+	local p: Props = {
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		Size = UDim2.fromOffset(size, size),
+	}
+	if props then
+		for k, v in props do
+			p[k] = v
+		end
+	end
+	return Kit.new("Frame", p, {
+		Kit.round(),
+		Kit.new("UIGradient", {
+			Rotation = 60,
+			Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, Color3.fromHex("#fff3b8")),
+				ColorSequenceKeypoint.new(0.55, Color3.fromHex("#f4c542")),
+				ColorSequenceKeypoint.new(1, Color3.fromHex("#d19b1c")),
+			}),
 		}),
 	})
+end
+
+--- Botón de precio: [moneda] 1.500 centrado.
+function Kit.priceButton(amount: string, color: Color3, props: Props?): any
+	local b = Kit.button("", color, props)
+	local row = Kit.new("Frame", {
+		BackgroundTransparency = 1,
+		AutomaticSize = Enum.AutomaticSize.X,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(0, 18),
+		Parent = b,
+	}, { Kit.list(Enum.FillDirection.Horizontal, 5) });
+	(row:FindFirstChildOfClass("UIListLayout") :: UIListLayout).VerticalAlignment = Enum.VerticalAlignment.Center
+	Kit.coin(14, { LayoutOrder = 1, Parent = row })
+	Kit.text(amount, 15, {
+		FontFace = Theme.bodyBlack,
+		TextColor3 = b.TextColor3,
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.fromOffset(0, 18),
+		TextWrapped = false,
+		LayoutOrder = 2,
+		Parent = row,
+	})
 	return b
+end
+
+--- Estrella dibujada (★/☆ salen en cuadrito): ⭐ emoji, apagada = transparente.
+function Kit.star(on: boolean, size: number, props: Props?): any
+	local p: Props = {
+		Text = "⭐",
+		TextTransparency = if on then 0 else 0.65,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Size = UDim2.fromOffset(size + 4, size + 4),
+	}
+	if props then
+		for k, v in props do
+			p[k] = v
+		end
+	end
+	return Kit.text("⭐", size, p)
 end
 
 function Kit.setEnabled(b: GuiButton, on: boolean)
@@ -8109,7 +9656,14 @@ function Kit.setEnabled(b: GuiButton, on: boolean)
 	local tb = b :: any
 	tb.BackgroundTransparency = if on then 0 else 0.45
 	if b:IsA("TextButton") then
-		(b :: TextButton).TextTransparency = if on then 0 else 0.4
+		(b :: TextButton).TextTransparency = if on then 0 else 0.45
+	end
+	for _, d in b:GetDescendants() do
+		if d:IsA("TextLabel") then
+			d.TextTransparency = if on then 0 else 0.45
+		elseif d:IsA("Frame") then
+			d.BackgroundTransparency = if on then 0 else 0.45
+		end
 	end
 end
 
@@ -8121,45 +9675,70 @@ function Kit.clear(parent: Instance)
 	end
 end
 
-function Kit.tween(inst: Instance, t: number, goal: { [string]: any }, style: Enum.EasingStyle?)
-	local tw =
-		TweenService:Create(inst, TweenInfo.new(t, style or Enum.EasingStyle.Quad, Enum.EasingDirection.Out), goal)
+function Kit.tween(
+	inst: Instance,
+	t: number,
+	goal: { [string]: any },
+	style: Enum.EasingStyle?,
+	dir: Enum.EasingDirection?
+)
+	local tw = TweenService:Create(
+		inst,
+		TweenInfo.new(t, style or Enum.EasingStyle.Quad, dir or Enum.EasingDirection.Out),
+		goal
+	)
 	tw:Play()
 	return tw
 end
 
-local gui: ScreenGui? = nil
-function Kit.root(): ScreenGui
-	if gui then
-		return gui
+--- Primera palabra cortada a n caracteres (UTF-8 seguro; "Común" → "Comú").
+function Kit.shortName(name: string, n: number): string
+	local w = string.match(name, "^%S+") or name
+	local cut = utf8.offset(w, n + 1)
+	return if cut then string.sub(w, 1, cut - 1) else w
+end
+
+local guis: { [string]: ScreenGui } = {}
+--- ScreenGui principal (respeta la barra de Roblox) o "full" (pantalla completa: revelación, tour…).
+function Kit.root(kind: string?): ScreenGui
+	local k = kind or "main"
+	local g = guis[k]
+	if g then
+		return g
 	end
-	local g: ScreenGui = Kit.new("ScreenGui", {
-		Name = "SquishyUI",
+	local ng: ScreenGui = Kit.new("ScreenGui", {
+		Name = if k == "main" then "SquishyUI" else "SquishyUI_" .. k,
 		ResetOnSpawn = false,
-		IgnoreGuiInset = true,
+		IgnoreGuiInset = k ~= "main",
+		DisplayOrder = if k == "main" then 1 elseif k == "modal" then 2 else 5,
 		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 		Parent = Players.LocalPlayer:WaitForChild("PlayerGui"),
 	})
-	gui = g
-	return g
+	guis[k] = ng
+	return ng
 end
 
 return Kit
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="68">
+          <Item class="ModuleScript" referent="69">
             <Properties>
               <string name="Name">Modal</string>
               <string name="Source"><![CDATA[--!strict
--- Ventanas (overlays) del prototipo: una a la vez, con título y botón de cerrar.
+-- Ventanas (.overlay + .panel del prototipo): una a la vez, fondo oscurecido con blur (menos el
+-- panel de la máquina, que va sin overlay), radius 26, título Lilita 28 y botón cerrar lav "×".
+local Lighting = game:GetService("Lighting")
+
 local Kit = require(script.Parent.Kit)
 local Theme = require(script.Parent.Theme)
 
 local Modal = {}
 Modal.current = nil :: string?
 
-local frame: Frame? = nil
+local frame: GuiObject? = nil
+local shade: Frame? = nil
+local blur: BlurEffect? = nil
 local fitConn: RBXScriptConnection? = nil
 local onCloseFn: (() -> ())? = nil
 local changed: { (string?) -> () } = {}
@@ -8192,43 +9771,99 @@ function Modal.close()
 		frame:Destroy()
 		frame = nil
 	end
+	if shade then
+		shade:Destroy()
+		shade = nil
+	end
+	if blur then
+		blur:Destroy()
+		blur = nil
+	end
 	local cb = onCloseFn
 	onCloseFn = nil
+	local was = Modal.current
 	Modal.current = nil
 	if cb then
 		cb()
 	end
-	for _, fn in changed do
-		task.spawn(fn, nil)
+	if was then
+		for _, fn in changed do
+			task.spawn(fn, nil)
+		end
 	end
 end
 
-export type Opts = { width: number?, height: number?, anchor: Vector2?, position: UDim2?, onClose: (() -> ())? }
+export type Opts = {
+	width: number?,
+	height: number?,
+	anchor: Vector2?,
+	position: UDim2?,
+	onClose: (() -> ())?,
+	noOverlay: boolean?,
+	titleRight: boolean?,
+}
 
---- Abre una ventana y devuelve el contenedor de contenido (con scroll opcional por el llamador).
+--- Botón cerrar .close: 40x40, radius 13, fondo lav, "×" (el "✕" sale en cuadrito en Roblox).
+function Modal.closeButton(parent: Instance, onClick: () -> ()): TextButton
+	local x = Kit.button("×", Theme.lav, {
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -16, 0, 14),
+		Size = UDim2.fromOffset(40, 40),
+		TextSize = 30,
+		FontFace = Theme.bodyBlack,
+		Parent = parent,
+	})
+	Kit.shadow(x, Theme.lav2, 3, 13);
+	(x:FindFirstChildOfClass("UICorner") :: UICorner).CornerRadius = UDim.new(0, 13)
+	x.Activated:Connect(onClick)
+	return x
+end
+
+--- Abre una ventana y devuelve el contenedor de contenido.
 function Modal.open(key: string, title: string, opts: Opts?): (Frame, TextLabel)
 	Modal.close()
 	local o: Opts = opts or {}
-	local w, h = o.width or 760, o.height or 520
-	local f: Frame = Kit.new("Frame", {
+	local w, h = o.width or 760, o.height or 560
+	local root = Kit.root("modal")
+	if not o.noOverlay then
+		local s: Frame = Kit.new("TextButton", {
+			Name = "Overlay",
+			Text = "",
+			AutoButtonColor = false,
+			BackgroundColor3 = Theme.ink,
+			BackgroundTransparency = 0.65,
+			Size = UDim2.fromScale(1, 1),
+			Parent = root,
+		});
+		(s :: any).Activated:Connect(Modal.close) -- clic afuera cierra
+		shade = s
+		local b = Instance.new("BlurEffect")
+		b.Size = 4
+		b.Parent = Lighting
+		blur = b
+	end
+	local holder: Frame = Kit.new("Frame", {
 		Name = "Modal_" .. key,
+		BackgroundTransparency = 1,
 		AnchorPoint = o.anchor or Vector2.new(0.5, 0.5),
-		Position = o.position or UDim2.fromScale(0.5, 0.52),
+		Position = o.position or UDim2.fromScale(0.5, 0.5),
 		Size = UDim2.fromOffset(w, h),
-		BackgroundColor3 = Theme.paper,
-		ZIndex = 20,
-		Parent = Kit.root(),
-	}, {
-		Kit.corner(22),
-		Kit.stroke(Theme.lav2, 3),
-		Kit.new("UISizeConstraint", { MaxSize = Vector2.new(w, h) }),
+		Parent = root,
 	})
+	local f: Frame = Kit.new("Frame", {
+		Name = "Panel",
+		BackgroundColor3 = Theme.paper,
+		Size = UDim2.fromScale(1, 1),
+		Active = true,
+		Parent = holder,
+	}, { Kit.corner(26) })
+	Kit.shadow(f, Color3.fromRGB(207, 208, 214), 8, 26)
 	-- en pantallas chicas (celular) que no se salga
 	local scaler = Instance.new("UIScale")
-	scaler.Parent = f
+	scaler.Parent = holder
 	local function fit()
 		local vp = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
-		scaler.Scale = math.min(1, (vp.X - 20) / w, (vp.Y - 60) / h)
+		scaler.Scale = math.min(1, (vp.X - 24) / w, (vp.Y * 0.9) / h)
 	end
 	fit()
 	if workspace.CurrentCamera then
@@ -8236,30 +9871,22 @@ function Modal.open(key: string, title: string, opts: Opts?): (Frame, TextLabel)
 	end
 
 	local titleLabel: TextLabel = Kit.text(title, 28, {
-		Font = Theme.display,
-		Position = UDim2.fromOffset(22, 14),
-		Size = UDim2.new(1, -80, 0, 34),
-		ZIndex = 21,
+		FontFace = Theme.display,
+		Position = UDim2.fromOffset(22, 16),
+		Size = UDim2.new(1, -90, 0, 34),
+		TextWrapped = false,
+		TextTruncate = Enum.TextTruncate.AtEnd,
 		Parent = f,
 	})
-	local x = Kit.button("✕", Theme.white, {
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -14, 0, 12),
-		Size = UDim2.fromOffset(38, 38),
-		TextSize = 18,
-		ZIndex = 22,
-		Parent = f,
-	})
-	x.Activated:Connect(Modal.close)
+	Modal.closeButton(f, Modal.close)
 	local content: Frame = Kit.new("Frame", {
 		Name = "Content",
 		BackgroundTransparency = 1,
-		Position = UDim2.fromOffset(18, 58),
-		Size = UDim2.new(1, -36, 1, -72),
-		ZIndex = 21,
+		Position = UDim2.fromOffset(20, 62),
+		Size = UDim2.new(1, -40, 1, -80),
 		Parent = f,
 	})
-	frame = f
+	frame = holder
 	onCloseFn = o.onClose
 	Modal.current = key
 	for _, fn in changed do
@@ -8279,7 +9906,6 @@ function Modal.scroll(parent: Instance, props: { [string]: any }?): ScrollingFra
 		ScrollBarThickness = 6,
 		ScrollBarImageColor3 = Theme.lav2,
 		ScrollingDirection = Enum.ScrollingDirection.Y,
-		ZIndex = 21,
 		Parent = parent,
 	}
 	if props then
@@ -8294,7 +9920,7 @@ return Modal
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="69">
+          <Item class="ModuleScript" referent="70">
             <Properties>
               <string name="Name">Theme</string>
               <string name="Source"><![CDATA[--!strict
@@ -8303,10 +9929,13 @@ local function c(h: string): Color3
 	return Color3.fromHex(h)
 end
 
+local NUNITO = "rbxasset://fonts/families/Nunito.json"
+
 local Theme = {
 	ink = c("#282D3A"),
 	ink2 = c("#3a4154"),
 	muted = c("#6d7285"),
+	grey = c("#7a7f92"),
 	paper = c("#FFFCF8"),
 	lav = c("#EEE8FA"),
 	lav2 = c("#DCD1F3"),
@@ -8321,29 +9950,55 @@ local Theme = {
 	yellow = c("#F4D982"),
 	yellowD = c("#DDB94F"),
 	red = c("#FF7B8A"),
+	popRed = c("#e0566b"),
 	green = c("#35b889"),
+	perfectLbl = c("#3faf86"),
 	orange = c("#e59a3c"),
+	viral = c("#a86ad0"),
 	white = Color3.new(1, 1, 1),
 	robux = c("#00B06F"),
-	-- Lilita One → FredokaOne, Nunito → GothamBold/Black (ROBLOX_ARCHITECTURE §1)
-	display = Enum.Font.FredokaOne,
-	body = Enum.Font.GothamBold,
-	bodyBlack = Enum.Font.GothamBlack,
+	-- Lilita One → FredokaOne (no existe Lilita en Roblox); Nunito sí existe
+	display = Font.fromEnum(Enum.Font.FredokaOne),
+	body = Font.new(NUNITO, Enum.FontWeight.ExtraBold),
+	bodyBlack = Font.new(NUNITO, Enum.FontWeight.Heavy),
+	bodyBold = Font.new(NUNITO, Enum.FontWeight.Bold),
 }
 
-function Theme.dark(col: Color3): Color3
+--- Color "D" (sombra de abajo) de cada color de botón, como .btn.pink { box-shadow: 0 4px 0 pinkD }.
+function Theme.shadowOf(col: Color3): Color3
+	local pairs_ = {
+		{ Theme.pink, Theme.pinkD },
+		{ Theme.purple, Theme.purpleD },
+		{ Theme.blue, Theme.blueD },
+		{ Theme.mint, Theme.mintD },
+		{ Theme.yellow, Theme.yellowD },
+		{ Theme.white, Theme.lav2 },
+		{ Theme.lav, Theme.lav2 },
+		{ Theme.paper, Theme.lav2 },
+		{ Theme.ink, c("#11141c") },
+	}
+	for _, p in pairs_ do
+		if p[1] == col then
+			return p[2]
+		end
+	end
 	return col:Lerp(Color3.new(0, 0, 0), 0.2)
+end
+
+function Theme.dark(col: Color3): Color3
+	return Theme.shadowOf(col)
 end
 
 return Theme
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="70">
+          <Item class="ModuleScript" referent="71">
             <Properties>
               <string name="Name">Toast</string>
               <string name="Source"><![CDATA[--!strict
--- Avisos arriba al centro (toast() del prototipo: máximo 4, se van solos).
+-- Avisos arriba al centro (toast() del prototipo: máximo 4, entran bajando y se van solos).
+-- .toast: paper, radius 16, Nunito 900 15, sombra abajo · .toast.big: igual pero Lilita 24.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
@@ -8352,6 +10007,7 @@ local Theme = require(script.Parent.Theme)
 
 local Toast = {}
 local holder: Frame? = nil
+local order = 0
 
 local function getHolder(): Frame
 	if holder then
@@ -8361,43 +10017,58 @@ local function getHolder(): Frame
 		Name = "Toasts",
 		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 70),
-		Size = UDim2.new(0, 520, 0, 300),
+		Position = UDim2.new(0.5, 0, 0, 18),
+		Size = UDim2.new(0, 540, 0, 300),
 		ZIndex = 50,
-		Parent = Kit.root(),
-	}, { Kit.list(Enum.FillDirection.Vertical, 6, Enum.HorizontalAlignment.Center) })
+		Parent = Kit.root("toast"),
+	}, { Kit.list(Enum.FillDirection.Vertical, 8, Enum.HorizontalAlignment.Center) })
 	holder = h
 	return h
 end
 
 function Toast.show(msg: string, big: boolean?, ms: number?)
 	local h = getHolder()
-	local t: Frame = Kit.new("Frame", {
-		BackgroundColor3 = if big then Theme.ink else Theme.paper,
+	order += 1
+	local wrap: CanvasGroup = Kit.new("CanvasGroup", {
+		BackgroundTransparency = 1,
 		AutomaticSize = Enum.AutomaticSize.XY,
 		Size = UDim2.fromOffset(0, 0),
-		ZIndex = 50,
+		LayoutOrder = order,
+		GroupTransparency = 1,
 		Parent = h,
+	})
+	local t: Frame = Kit.new("Frame", {
+		BackgroundColor3 = Theme.paper,
+		AutomaticSize = Enum.AutomaticSize.XY,
+		Size = UDim2.fromOffset(0, 0),
+		Position = UDim2.fromOffset(0, -14),
+		Parent = wrap,
 	}, {
 		Kit.corner(16),
-		Kit.pad(16, 9),
-		Kit.stroke(if big then Theme.pink else Theme.lav2, 2),
-		Kit.new("UISizeConstraint", { MaxSize = Vector2.new(500, 200) }),
-		Kit.text(msg, if big then 19 else 15, {
+		if big then Kit.pad(26, 14) else Kit.pad(18, 10),
+		Kit.new("UISizeConstraint", { MaxSize = Vector2.new(520, 220) }),
+		Kit.text(msg, if big then 24 else 15, {
 			AutomaticSize = Enum.AutomaticSize.XY,
 			Size = UDim2.fromOffset(0, 0),
 			TextXAlignment = Enum.TextXAlignment.Center,
-			Font = if big then Theme.display else Theme.body,
-			TextColor3 = if big then Theme.white else Theme.ink,
-			ZIndex = 51,
+			FontFace = if big then Theme.display else Theme.bodyBlack,
+			TextColor3 = Theme.ink,
 		}),
 	})
+	-- margen para la sombra
+	Kit.new("UIPadding", { PaddingBottom = UDim.new(0, 6), Parent = wrap })
+	Kit.shadow(t, Color3.fromRGB(207, 208, 214), 5, 16)
+	Kit.tween(wrap, 0.3, { GroupTransparency = 0 })
+	Kit.tween(t, 0.3, { Position = UDim2.fromOffset(0, 0) })
 	local kids = {}
 	for _, ch in h:GetChildren() do
-		if ch:IsA("Frame") then
+		if ch:IsA("CanvasGroup") then
 			table.insert(kids, ch)
 		end
 	end
+	table.sort(kids, function(a, b)
+		return a.LayoutOrder < b.LayoutOrder
+	end)
 	while #kids > 4 do
 		local first = table.remove(kids, 1)
 		if first then
@@ -8405,8 +10076,12 @@ function Toast.show(msg: string, big: boolean?, ms: number?)
 		end
 	end
 	task.delay((ms or 2600) / 1000, function()
-		if t.Parent then
-			t:Destroy()
+		if wrap.Parent then
+			Kit.tween(wrap, 0.35, { GroupTransparency = 1 })
+			Kit.tween(t, 0.35, { Position = UDim2.fromOffset(0, -10) })
+			task.delay(0.4, function()
+				wrap:Destroy()
+			end)
 		end
 	end)
 end
@@ -8427,7 +10102,7 @@ return Toast
       </Item>
     </Item>
   </Item>
-  <Item class="Workspace" referent="71">
+  <Item class="Workspace" referent="72">
     <Properties>
       <string name="Name">Workspace</string>
       <bool name="FilteringEnabled">true</bool>

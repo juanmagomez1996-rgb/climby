@@ -24,12 +24,15 @@ local Interact = require(Controllers.Interact)
 local Companion = require(Controllers.Companion)
 local Squish = require(Controllers.Squish)
 local Tutorial = require(Controllers.Tutorial)
+local Controls = require(Controllers.Controls)
+local Router = require(Controllers.Router)
 
 pcall(function()
 	StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, false)
 end)
 
 State.init()
+Controls.init()
 Audio.init()
 Toast.init()
 Hud.init()
@@ -44,6 +47,16 @@ Companion.init()
 Squish.init()
 Tutorial.init()
 task.spawn(Interact.init)
+
+-- Pendientes (fases 8 y 10): por ahora avisan en vez de fallar en silencio
+Router.register("studio", function()
+	Toast.show(
+		"🖐️ El Estudio Squish (ver de cerca) llega en la Fase 8. ¡Por ahora mantén clic sobre el squishy!"
+	)
+end)
+Router.register("tour", function()
+	Toast.show("🎬 El Tour de bienvenida llega en la Fase 10")
+end)
 
 print("[Squishy World] Cliente listo —", #Config.Species, "moldes cargados")
 -- TODO Fase 7: manos que rodean el contorno + EditableMesh (DeformEngine), apuntar, fantasma

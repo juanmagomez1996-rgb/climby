@@ -4,6 +4,7 @@
 -- (under/perfect/over/POP y la rareza) lo decide el servidor (FillService).
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage.Shared
@@ -126,6 +127,8 @@ local function resultText(txt: string, color: Color3)
 	if ui.result then
 		ui.result.Text = txt
 		ui.result.TextColor3 = color
+		ui.result.FontFace = Theme.display
+		ui.result.TextSize = 20
 	end
 end
 
@@ -133,36 +136,60 @@ local render: () -> ()
 
 local function moldButton(parent: Instance, sp: any, d: any, locked: boolean)
 	local avail = Profile.moldAvailable(d, sp.id)
-	local b = Kit.button("", if Fill.species == sp.id then Theme.pink else Theme.white, {
-		Size = UDim2.fromOffset(92, 92),
+	local on = Fill.species == sp.id
+	-- .mold: fondo lav, radius 16, borde transparente 3px; .on = borde ink + fondo blanco
+	local b = Kit.new("TextButton", {
+		Text = "",
+		AutoButtonColor = true,
+		BackgroundColor3 = if on then Theme.white else Theme.lav,
 		Parent = parent,
+	}, { Kit.corner(16) })
+	if sp.famous and not on then
+		Kit.new("UIGradient", {
+			Rotation = 90,
+			Color = ColorSequence.new(Theme.white, Color3.fromHex("#fff4fb")),
+			Parent = b,
+		})
+	end
+	Kit.new("UIStroke", {
+		Color = Theme.ink,
+		Thickness = 3,
+		Transparency = if on then 0 else 1,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		Parent = b,
 	})
 	local thumbHolder: Frame = Kit.new("Frame", {
 		BackgroundTransparency = 1,
-		Position = UDim2.fromOffset(12, 2),
-		Size = UDim2.fromOffset(68, 60),
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, 5),
+		Size = UDim2.fromOffset(52, 52),
 		Parent = b,
 	})
-	Thumb.make({ species = sp.id, variant = if sp.famous then "original" else "classic" }, thumbHolder)
+	-- bloqueado = silueta (brightness(0) opacity(.25))
+	Thumb.make({ species = sp.id, variant = if sp.famous then "original" else "classic" }, thumbHolder, not avail)
 	Kit.text(sp.name, 11, {
-		Position = UDim2.new(0, 4, 1, -30),
-		Size = UDim2.new(1, -8, 0, 28),
+		Position = UDim2.new(0, 2, 1, -24),
+		Size = UDim2.new(1, -4, 0, 22),
 		TextXAlignment = Enum.TextXAlignment.Center,
 		TextYAlignment = Enum.TextYAlignment.Top,
-		Font = Theme.bodyBlack,
+		LineHeight = 0.9,
+		FontFace = Theme.bodyBlack,
 		Parent = b,
 	})
 	if not avail then
-		Kit.text(if sp.famous then "🛒 " .. Format.int(sp.price) else "Nv " .. sp.unlockLevel, 11, {
-			BackgroundTransparency = 0,
+		-- .lk: centrada a top 22, 11px, ink, radius 8
+		Kit.new("TextLabel", {
 			BackgroundColor3 = Theme.ink,
 			TextColor3 = Theme.white,
+			Text = if sp.famous then "🛒 " .. Format.int(sp.price) else "Nv " .. sp.unlockLevel,
+			TextSize = 11,
+			FontFace = Theme.bodyBlack,
 			AutomaticSize = Enum.AutomaticSize.X,
+			AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.new(0.5, 0, 0, 22),
 			Size = UDim2.fromOffset(0, 18),
-			Position = UDim2.fromOffset(4, 4),
 			Parent = b,
-		})
-		b.BackgroundTransparency = 0.35
+		}, { Kit.corner(8), Kit.pad(6, 0) })
 	end
 	b.Activated:Connect(function()
 		if locked or Fill.state ~= "idle" then
@@ -211,29 +238,60 @@ render = function()
 	for _, sp in virals do
 		moldButton(ui.virals, sp, d, locked)
 	end
-	-- rellenos
+	-- rellenos (.fill: chips lav de ancho automático con círculo de color de 20px)
 	Kit.clear(ui.fills)
-	for _, f in Config.Fillings do
+	for i, f in Config.Fillings do
 		local own = table.find(d.fillings, f.id) ~= nil
+		local on = Fill.filling == f.id
 		local label = f.name
 		if own and f.perUse then
-			label ..= if d.passes and d.passes.vip then " (gratis 👑)" else string.format(" (%d)", f.perUse)
+			label ..= if d.passes and d.passes.vip
+				then " <font size='11'>(gratis 👑)</font>"
+				else string.format(" <font size='11'>(%d)</font>", f.perUse)
 		elseif not own then
 			label ..= " 🔒"
 		end
-		local b = Kit.button(label, if Fill.filling == f.id then Theme.pink else Theme.white, {
-			Size = UDim2.fromOffset(128, 34),
-			TextSize = 12,
+		local chip = Kit.new("TextButton", {
+			Text = "",
+			AutoButtonColor = true,
+			BackgroundColor3 = if on then Theme.white else Theme.lav,
+			BackgroundTransparency = if own then 0 else 0.5,
+			AutomaticSize = Enum.AutomaticSize.X,
+			Size = UDim2.fromOffset(0, 32),
+			LayoutOrder = i,
 			Parent = ui.fills,
+		}, {
+			Kit.corner(13),
+			Kit.new("UIStroke", {
+				Color = Theme.ink,
+				Thickness = 3,
+				Transparency = if on then 0 else 1,
+				ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+			}),
+			Kit.new("UIPadding", { PaddingLeft = UDim.new(0, 7), PaddingRight = UDim.new(0, 10) }),
 		})
+		local row = Kit.new("Frame", {
+			BackgroundTransparency = 1,
+			AutomaticSize = Enum.AutomaticSize.X,
+			Size = UDim2.fromScale(0, 1),
+			Parent = chip,
+		}, { Kit.list(Enum.FillDirection.Horizontal, 6) });
+		(row:FindFirstChildOfClass("UIListLayout") :: UIListLayout).VerticalAlignment = Enum.VerticalAlignment.Center
 		local sw = Color3.fromHex(f.color3 or (string.sub(f.color, 1, 1) == "#" and f.color) or "#ffd36e")
-		Kit.new("Frame", {
-			BackgroundColor3 = sw,
-			Size = UDim2.fromOffset(12, 12),
-			Position = UDim2.new(0, 6, 0.5, -6),
-			Parent = b,
-		}, { Kit.corner(6) })
-		b.Activated:Connect(function()
+		Kit.new("Frame", { BackgroundColor3 = sw, Size = UDim2.fromOffset(20, 20), LayoutOrder = 1, Parent = row }, {
+			Kit.round(),
+			Kit.stroke(Color3.fromRGB(215, 212, 222), 1),
+		})
+		Kit.text(label, 13, {
+			FontFace = Theme.bodyBlack,
+			AutomaticSize = Enum.AutomaticSize.X,
+			Size = UDim2.fromOffset(0, 20),
+			TextWrapped = false,
+			TextTransparency = if own then 0 else 0.3,
+			LayoutOrder = 2,
+			Parent = row,
+		})
+		chip.Activated:Connect(function()
 			if Fill.state ~= "idle" then
 				return
 			end
@@ -257,36 +315,36 @@ render = function()
 	end
 	for i, r in Config.Rarities do
 		local pct = w[i] / tot * 100
-		Kit.text(
-			string.format(
+		-- name.split(' ')[0].slice(0,4) + toFixed(tier > 2 ? 1 : 0)
+		Kit.new("TextLabel", {
+			BackgroundColor3 = Color3.fromHex(r.color),
+			TextColor3 = Theme.white,
+			FontFace = Theme.bodyBlack,
+			TextSize = 10.5,
+			Text = string.format(
 				"%s %s%%",
-				string.sub(r.name, 1, 4),
+				Kit.shortName(r.name, 4),
 				if i > 3 then string.format("%.1f", pct) else string.format("%d", math.round(pct))
 			),
-			11,
-			{
-				BackgroundTransparency = 0,
-				BackgroundColor3 = Color3.fromHex(r.color),
-				TextColor3 = Theme.white,
-				Font = Theme.bodyBlack,
-				TextXAlignment = Enum.TextXAlignment.Center,
-				Size = UDim2.fromOffset(62, 20),
-				Parent = ui.odds,
-			}
-		)
+			Size = UDim2.new(1 / 6, -4, 1, 0),
+			LayoutOrder = i,
+			Parent = ui.odds,
+		}, { Kit.corner(8) })
 	end
 	-- botón
 	local full = #d.inventory >= (d.capacity or 20)
-	ui.hold.Text = if Fill.state == "filling" and Fill.holding then "Llenando… ¡suelta!" else "Mantén para llenar"
+	ui.hold.Text = if Fill.state == "filling" then "Llenando… ¡suelta!" else "Mantén para llenar"
 	Kit.setEnabled(ui.hold, Fill.state == "idle" or Fill.state == "filling")
 	if full and Fill.state == "idle" then
 		resultText(
 			string.format("Inventario lleno (%d). Vende algunos squishies primero.", d.capacity or 20),
-			Theme.red
+			Theme.popRed
 		)
+		ui.result.FontFace = Theme.bodyBlack
+		ui.result.TextSize = 15
 		Kit.setEnabled(ui.hold, false)
 	elseif Fill.state == "idle" and ui.result.Text ~= "" and not ui.keepResult then
-		resultText("", Theme.muted)
+		resultText("", Theme.grey)
 	end
 end
 
@@ -294,7 +352,7 @@ local function processing(res: { [string]: any })
 	Fill.state = "processing"
 	render()
 	local labels: { [string]: { any } } = {
-		under = { "Le faltó", Theme.muted },
+		under = { "Le faltó", Theme.grey },
 		perfect = { "¡PERFECTO!", Theme.green },
 		over = { "Se pasó", Theme.orange },
 	}
@@ -315,7 +373,7 @@ local function popped()
 	Fill.state = "processing"
 	Audio.play("pop")
 	clearInside()
-	resultText("¡POP! Se reventó — demasiado lleno.", Theme.red)
+	resultText("¡POP! Se reventó — demasiado lleno.", Theme.popRed)
 	task.delay(1.4, function()
 		Fill.state = "idle"
 		Fill.p = 0
@@ -359,7 +417,7 @@ local function holdEnd()
 	Fill.p = res.p or Fill.p
 	setGauge(Fill.p)
 	if res.result == "short" then
-		resultText("Sigue manteniendo…", Theme.muted)
+		resultText("Sigue manteniendo…", Theme.grey)
 		ui.keepResult = true
 		render()
 	elseif res.result == "pop" then
@@ -444,11 +502,15 @@ local function open(machineId: string)
 		Fill.species = "cat"
 		Fill.filling = "pink_foam"
 	end
+	local vpX = if Workspace.CurrentCamera then Workspace.CurrentCamera.ViewportSize.X else 1600
+	local vpY = if Workspace.CurrentCamera then Workspace.CurrentCamera.ViewportSize.Y else 900
+	local width = if vpX < 1400 then 390 else 430 -- #machinePanel: 430 (390 en pantallas < 1400)
 	local content = Modal.open("machine", if def.id == "m1" then "Crea un Squishy" else def.name, {
-		width = 470,
-		height = 660,
+		width = width,
+		height = math.floor(vpY * 0.92),
 		anchor = Vector2.new(1, 0.5),
-		position = UDim2.new(1, -16, 0.5, 10),
+		position = UDim2.new(1, -18, 0.5, 0),
+		noOverlay = true, -- el panel de la máquina va sin overlay
 		onClose = function()
 			if Fill.holding then
 				Fill.holding = false
@@ -465,7 +527,8 @@ local function open(machineId: string)
 		end,
 	})
 	local scroll = Modal.scroll(content)
-	Kit.list(Enum.FillDirection.Vertical, 8).Parent = scroll
+	Kit.list(Enum.FillDirection.Vertical, 6).Parent = scroll
+	Kit.new("UIPadding", { PaddingRight = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8), Parent = scroll })
 	ui.body = scroll
 	local info = string.format("%s · %s", def.name, def.sub)
 	if def.luck and def.luck > 0 then
@@ -476,21 +539,17 @@ local function open(machineId: string)
 	end
 	Kit.text(info, 13, { TextColor3 = Theme.muted, LayoutOrder = 1, Parent = scroll })
 
-	local function section(title: string, order: number, color: Color3?): Frame
-		Kit.text(
-			title,
-			15,
-			{ Font = Theme.display, TextColor3 = color or Theme.ink, LayoutOrder = order, Parent = scroll }
-		)
+	-- .molds: 5 columnas, gap 8
+	local function grid(order: number): Frame
 		local f: Frame = Kit.new("Frame", {
 			BackgroundTransparency = 1,
 			AutomaticSize = Enum.AutomaticSize.Y,
-			Size = UDim2.new(1, -8, 0, 0),
-			LayoutOrder = order + 1,
+			Size = UDim2.new(1, 0, 0, 0),
+			LayoutOrder = order,
 			Parent = scroll,
 		})
 		local g = Kit.new("UIGridLayout", {
-			CellSize = UDim2.fromOffset(92, 92),
+			CellSize = UDim2.new(0.2, -7, 0, if vpX < 1400 then 80 else 88),
 			CellPadding = UDim2.fromOffset(8, 8),
 			SortOrder = Enum.SortOrder.LayoutOrder,
 			Parent = f,
@@ -498,26 +557,63 @@ local function open(machineId: string)
 		ui["grid" .. order] = g
 		return f
 	end
-	ui.molds = section("Moldes", 10)
-	ui.virals = section("✨ Moldes virales", 20, Color3.fromHex("#a86ad0"))
-	ui.fills = section("Relleno", 30)
-	ui["grid30"].CellSize = UDim2.fromOffset(128, 34)
-
-	Kit.text("Probabilidades", 13, { TextColor3 = Theme.muted, LayoutOrder = 40, Parent = scroll })
+	Kit.h3("1. Elige el molde", { LayoutOrder = 10, Parent = scroll })
+	ui.molds = grid(11)
+	Kit.text(
+		"✨ Moldes virales",
+		14,
+		{ FontFace = Theme.bodyBlack, TextColor3 = Theme.viral, LayoutOrder = 20, Parent = scroll }
+	)
+	-- .viralRow: scroll propio de alto 190
+	local viralScroll = Modal.scroll(scroll, {
+		Size = UDim2.new(1, 0, 0, 190),
+		LayoutOrder = 21,
+	})
+	viralScroll.AutomaticSize = Enum.AutomaticSize.None
+	ui.virals = Kit.new("Frame", {
+		BackgroundTransparency = 1,
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = UDim2.new(1, -8, 0, 0),
+		Parent = viralScroll,
+	})
+	Kit.new("UIGridLayout", {
+		CellSize = UDim2.new(0.2, -7, 0, if vpX < 1400 then 80 else 88),
+		CellPadding = UDim2.fromOffset(8, 8),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Parent = ui.virals,
+	})
+	Kit.h3("2. Elige el relleno", { LayoutOrder = 30, Parent = scroll })
+	ui.fills = Kit.new("Frame", {
+		BackgroundTransparency = 1,
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = UDim2.new(1, 0, 0, 0),
+		LayoutOrder = 31,
+		Parent = scroll,
+	})
+	local fl = Kit.list(Enum.FillDirection.Horizontal, 6)
+	fl.Wraps = true
+	fl.Parent = ui.fills
+	Kit.h3("3. Mantén para llenar — suelta en la zona Perfecto", { LayoutOrder = 40, Parent = scroll })
 	ui.odds = Kit.new("Frame", {
 		BackgroundTransparency = 1,
-		Size = UDim2.new(1, -8, 0, 22),
+		Size = UDim2.new(1, 0, 0, 20),
 		LayoutOrder = 41,
 		Parent = scroll,
 	}, { Kit.list(Enum.FillDirection.Horizontal, 4) })
 
-	-- medidor con zonas (gauge del prototipo)
-	local gauge: Frame = Kit.new("Frame", {
-		BackgroundColor3 = Color3.fromHex("#e9e4f2"),
-		Size = UDim2.new(1, -8, 0, 30),
-		ClipsDescendants = true,
+	-- .gauge: alto 30, radius 15, #e9e4f2 con zonas
+	local gaugeWrap: Frame = Kit.new("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 34),
 		LayoutOrder = 50,
 		Parent = scroll,
+	})
+	local gauge: Frame = Kit.new("Frame", {
+		BackgroundColor3 = Color3.fromHex("#e9e4f2"),
+		Position = UDim2.fromOffset(0, 2),
+		Size = UDim2.new(1, 0, 0, 30),
+		ClipsDescendants = true,
+		Parent = gaugeWrap,
 	}, { Kit.corner(15) })
 	local span = FILL.pop
 	local function zone(a: number, b: number, col: string)
@@ -533,48 +629,58 @@ local function open(machineId: string)
 	zone(FILL.perfect[2], span * 0.97, "#ffd9a8")
 	zone(span * 0.97, span, "#ff9aa8")
 	ui.prog = Kit.new("Frame", {
-		BackgroundColor3 = Theme.pink,
-		BackgroundTransparency = 0.55,
+		BackgroundColor3 = Theme.ink,
+		BackgroundTransparency = 0.92,
 		BorderSizePixel = 0,
 		Size = UDim2.fromScale(0, 1),
 		Parent = gauge,
 	})
+	-- .needle: 5px, sobresale 2px, anillo blanco de 2px (fuera del recorte)
 	ui.needle = Kit.new("Frame", {
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		BackgroundColor3 = Theme.ink,
-		Size = UDim2.new(0, 4, 1, 4),
+		Size = UDim2.new(0, 5, 0, 34),
 		Position = UDim2.fromScale(0, 0.5),
-		Parent = gauge,
-	})
+		ZIndex = 3,
+		Parent = gaugeWrap,
+	}, { Kit.corner(3), Kit.new("UIStroke", { Color = Theme.white, Thickness = 2 }) })
+	-- .glabels: space-between
 	local lbl: Frame = Kit.new("Frame", {
 		BackgroundTransparency = 1,
-		Size = UDim2.new(1, -8, 0, 16),
+		Size = UDim2.new(1, 0, 0, 16),
 		LayoutOrder = 51,
 		Parent = scroll,
 	})
+	local gl = Kit.list(Enum.FillDirection.Horizontal, 0)
+	gl.HorizontalFlex = Enum.UIFlexAlignment.SpaceBetween
+	gl.Parent = lbl
 	local gaugeLabels: { { any } } = {
-		{ "Le falta", 0 },
-		{ "Perfecto", FILL.perfect[1] / span },
-		{ "Se pasa", FILL.perfect[2] / span },
-		{ "¡POP!", 0.97 },
+		{ "Le falta", Theme.grey },
+		{ "Perfecto", Theme.perfectLbl },
+		{ "Se pasa", Theme.grey },
+		{ "¡Pop!", Theme.popRed },
 	}
-	for _, info2 in gaugeLabels do
+	for i, info2 in gaugeLabels do
 		Kit.text(info2[1] :: string, 11, {
-			Position = UDim2.fromScale(info2[2] :: number, 0),
-			Size = UDim2.fromOffset(70, 16),
-			TextColor3 = Theme.muted,
-			Font = Theme.bodyBlack,
+			AutomaticSize = Enum.AutomaticSize.X,
+			Size = UDim2.fromOffset(0, 16),
+			TextWrapped = false,
+			TextColor3 = info2[2] :: Color3,
+			FontFace = Theme.bodyBlack,
+			LayoutOrder = i,
 			Parent = lbl,
 		})
 	end
 
+	-- #holdBtn: btn pink, Lilita 26, radius 20
 	ui.hold = Kit.button("Mantén para llenar", Theme.pink, {
-		Size = UDim2.new(1, -8, 0, 56),
-		TextSize = 20,
-		Font = Theme.display,
+		Size = UDim2.new(1, 0, 0, 66),
+		TextSize = 26,
+		FontFace = Theme.display,
 		LayoutOrder = 60,
 		Parent = scroll,
-	})
+	});
+	(ui.hold:FindFirstChildOfClass("UICorner") :: UICorner).CornerRadius = UDim.new(0, 20)
 	ui.hold.MouseButton1Down:Connect(holdStart)
 	ui.hold.MouseButton1Up:Connect(function()
 		task.spawn(holdEnd)
@@ -584,10 +690,10 @@ local function open(machineId: string)
 			task.spawn(holdEnd)
 		end
 	end)
-	ui.result = Kit.text("", 18, {
-		Font = Theme.display,
+	ui.result = Kit.text("", 20, {
+		FontFace = Theme.display,
 		TextXAlignment = Enum.TextXAlignment.Center,
-		Size = UDim2.new(1, -8, 0, 44),
+		Size = UDim2.new(1, 0, 0, 30),
 		LayoutOrder = 61,
 		Parent = scroll,
 	})
@@ -638,6 +744,17 @@ function Machine.init()
 	State.onChange(function()
 		if Fill.state == "idle" then
 			render()
+		end
+	end)
+	-- Espacio = mantener para llenar (como el original)
+	UserInputService.InputBegan:Connect(function(input, gp)
+		if not gp and input.KeyCode == Enum.KeyCode.Space and Modal.current == "machine" then
+			holdStart()
+		end
+	end)
+	UserInputService.InputEnded:Connect(function(input)
+		if input.KeyCode == Enum.KeyCode.Space and Fill.holding then
+			task.spawn(holdEnd)
 		end
 	end)
 	RunService.RenderStepped:Connect(function(dt: number)

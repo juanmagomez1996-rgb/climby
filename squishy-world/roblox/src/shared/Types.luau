@@ -36,6 +36,7 @@ export type PlayerData = {
 	tutorial: number,
 	tourSeen: boolean,
 	tipSquish: boolean,
+	muted: boolean,
 	lastMold: string,
 	lastFill: string,
 	firstDone: boolean,

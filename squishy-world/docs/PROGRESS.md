@@ -37,6 +37,26 @@
 - `SquishyFactory`: usa `ReplicatedStorage.Models.Squishies.<id>` si existe; si no, un squishy
   provisional (bolita con carita y orejas). Recolorea solo `Body` según la variante.
 
+## Bloque 1 de igualación (2026-09-25) — interfaz y controles como el original
+- Base de UI calcada del CSS: botones con sombra sólida abajo y texto ink, pestañas activas en ink,
+  moneda dibujada (UIGradient) en vez de 🪙, cerrar "×" en vez de ✕, ⭐ en vez de ★/☆, Nunito real.
+- HUD: logo blanco con sombra rosada, píldoras oscuras arriba a la derecha ("Nivel N", XP mint→azul),
+  menú lateral paper con íconos PNG (`AssetIds.icons`; emoji de respaldo), orden I/C/B/🎬/T + Robux,
+  misión con "Muéstrame", barra de ayuda abajo a la izquierda, chat de Roblox abajo a la derecha.
+- Teclas: I, C, B (tienda), T (guía a la Plaza), Esc (cerrar), Espacio (llenar), Shift (correr 22).
+  Caminar 13, sin salto, FOV 58, zoom 7–24 (empieza en 14). Spawn mirando a las Máquinas.
+- Aviso de interacción propio (#prompt) con los textos del original ("Usar la Máquina Squishy",
+  "… — requiere nivel N", "Abrir la Tienda", "Abrir el Índice Squishy", "Hablar con X").
+- Máquina: "1. Elige el molde / 2. Elige el relleno / 3. Mantén para llenar — suelta en la zona
+  Perfecto", 5 columnas, silueta en moldes bloqueados, chips de relleno, medidor y etiquetas exactas,
+  arreglado el corte UTF-8 de "Común"/"Épico".
+- Inventario, Tienda, Índice, Chat con NPC (nuevo, con respuestas predefinidas filtradas),
+  Cambio con NPC (2 columnas, "Pedir otra cosa", Cancelar/Aceptar) rehechos con el layout original.
+- Revelación: fondos oscuros por rareza, pop, glitch + pantallazo negro en Secreto, partículas,
+  badges blancos/amarillo, Secreto ya no suena con fanfarria.
+- Tutorial: textos exactos, paso 0→1 al caminar, "Bienvenido de vuelta", pulso en Inventario,
+  chevron + flecha en el piso. Silencio guardado en el perfil.
+
 ## Siguiente
 1. Yeison prueba en Studio (ver README → "Probar ya") y da feedback.
 2. Importar los assets (docs/ASSETS.md): mapa → `Workspace.Map`, squishies/máquinas/props →

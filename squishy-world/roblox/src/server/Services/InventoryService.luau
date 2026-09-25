@@ -243,6 +243,14 @@ function InventoryService.init()
 		end
 		return { ok = true }
 	end)
+	Net.on("setMuted", function(player, payload)
+		local d = DataService.get(player)
+		if d then
+			d.muted = payload.v == true
+			DataService.changed(player)
+		end
+		return { ok = true }
+	end)
 	Net.on("tourSeen", function(player)
 		local d = DataService.get(player)
 		if d then

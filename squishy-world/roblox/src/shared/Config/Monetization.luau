@@ -97,7 +97,7 @@ Monetization.PRODUCTS = {
 		name = "Poción de Suerte",
 		desc = "+50% de suerte por 15 minutos (se acumula).",
 		robux = 99,
-		icon = "🧪",
+		icon = "🍀",
 		luckMinutes = 15,
 	},
 	{

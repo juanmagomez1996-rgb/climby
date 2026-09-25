@@ -1,5 +1,6 @@
 --!strict
--- Tienda (renderShop de game5.js): ✨ Moldes Virales, Rellenos, Mejoras + ⭐ Robux (pases y productos).
+-- Tienda (renderShop de game5.js + #shopWrap): ✨ Moldes Virales, Rellenos (por defecto), Mejoras.
+-- + ⭐ Robux (extra de monetización: pases y productos).
 local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -30,73 +31,92 @@ local TABS = {
 	{ "robux", "⭐ Robux" },
 }
 
-local function item(
-	parent: Instance,
+type ItemOpts = {
 	order: number,
 	title: string,
 	desc: string,
-	buttonText: string,
+	icon: ((Frame) -> ())?,
+	price: string?, -- número con moneda
+	label: string?, -- texto sin moneda ("Tuyo", "Nivel máximo", "R$ 99")
 	color: Color3,
 	enabled: boolean,
-	onBuy: () -> ()
-): Frame
+	levels: { number }?, -- { hechos, total } para .lv
+	onBuy: () -> (),
+}
+
+-- .item: blanca, radius 18, padding 14, sombra 0 4px 0 lav2; .t Nunito 900 16; .d 12.5 700 #6d7285
+local function item(o: ItemOpts): Frame
 	local f: Frame = Kit.new("Frame", {
 		BackgroundColor3 = Theme.white,
-		LayoutOrder = order,
-		Parent = parent,
-	}, { Kit.corner(16), Kit.stroke(Theme.lav2, 2), Kit.pad(12, 10) })
-	Kit.text(
-		title,
-		16,
-		{ Font = Theme.display, Position = UDim2.fromOffset(62, 0), Size = UDim2.new(1, -62, 0, 22), Parent = f }
-	)
-	Kit.text(desc, 12, {
+		LayoutOrder = o.order,
+		Parent = ui.grid,
+	}, { Kit.corner(18), Kit.pad(14, 14) })
+	Kit.shadow(f, Theme.lav2, 4, 18)
+	local head: Frame = Kit.new("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 46),
+		Parent = f,
+	}, { Kit.list(Enum.FillDirection.Horizontal, 8) });
+	(head:FindFirstChildOfClass("UIListLayout") :: UIListLayout).VerticalAlignment = Enum.VerticalAlignment.Center
+	if o.icon then
+		local holder: Frame = Kit.new(
+			"Frame",
+			{ BackgroundTransparency = 1, Size = UDim2.fromOffset(46, 46), LayoutOrder = 1, Parent = head }
+		)
+		o.icon(holder)
+	end
+	Kit.text(o.title, 16, {
+		FontFace = Theme.bodyBlack,
+		Size = UDim2.new(1, if o.icon then -54 else 0, 1, 0),
+		LayoutOrder = 2,
+		Parent = head,
+	})
+	Kit.text(o.desc, 12.5, {
+		FontFace = Theme.bodyBold,
 		TextColor3 = Theme.muted,
-		Position = UDim2.fromOffset(62, 24),
-		Size = UDim2.new(1, -62, 1, -70),
+		Position = UDim2.fromOffset(0, 50),
+		Size = UDim2.new(1, 0, 1, -100),
 		TextYAlignment = Enum.TextYAlignment.Top,
 		Parent = f,
 	})
-	local b = Kit.button(buttonText, color, {
+	if o.levels then
+		local lv: Frame = Kit.new("Frame", {
+			BackgroundTransparency = 1,
+			AnchorPoint = Vector2.new(0, 1),
+			Position = UDim2.new(0, 0, 1, -44),
+			Size = UDim2.new(1, 0, 0, 7),
+			Parent = f,
+		}, { Kit.list(Enum.FillDirection.Horizontal, 3) })
+		local total = o.levels[2]
+		for i = 1, total do
+			Kit.new("Frame", {
+				BackgroundColor3 = if i <= o.levels[1] then Theme.mint else Theme.lav,
+				Size = UDim2.new(1 / total, -3, 1, 0),
+				LayoutOrder = i,
+				Parent = lv,
+			}, { Kit.corner(4) })
+		end
+	end
+	local props = {
 		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, 0, 1, 0),
+		Position = UDim2.new(0, 0, 1, -4),
 		Size = UDim2.new(1, 0, 0, 36),
-		TextSize = 15,
 		Parent = f,
-	})
-	Kit.setEnabled(b, enabled)
+	}
+	local b = if o.price then Kit.priceButton(o.price, o.color, props) else Kit.button(o.label or "", o.color, props)
+	Kit.setEnabled(b, o.enabled)
 	b.Activated:Connect(function()
-		if enabled then
-			onBuy()
+		if o.enabled then
+			o.onBuy()
 		end
 	end)
 	return f
-end
-
-local function icon(f: Frame, text: string?, bg: Color3?)
-	local holder: Frame = Kit.new("Frame", {
-		BackgroundColor3 = bg or Theme.lav,
-		BackgroundTransparency = if bg then 0 else 1,
-		Size = UDim2.fromOffset(54, 54),
-		Parent = f,
-	}, { Kit.corner(14) })
-	if text then
-		Kit.text(
-			text,
-			30,
-			{ Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, Parent = holder }
-		)
-	end
-	return holder
 end
 
 local function buy(kind: string, id: string)
 	local res = State.request("shop", { kind = kind, id = id })
 	if not res.ok then
 		Audio.play("error")
-		if res.err == "monedas" then
-			Toast.show("No te alcanzan las monedas")
-		end
 	end
 end
 
@@ -139,14 +159,25 @@ local function priceOf(entry: any, isPass: boolean): number
 	return entry.robux
 end
 
+local function emojiIcon(e: string): (Frame) -> ()
+	return function(h: Frame)
+		Kit.text(e, 30, { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, Parent = h })
+	end
+end
+
 local function render()
 	local d = State.data
 	if not d or Modal.current ~= "shop" or not ui.grid then
 		return
 	end
-	for id, b in ui.tabs do
-		b.BackgroundColor3 = if tab == id then (if id == "robux" then Theme.robux else Theme.pink) else Theme.white
-		b.TextColor3 = if tab == id then Theme.white else Theme.ink
+	Kit.clear(ui.tabs)
+	for i, t in TABS do
+		local b = Kit.tab(t[2], tab == t[1], false, { LayoutOrder = i, Parent = ui.tabs })
+		b.Activated:Connect(function()
+			tab = t[1]
+			Audio.play("click")
+			render()
+		end)
 	end
 	Kit.clear(ui.grid)
 	if tab == "molds" then
@@ -154,44 +185,58 @@ local function render()
 			if sp.famous then
 				local own = table.find(d.molds, sp.id) ~= nil
 				local firm = if sp.soft >= 1.2 then "súper suave" elseif sp.soft >= 1 then "suave" else "firme"
-				local f = item(
-					ui.grid,
-					i,
-					sp.name,
-					string.format("%s\n<b>Slow rise %ss · %s</b>", sp.desc, tostring(sp.rise), firm),
-					if own then "Tuyo" else "🪙 " .. Format.int(sp.price),
-					if own then Theme.white else Theme.pink,
-					not own and d.coins >= sp.price,
-					function()
+				item({
+					order = i,
+					title = sp.name,
+					desc = string.format(
+						'%s\n<font color="#282D3A"><b>Slow rise %ss · %s</b></font>',
+						sp.desc,
+						tostring(sp.rise),
+						firm
+					),
+					icon = function(h)
+						Thumb.make({ species = sp.id, variant = "original" }, h)
+					end,
+					price = if own then nil else Format.int(sp.price),
+					label = if own then "Tuyo" else nil,
+					color = if own then Theme.lav else Theme.pink,
+					enabled = not own and d.coins >= sp.price,
+					onBuy = function()
 						buy("mold", sp.id)
-					end
-				)
-				Thumb.make({ species = sp.id, variant = "original" }, icon(f))
+					end,
+				})
 			end
 		end
 	elseif tab == "fillings" then
 		for i, fl in Config.Fillings do
 			if fl.price > 0 then
 				local own = table.find(d.fillings, fl.id) ~= nil
-				local f = item(
-					ui.grid,
-					i,
-					fl.name,
-					fl.desc or "",
-					if own then "Tuyo" else "🪙 " .. Format.int(fl.price),
-					if own then Theme.white else Theme.pink,
-					not own and d.coins >= fl.price,
-					function()
-						buy("filling", fl.id)
-					end
-				)
 				local col = Color3.fromHex(fl.color3 or (string.sub(fl.color, 1, 1) == "#" and fl.color) or "#ffd36e")
-				icon(f, nil, col)
+				item({
+					order = i,
+					title = fl.name,
+					desc = fl.desc or "",
+					icon = function(h)
+						Kit.new("Frame", {
+							BackgroundColor3 = col,
+							AnchorPoint = Vector2.new(0.5, 0.5),
+							Position = UDim2.fromScale(0.5, 0.5),
+							Size = UDim2.fromOffset(26, 26),
+							Parent = h,
+						}, { Kit.round(), Kit.stroke(Color3.fromRGB(215, 212, 222), 1) })
+					end,
+					price = if own then nil else Format.int(fl.price),
+					label = if own then "Tuyo" else nil,
+					color = if own then Theme.lav else Theme.pink,
+					enabled = not own and d.coins >= fl.price,
+					onBuy = function()
+						buy("filling", fl.id)
+					end,
+				})
 			end
 		end
 	elseif tab == "upgrades" then
-		local order = { "fillSpeed", "luck", "storage" }
-		for i, k in order do
+		for i, k in { "fillSpeed", "luck", "storage" } do
 			local u = (Config.Upgrades :: any)[k]
 			local lvl = if k == "fillSpeed" then d.upgrades.fillSpeed - 1 else d.upgrades[k]
 			local maxed = lvl >= #u.costs
@@ -207,57 +252,49 @@ local function render()
 				cur = string.format("Velocidad %d", lvl + 1)
 					.. (if maxed then "" else string.format(" → %d", lvl + 2))
 			end
-			local dots = string.rep("●", lvl) .. string.rep("○", #u.costs - lvl)
-			local f = item(
-				ui.grid,
-				i,
-				u.name,
-				string.format("%s\n<b>%s</b>\n%s", u.desc, cur, dots),
-				if maxed then "Nivel máximo" else "🪙 " .. Format.int(cost),
-				if maxed then Theme.white else Theme.mint,
-				not maxed and d.coins >= cost,
-				function()
+			item({
+				order = i,
+				title = u.name,
+				desc = string.format('%s\n<font color="#282D3A"><b>%s</b></font>', u.desc, cur),
+				levels = { lvl, #u.costs },
+				price = if maxed then nil else Format.int(cost),
+				label = if maxed then "Nivel máximo" else nil,
+				color = if maxed then Theme.lav else Theme.mint,
+				enabled = not maxed and d.coins >= cost,
+				onBuy = function()
 					buy("upgrade", k)
-				end
-			)
-			icon(f, ({ fillSpeed = "⚡", luck = "🍀", storage = "🎒" })[k])
+				end,
+			})
 		end
 	else
-		Kit.text(
-			"Pases (para siempre)",
-			16,
-			{ Font = Theme.display, LayoutOrder = 0, Size = UDim2.fromOffset(300, 24), Parent = ui.grid }
-		)
 		for i, p in M.PASSES do
 			local own = d.passes and d.passes[p.key]
-			local f = item(
-				ui.grid,
-				i,
-				p.name,
-				p.desc,
-				if own then "¡Ya lo tienes!" else string.format("R$ %d", priceOf(p, true)),
-				if own then Theme.white else Theme.robux,
-				not own and (p.id ~= 0 or RunService:IsStudio()),
-				function()
+			item({
+				order = i,
+				title = p.name,
+				desc = p.desc .. '\n<font color="#282D3A"><b>Pase: para siempre</b></font>',
+				icon = emojiIcon(p.icon),
+				label = if own then "¡Ya lo tienes!" else string.format("R$ %d", priceOf(p, true)),
+				color = if own then Theme.lav else Theme.robux,
+				enabled = not own and (p.id ~= 0 or RunService:IsStudio()),
+				onBuy = function()
 					buyRobux(p, true)
-				end
-			)
-			icon(f, p.icon)
+				end,
+			})
 		end
 		for i, p in M.PRODUCTS do
-			local f = item(
-				ui.grid,
-				100 + i,
-				p.name,
-				p.desc,
-				string.format("R$ %d", priceOf(p, false)),
-				Theme.robux,
-				p.id ~= 0 or RunService:IsStudio(),
-				function()
+			item({
+				order = 100 + i,
+				title = p.name,
+				desc = p.desc,
+				icon = emojiIcon(p.icon),
+				label = string.format("R$ %d", priceOf(p, false)),
+				color = Theme.robux,
+				enabled = p.id ~= 0 or RunService:IsStudio(),
+				onBuy = function()
 					buyRobux(p, false)
-				end
-			)
-			icon(f, p.icon)
+				end,
+			})
 		end
 	end
 end
@@ -267,42 +304,34 @@ local function open(startTab: any?)
 		tab = startTab
 	end
 	local content = Modal.open("shop", "Tienda", {
-		width = 860,
-		height = 560,
+		width = 760,
+		height = 600,
 		onClose = function()
 			ui = {}
 		end,
 	})
-	local tabs: Frame = Kit.new("Frame", {
+	ui.tabs = Kit.new("Frame", {
 		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 0, 34),
+		Size = UDim2.new(1, 0, 0, 30),
 		Parent = content,
 	}, { Kit.list(Enum.FillDirection.Horizontal, 6) })
-	ui.tabs = {}
-	for i, t in TABS do
-		local b = Kit.button(t[2], Theme.white, {
-			Size = UDim2.fromOffset(0, 32),
-			AutomaticSize = Enum.AutomaticSize.X,
-			TextSize = 14,
-			LayoutOrder = i,
-			Parent = tabs,
-		})
-		Kit.pad(12, 0).Parent = b
-		ui.tabs[t[1]] = b
-		b.Activated:Connect(function()
-			tab = t[1]
-			Audio.play("click")
-			render()
-		end)
-	end
-	local grid = Modal.scroll(content, { Position = UDim2.fromOffset(0, 44), Size = UDim2.new(1, 0, 1, -44) })
-	Kit.grid(UDim2.fromOffset(260, 150), 10).Parent = grid
-	Kit.pad(2, 4).Parent = grid
-	ui.grid = grid
+	local scroll = Modal.scroll(content, { Position = UDim2.fromOffset(0, 42), Size = UDim2.new(1, 0, 1, -42) })
+	local inner: Frame = Kit.new("Frame", {
+		BackgroundTransparency = 1,
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = UDim2.new(1, -10, 0, 0),
+		Parent = scroll,
+	}, { Kit.new("UIPadding", { PaddingBottom = UDim.new(0, 10) }) })
+	Kit.new("UIGridLayout", {
+		CellSize = UDim2.new(1 / 3, -8, 0, 196),
+		CellPadding = UDim2.fromOffset(12, 14),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Parent = inner,
+	})
+	ui.grid = inner
 	Audio.play("open")
 	render()
-	-- precios reales del Marketplace llegan async
-	task.delay(1.5, render)
+	task.delay(1.5, render) -- precios reales del Marketplace llegan async
 end
 
 function Shop.init()
