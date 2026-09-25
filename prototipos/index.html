@@ -28,52 +28,58 @@
   h1 span { color: var(--gas); -webkit-text-stroke: 2px var(--ink); }
   .top p { margin: 0; max-width: 58ch; }
   .games { display: grid; gap: 16px; }
-  a.game { display: grid; grid-template-columns: 96px 1fr; gap: 16px; align-items: center; text-decoration: none; color: var(--ink); background: var(--card); border: 3px solid var(--ink); border-radius: 18px; padding: 14px; box-shadow: 0 5px 0 var(--ink); transition: transform .08s; }
-  a.game:hover { transform: translateY(-2px); }
-  a.game:active { transform: translateY(3px); box-shadow: 0 2px 0 var(--ink); }
-  a.game:focus-visible { outline: 3px solid var(--bean); outline-offset: 3px; }
+  .game { display: grid; grid-template-columns: 96px 1fr; gap: 16px; align-items: center; color: var(--ink); background: var(--card); border: 3px solid var(--ink); border-radius: 18px; padding: 14px; box-shadow: 0 5px 0 var(--ink); }
+  .play { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .play a { font-weight: 800; text-decoration: none; color: var(--ink); border: 3px solid var(--ink); border-radius: 12px; padding: 4px 14px; box-shadow: 0 3px 0 var(--ink); background: var(--paper); transition: transform .08s; }
+  .play a.main { background: var(--gas); }
+  .play a:hover { transform: translateY(-2px); }
+  .play a:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--ink); }
+  .play a:focus-visible { outline: 3px solid var(--bean); outline-offset: 3px; }
   .game canvas { width: 96px; height: 96px; border-radius: 12px; border: 3px solid var(--ink); display: block; }
   .game h2 { font-family: "Bowlby One", "Arial Black", sans-serif; font-weight: 400; font-size: 22px; margin: 0; line-height: 1.1; }
   .game p { margin: 2px 0 6px; }
   .tags { display: flex; flex-wrap: wrap; gap: 6px; }
   .tags span { font-size: 12px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; border: 2px solid var(--ink); border-radius: 999px; padding: 0 8px; }
   footer { font-size: 14px; color: var(--muted); max-width: 60ch; }
-  @media (max-width: 420px) { a.game { grid-template-columns: 72px 1fr; } .game canvas { width: 72px; height: 72px; } }
-  @media (prefers-reduced-motion: reduce) { a.game { transition: none; } }
+  @media (max-width: 420px) { .game { grid-template-columns: 72px 1fr; } .game canvas { width: 72px; height: 72px; } }
+  @media (prefers-reduced-motion: reduce) { .play a { transition: none; } }
 </style>
 
 <main>
   <div class="top">
-    <small>Prototipos jugables · v0.1</small>
+    <small>Prototipos jugables · v0.2 · ahora en 3D</small>
     <h1>Laboratorio de <span>Gases</span></h1>
     <p>Tres ideas para probar cuál es la más divertida antes de construirla en serio. Todo el sonido está sintetizado en el navegador, así que sube el volumen.</p>
   </div>
 
   <div class="games">
-    <a class="game" href="ascensor.html">
+    <article class="game">
       <canvas data-icon="lift" width="192" height="192" aria-hidden="true"></canvas>
       <div>
         <h2>Ascensor Apestoso</h2>
         <p>Deducción social en 30 pisos. El impostor suelta el gas cuando hay ruido y los demás intentan pillarle. Si no lo suelta, explota.</p>
         <div class="tags"><span>Sigilo</span><span>Impostor</span><span>Bots · luego online</span></div>
+        <div class="play"><a class="main" href="ascensor-3d.html">Jugar en 3D</a><a href="ascensor.html">Versión 2D</a></div>
       </div>
-    </a>
-    <a class="game" href="jetpack.html">
+    </article>
+    <article class="game">
       <canvas data-icon="jet" width="192" height="192" aria-hidden="true"></canvas>
       <div>
         <h2>Jetpack de Emergencia</h2>
         <p>Runner infinito. Planear, hacer dash y frenar gastan del mismo tanque. Come frijoles y decide en qué gastas cada pedo.</p>
         <div class="tags"><span>Runner</span><span>1 jugador</span><span>Récord</span></div>
+        <div class="play"><a class="main" href="jetpack-3d.html">Jugar en 3D</a><a href="jetpack.html">Versión 2D</a></div>
       </div>
-    </a>
-    <a class="game" href="duelo.html">
+    </article>
+    <article class="game">
       <canvas data-icon="duel" width="192" height="192" aria-hidden="true"></canvas>
       <div>
         <h2>Duelo de Presión</h2>
         <p>Dos jugadores en la misma pantalla empujan un globo con ráfagas. Si cargas demasiado, se te escapa. Tiene modo micrófono para soplar de verdad.</p>
         <div class="tags"><span>Local 2P</span><span>Contra la CPU</span><span>Micrófono</span></div>
+        <div class="play"><a class="main" href="duelo-3d.html">Jugar en 3D</a><a href="duelo.html">Versión 2D</a></div>
       </div>
-    </a>
+    </article>
   </div>
 
   <footer>El modo micrófono del duelo solo funciona si abres el archivo en tu navegador (localhost o https). En la vista previa de claude.ai el micrófono está bloqueado.</footer>
