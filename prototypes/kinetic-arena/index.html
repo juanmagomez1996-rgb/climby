@@ -195,6 +195,17 @@ body.touch .hud-bottom{bottom:calc(160px + env(safe-area-inset-bottom,0px));widt
 (() => {
 'use strict';
 const $ = s => document.querySelector(s);
+// Muestra cualquier error en la pantalla de carga (si no, un fallo deja la barra "cargando" para siempre).
+const loadErrors = [];
+function reportError(msg) {
+  loadErrors.push(msg);
+  const el = document.querySelector('#loadText');
+  if (el) el.textContent = 'Error: ' + loadErrors.slice(-2).join(' · ');
+  console.error(msg);
+}
+addEventListener('error', e => reportError(e.message || 'error de script ' + (e.filename || '')));
+addEventListener('unhandledrejection', e => reportError(String(e.reason && e.reason.message || e.reason)));
+if (!window.THREE) { reportError('No se pudo cargar Three.js desde el CDN'); return; }
 const V3 = THREE.Vector3;
 const rand = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -244,16 +255,19 @@ const rim = new THREE.DirectionalLight(0xa58bff, 1.4);
 rim.position.set(25, 18, 30);
 scene.add(rim);
 
-const composer = new THREE.EffectComposer(renderer);
-composer.addPass(new THREE.RenderPass(scene, camera));
-const bloom = new THREE.UnrealBloomPass(new THREE.Vector2(256, 256), 0.7, 0.45, 0.92);
-composer.addPass(bloom);
+// Bloom si los scripts de post-proceso cargaron; si no, render directo.
+let composer = null, bloom = null;
+if (THREE.EffectComposer && THREE.RenderPass && THREE.UnrealBloomPass) {
+  composer = new THREE.EffectComposer(renderer);
+  composer.addPass(new THREE.RenderPass(scene, camera));
+  bloom = new THREE.UnrealBloomPass(new THREE.Vector2(256, 256), 0.7, 0.45, 0.92);
+  composer.addPass(bloom);
+}
 
 function resize() {
   const w = innerWidth, h = innerHeight;
   renderer.setSize(w, h);
-  composer.setSize(w, h);
-  bloom.resolution.set(w / 2, h / 2);
+  if (composer) { composer.setSize(w, h); bloom.resolution.set(w / 2, h / 2); }
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
 }
@@ -270,40 +284,67 @@ const MANIFEST = {
   sheets: ['vfx_shockwave', 'vfx_impact', 'vfx_explosion', 'vfx_aura'],
 };
 const assets = { models: {}, textures: {}, sheets: {} };
+const withTimeout = (p, ms, label) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('tiempo agotado: ' + label)), ms))]);
 async function loadAll() {
-  const gltf = new THREE.GLTFLoader();
+  if (!THREE.GLTFLoader) reportError('No se pudo cargar GLTFLoader desde el CDN');
+  const gltf = THREE.GLTFLoader ? new THREE.GLTFLoader() : null;
   const tex = new THREE.TextureLoader();
-  const jobs = [];
   let done = 0;
   const total = Object.keys(MANIFEST.models).length + Object.keys(MANIFEST.textures).length + MANIFEST.sheets.length * 2;
-  const tick = label => { done++; $('#loadFill').style.width = (done / total * 100) + '%'; $('#loadText').textContent = `Cargando ${label}… ${done}/${total}`; };
-  // Carga el GLB binario; si el servidor no lo sirve (p. ej. el Artifact publicado), usa la copia
-  // en base64 (<nombre>.glb.b64.txt) y la decodifica en memoria.
-  const fetchGLB = async p => {
-    const r = await fetch(A + p);
-    if (r.ok) return r.arrayBuffer();
-    const t = await fetch(A + p + '.b64.txt');
-    if (!t.ok) throw new Error('404 ' + p);
-    const bin = atob((await t.text()).trim());
+  const tick = label => {
+    done++;
+    $('#loadFill').style.width = (done / total * 100) + '%';
+    if (!loadErrors.length) $('#loadText').textContent = `Cargando ${label}… ${done}/${total}`;
+  };
+  const b64ToBuffer = txt => {
+    const bin = atob(txt.replace(/\s+/g, ''));
     const buf = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
     return buf.buffer;
   };
+  // Primero la copia en base64 (<nombre>.glb.b64.txt, la que existe en el Artifact publicado);
+  // si no está, el .glb binario (versión del repo servida por HTTP).
+  const fetchGLB = async p => {
+    try {
+      const t = await fetch(A + p + '.b64.txt');
+      if (t.ok) { const txt = await t.text(); if (!txt.trim().startsWith('<')) return b64ToBuffer(txt); }
+    } catch (e) { /* probar el binario */ }
+    const r = await fetch(A + p);
+    if (!r.ok) throw new Error(`${r.status} ${p}`);
+    return r.arrayBuffer();
+  };
+  // GLTFLoader decodifica las texturas con fetch(blob:) + createImageBitmap si existe; la política de
+  // seguridad del Artifact puede bloquear ese fetch. Ocultándolo durante la carga usa <img>, que sí se permite.
+  const hiddenCIB = window.createImageBitmap;
+  try { window.createImageBitmap = undefined; } catch (e) { /* solo lectura: seguir */ }
+  const jobs = [];
   for (const [k, p] of Object.entries(MANIFEST.models)) {
-    jobs.push(fetchGLB(p)
-      .then(buf => new Promise((res, rej) => gltf.parse(buf, A + 'models/', res, rej)))
+    if (!gltf) { tick('modelos 3D'); continue; }
+    jobs.push(withTimeout(fetchGLB(p).then(buf => new Promise((res, rej) => gltf.parse(buf, A + 'models/', res, rej))), 45000, p)
       .then(g => { assets.models[k] = g; })
-      .catch(err => console.warn('No se pudo cargar', p, err))
+      .catch(err => reportError(`${p}: ${err && err.message || err}`))
       .finally(() => tick('modelos 3D')));
   }
+  const loadTex = url => withTimeout(new Promise((res, rej) => tex.load(url, res, undefined, () => rej(new Error('no se pudo cargar ' + url)))), 30000, url);
   for (const [k, p] of Object.entries(MANIFEST.textures)) {
-    jobs.push(new Promise(res => tex.load(A + p, t => { t.encoding = THREE.sRGBEncoding; assets.textures[k] = t; tick('texturas'); res(); }, undefined, () => { tick('texturas'); res(); })));
+    jobs.push(loadTex(A + p).then(t => { t.encoding = THREE.sRGBEncoding; assets.textures[k] = t; })
+      .catch(err => reportError(err.message)).finally(() => tick('texturas')));
   }
   for (const n of MANIFEST.sheets) {
-    jobs.push(new Promise(res => tex.load(A + 'sprites/' + n + '.png', t => { assets.sheets[n] = Object.assign(assets.sheets[n] || {}, { tex: t }); tick('sprites'); res(); }, undefined, () => { tick('sprites'); res(); })));
-    jobs.push(fetch(A + 'sprites/' + n + '.json').then(r => r.json()).then(j => { assets.sheets[n] = Object.assign(assets.sheets[n] || {}, { meta: j.meta }); }).catch(() => {}).finally(() => tick('sprites')));
+    jobs.push(loadTex(A + 'sprites/' + n + '.png').then(t => { assets.sheets[n] = Object.assign(assets.sheets[n] || {}, { tex: t }); })
+      .catch(err => reportError(err.message)).finally(() => tick('sprites')));
+    jobs.push(withTimeout(fetch(A + 'sprites/' + n + '.json').then(r => r.json()), 30000, n)
+      .then(j => { assets.sheets[n] = Object.assign(assets.sheets[n] || {}, { meta: j.meta }); })
+      .catch(err => reportError(`${n}.json: ${err.message}`)).finally(() => tick('sprites')));
   }
   await Promise.all(jobs);
+  if (hiddenCIB) window.createImageBitmap = hiddenCIB;
+  // Spritesheets que no cargaron: textura vacía para que el juego siga funcionando.
+  for (const n of MANIFEST.sheets) {
+    const sh = assets.sheets[n] = assets.sheets[n] || {};
+    if (!sh.tex) sh.tex = new THREE.DataTexture(new Uint8Array(4), 1, 1);
+    if (!sh.meta) sh.meta = { cols: 1, rows: 1, count: 1, fps: 1 };
+  }
 }
 
 /* Escala un modelo a una altura (o diámetro) y apoya su base en y=0, centrado en XZ. */
@@ -1303,7 +1344,7 @@ function loop(now) {
   updateDebris(dt);
   updateLights(dt);
   updateCamera(dt);
-  composer.render();
+  if (composer) composer.render(); else renderer.render(scene, camera);
 }
 
 function restart() {
@@ -1318,14 +1359,15 @@ $('#oRetry').addEventListener('click', restart);
 // Acceso para depuración desde la consola: KA.hero, KA.scene, KA.colliders
 window.KA = { get hero() { return hero; }, scene, camera, colliders, CFG };
 
-loadAll().then(() => {
+loadAll().catch(e => reportError(String(e && e.message || e))).then(() => {
   buildArena();
   initWaveBlocks();
   sparks = new Particles(2500, true);
   dust = new Particles(1200, false);
   hero = new Hero();
   state = 'start';
-  $('#loadText').textContent = 'Listo';
+  if (!loadErrors.length) $('#loadText').textContent = 'Listo';
+  else $('#loadText').textContent = 'Listo, con avisos: ' + loadErrors.slice(0, 2).join(' · ');
   $('#bPlay').disabled = false;
   $('#bPlay').focus();
   requestAnimationFrame(loop);
