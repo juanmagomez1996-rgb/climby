@@ -1,6 +1,6 @@
 # Laboratorio de Gases: prototipos
 
-Tres prototipos jugables en HTML5. Cada uno es un solo archivo sin dependencias y con el sonido sintetizado con WebAudio. Abre `index.html` en el navegador para empezar.
+Tres prototipos jugables en HTML5, cada uno en 2D (canvas, sin dependencias) y en 3D (`*-3d.html`, Three.js r128 desde cdnjs, estilo plastilina). La lógica y los controles son los mismos en ambas versiones. El sonido está sintetizado con WebAudio. Abre `index.html` en el navegador para empezar.
 
 | Archivo | Juego | Controles |
 |---|---|---|
