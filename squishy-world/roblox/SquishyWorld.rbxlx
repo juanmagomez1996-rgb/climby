@@ -4203,6 +4203,176 @@ return Audio
           </Item>
           <Item class="ModuleScript" referent="47">
             <Properties>
+              <string name="Name">AvatarHands</string>
+              <string name="Source"><![CDATA[--!strict
+-- Manos de Roblox: cuando apachurras un squishy, los brazos de TU avatar (R15) lo agarran con
+-- IKControl. Las manos se pegan a los lados del squishy (vistos desde tu personaje) y se van
+-- hundiendo con él. Reemplaza las manitos kawaii del prototipo (pedido de Yeison).
+-- Si el squishy está lejos, el personaje camina hasta quedar a la distancia de los brazos.
+-- Con avatar R6 (sin IK) se apachurra igual, solo que sin brazos.
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+
+local AvatarHands = {}
+
+local REACH = 3.2 -- distancia a la que se para frente al squishy
+
+type Rig = {
+	left: IKControl,
+	right: IKControl,
+	tl: Attachment,
+	tr: Attachment,
+	holder: Part,
+	weight: number,
+}
+
+local rig: Rig? = nil
+local target: Model? = nil
+local walking = false
+
+local function character(): (Model?, Humanoid?, BasePart?)
+	local char = Players.LocalPlayer.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	if not char or not hum or not root or not root:IsA("BasePart") then
+		return nil, nil, nil
+	end
+	return char, hum, root
+end
+
+local function build(char: Model, hum: Humanoid): Rig?
+	if hum.RigType ~= Enum.HumanoidRigType.R15 then
+		return nil
+	end
+	local function part(name: string): BasePart?
+		local p = char:FindFirstChild(name)
+		return if p and p:IsA("BasePart") then p else nil
+	end
+	local lu, lh, ru, rh = part("LeftUpperArm"), part("LeftHand"), part("RightUpperArm"), part("RightHand")
+	if not (lu and lh and ru and rh) then
+		return nil
+	end
+	local holder = Instance.new("Part")
+	holder.Name = "SquishHandTargets"
+	holder.Anchored = true
+	holder.CanCollide = false
+	holder.CanQuery = false
+	holder.CanTouch = false
+	holder.Transparency = 1
+	holder.Size = Vector3.one * 0.2
+	holder.Parent = Workspace
+	local tl = Instance.new("Attachment")
+	tl.Parent = holder
+	local tr = Instance.new("Attachment")
+	tr.Parent = holder
+	local function ik(chainRoot: BasePart, hand: BasePart, t: Attachment): IKControl
+		local c = Instance.new("IKControl")
+		c.Type = Enum.IKControlType.Position
+		c.ChainRoot = chainRoot
+		c.EndEffector = hand
+		c.Target = t
+		c.Weight = 0
+		c.SmoothTime = 0.08
+		c.Parent = hum
+		return c
+	end
+	return {
+		left = ik(lu, lh, tl),
+		right = ik(ru, rh, tr),
+		tl = tl,
+		tr = tr,
+		holder = holder,
+		weight = 0,
+	}
+end
+
+local function destroyRig()
+	local r = rig
+	if r then
+		r.left:Destroy()
+		r.right:Destroy()
+		r.holder:Destroy()
+		rig = nil
+	end
+end
+
+--- Empieza a agarrar `model`. Si está lejos, camina hasta él.
+function AvatarHands.grab(model: Model)
+	local char, hum, root = character()
+	if not char or not hum or not root then
+		return
+	end
+	target = model
+	if not rig or not rig.left.Parent then
+		destroyRig()
+		rig = build(char, hum)
+	end
+	local pos = model:GetPivot().Position
+	local flat = Vector3.new(pos.X - root.Position.X, 0, pos.Z - root.Position.Z)
+	if flat.Magnitude > REACH + 1.2 and not walking then
+		walking = true
+		hum:MoveTo(pos - flat.Unit * REACH)
+		task.spawn(function()
+			hum.MoveToFinished:Wait()
+			walking = false
+		end)
+	end
+end
+
+function AvatarHands.release()
+	target = nil
+end
+
+--- k = cuánto está hundido (0..~0.45). Se llama cada frame desde Squish.
+function AvatarHands.update(dt: number, k: number)
+	local char, hum, root = character()
+	local r = rig
+	if not r then
+		return
+	end
+	if not char or not hum or not root then
+		destroyRig()
+		return
+	end
+	local m = target
+	local want = 0
+	if m and m.Parent then
+		local cf, size = m:GetBoundingBox()
+		local toSq = Vector3.new(cf.X - root.Position.X, 0, cf.Z - root.Position.Z)
+		local dist = toSq.Magnitude
+		if dist < REACH + 2.5 then
+			want = 1
+			-- mirar al squishy
+			if dist > 0.3 and not walking then
+				local look = root.Position + toSq.Unit
+				root.CFrame = root.CFrame:Lerp(CFrame.lookAt(root.Position, look), math.min(1, dt * 10))
+			end
+			-- lados del squishy vistos desde el personaje; se meten hacia adentro al apretar
+			local fwd = if dist > 0.01 then toSq.Unit else root.CFrame.LookVector
+			local side = fwd:Cross(Vector3.yAxis).Unit
+			local half = math.max(size.X, size.Z) * 0.5 * (1 + k * 0.62)
+			local squeeze = half * (0.95 - k * 0.5)
+			local y = cf.Y + size.Y * (0.1 - k * 0.3)
+			local center = Vector3.new(cf.X, y, cf.Z) - fwd * 0.15
+			r.holder.CFrame = CFrame.new(center)
+			r.tl.WorldPosition = center + side * squeeze
+			r.tr.WorldPosition = center - side * squeeze
+		end
+	end
+	r.weight += (want - r.weight) * math.min(1, dt * 8)
+	r.left.Weight = r.weight
+	r.right.Weight = r.weight
+	if want == 0 and r.weight < 0.02 then
+		destroyRig()
+	end
+end
+
+return AvatarHands
+]]></string>
+            </Properties>
+          </Item>
+          <Item class="ModuleScript" referent="48">
+            <Properties>
               <string name="Name">Companion</string>
               <string name="Source"><![CDATA[--!strict
 -- Compañeros: el squishy equipado de CADA jugador y de cada NPC lo sigue con saltito y
@@ -4352,7 +4522,7 @@ return Companion
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="48">
+          <Item class="ModuleScript" referent="49">
             <Properties>
               <string name="Name">Dialog</string>
               <string name="Source"><![CDATA[--!strict
@@ -4409,7 +4579,7 @@ return Dialog
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="49">
+          <Item class="ModuleScript" referent="50">
             <Properties>
               <string name="Name">Hud</string>
               <string name="Source"><![CDATA[--!strict
@@ -4665,7 +4835,7 @@ return Hud
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="50">
+          <Item class="ModuleScript" referent="51">
             <Properties>
               <string name="Name">Index</string>
               <string name="Source"><![CDATA[--!strict
@@ -4750,15 +4920,12 @@ local function render()
 				LayoutOrder = i,
 				Parent = ui.grid,
 			}, { Kit.corner(12), Kit.stroke(Color3.fromHex(r.color), 2) })
-			local th: Frame = Kit.new(
-				"Frame",
-				{
-					BackgroundTransparency = 1,
-					Position = UDim2.fromOffset(6, 4),
-					Size = UDim2.new(1, -12, 0, 70),
-					Parent = cell,
-				}
-			)
+			local th: Frame = Kit.new("Frame", {
+				BackgroundTransparency = 1,
+				Position = UDim2.fromOffset(6, 4),
+				Size = UDim2.new(1, -12, 0, 70),
+				Parent = cell,
+			})
 			Thumb.make({ species = current, variant = vid }, th, not known)
 			Kit.text(
 				if known then Squishy.name({ species = current, variant = vid, mutation = "normal" }) else "???",
@@ -4807,7 +4974,7 @@ return Index
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="51">
+          <Item class="ModuleScript" referent="52">
             <Properties>
               <string name="Name">Interact</string>
               <string name="Source"><![CDATA[--!strict
@@ -4889,7 +5056,7 @@ return Interact
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="52">
+          <Item class="ModuleScript" referent="53">
             <Properties>
               <string name="Name">Inventory</string>
               <string name="Source"><![CDATA[--!strict
@@ -4947,16 +5114,12 @@ function Inventory.card(parent: Instance, s: any, d: any?, selected: boolean?): 
 		Parent = b,
 	})
 	if s.fav then
-		Kit.text(
-			"★",
-			16,
-			{
-				Position = UDim2.fromOffset(6, 2),
-				Size = UDim2.fromOffset(20, 20),
-				TextColor3 = Theme.yellowD,
-				Parent = b,
-			}
-		)
+		Kit.text("★", 16, {
+			Position = UDim2.fromOffset(6, 2),
+			Size = UDim2.fromOffset(20, 20),
+			TextColor3 = Theme.yellowD,
+			Parent = b,
+		})
 	end
 	if d and d.equipped == s.id then
 		Kit.text("Equipado", 10, {
@@ -5209,7 +5372,7 @@ return Inventory
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="53">
+          <Item class="ModuleScript" referent="54">
             <Properties>
               <string name="Name">Machine</string>
               <string name="Source"><![CDATA[--!strict
@@ -5870,7 +6033,7 @@ return Machine
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="54">
+          <Item class="ModuleScript" referent="55">
             <Properties>
               <string name="Name">Reveal</string>
               <string name="Source"><![CDATA[--!strict
@@ -6108,7 +6271,7 @@ return Reveal
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="55">
+          <Item class="ModuleScript" referent="56">
             <Properties>
               <string name="Name">Router</string>
               <string name="Source"><![CDATA[--!strict
@@ -6133,7 +6296,7 @@ return Router
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="56">
+          <Item class="ModuleScript" referent="57">
             <Properties>
               <string name="Name">Shop</string>
               <string name="Source"><![CDATA[--!strict
@@ -6457,14 +6620,15 @@ return Shop
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="57">
+          <Item class="ModuleScript" referent="58">
             <Properties>
               <string name="Name">Squish</string>
               <string name="Source"><![CDATA[--!strict
 -- Apachurrar en el mundo — versión mínima (Opción C de ROBLOX_ARCHITECTURE §6): mantener clic
 -- (o el dedo) sobre cualquier squishy a < 34 studs lo aplasta (squash & stretch) y al soltar sube
 -- lento con la recuperación de 2 fases de SYSTEMS_SPEC §7 (tauS = rise/3). El dueño se detiene.
--- La física de espuma completa con EditableMesh + manos que rodean el contorno es la Fase 7.
+-- Los brazos de tu avatar R15 lo agarran (AvatarHands.luau). La física de espuma completa con
+-- EditableMesh es la Fase 7.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -6476,6 +6640,7 @@ local Catalog = require(Shared.Logic.Catalog)
 local Damp = require(Shared.Util.Damp)
 local Modal = require(script.Parent.Parent.UI.Modal)
 local Audio = require(script.Parent.Audio)
+local AvatarHands = require(script.Parent.AvatarHands)
 local Companion = require(script.Parent.Companion)
 local State = require(script.Parent.State)
 
@@ -6600,6 +6765,7 @@ local function press(pos: Vector2)
 	local t = active :: Target
 	t.held = true
 	Companion.frozen = m
+	AvatarHands.grab(m)
 	Audio.play(if t.soft >= 1.1 then "squish2" else "squish", 0.9 + math.random() * 0.2)
 	task.spawn(State.request, "squish")
 	local npc = m:GetAttribute("NpcOwner")
@@ -6609,6 +6775,7 @@ local function press(pos: Vector2)
 end
 
 local function releaseAll()
+	AvatarHands.release()
 	local t = active
 	if t and t.held then
 		t.held = false
@@ -6642,6 +6809,7 @@ function Squish.init()
 	end)
 	RunService.RenderStepped:Connect(function(dt: number)
 		local t = active
+		AvatarHands.update(dt, if t then t.f + t.s else 0)
 		if not t then
 			return
 		end
@@ -6679,7 +6847,7 @@ return Squish
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="58">
+          <Item class="ModuleScript" referent="59">
             <Properties>
               <string name="Name">State</string>
               <string name="Source"><![CDATA[--!strict
@@ -6737,7 +6905,7 @@ return State
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="59">
+          <Item class="ModuleScript" referent="60">
             <Properties>
               <string name="Name">Trade</string>
               <string name="Source"><![CDATA[--!strict
@@ -6788,15 +6956,11 @@ local function slotRow(parent: Instance, items: { any }, max: number, order: num
 			}, {
 				Kit.corner(14),
 				Kit.stroke(Theme.lav2, 2),
-				Kit.text(
-					"Vacío",
-					12,
-					{
-						TextColor3 = Theme.muted,
-						Size = UDim2.fromScale(1, 1),
-						TextXAlignment = Enum.TextXAlignment.Center,
-					}
-				),
+				Kit.text("Vacío", 12, {
+					TextColor3 = Theme.muted,
+					Size = UDim2.fromScale(1, 1),
+					TextXAlignment = Enum.TextXAlignment.Center,
+				}),
 			})
 		end
 	end
@@ -7195,7 +7359,7 @@ return Trade
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="60">
+          <Item class="ModuleScript" referent="61">
             <Properties>
               <string name="Name">Tutorial</string>
               <string name="Source"><![CDATA[--!strict
@@ -7322,11 +7486,11 @@ return Tutorial
             </Properties>
           </Item>
         </Item>
-        <Item class="Folder" referent="61">
+        <Item class="Folder" referent="62">
           <Properties>
             <string name="Name">Engine</string>
           </Properties>
-          <Item class="ModuleScript" referent="62">
+          <Item class="ModuleScript" referent="63">
             <Properties>
               <string name="Name">SquishyFactory</string>
               <string name="Source"><![CDATA[--!strict
@@ -7594,7 +7758,7 @@ return SquishyFactory
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="63">
+          <Item class="ModuleScript" referent="64">
             <Properties>
               <string name="Name">Thumb</string>
               <string name="Source"><![CDATA[--!strict
@@ -7646,7 +7810,7 @@ return Thumb
             </Properties>
           </Item>
         </Item>
-        <Item class="LocalScript" referent="64">
+        <Item class="LocalScript" referent="65">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[--!strict
@@ -7702,11 +7866,11 @@ print("[Squishy World] Cliente listo —", #Config.Species, "moldes cargados")
 ]]></string>
           </Properties>
         </Item>
-        <Item class="Folder" referent="65">
+        <Item class="Folder" referent="66">
           <Properties>
             <string name="Name">UI</string>
           </Properties>
-          <Item class="ModuleScript" referent="66">
+          <Item class="ModuleScript" referent="67">
             <Properties>
               <string name="Name">Kit</string>
               <string name="Source"><![CDATA[--!strict
@@ -7874,7 +8038,7 @@ return Kit
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="67">
+          <Item class="ModuleScript" referent="68">
             <Properties>
               <string name="Name">Modal</string>
               <string name="Source"><![CDATA[--!strict
@@ -8000,7 +8164,7 @@ return Modal
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="68">
+          <Item class="ModuleScript" referent="69">
             <Properties>
               <string name="Name">Theme</string>
               <string name="Source"><![CDATA[--!strict
@@ -8045,7 +8209,7 @@ return Theme
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="69">
+          <Item class="ModuleScript" referent="70">
             <Properties>
               <string name="Name">Toast</string>
               <string name="Source"><![CDATA[--!strict
@@ -8133,7 +8297,7 @@ return Toast
       </Item>
     </Item>
   </Item>
-  <Item class="Workspace" referent="70">
+  <Item class="Workspace" referent="71">
     <Properties>
       <string name="Name">Workspace</string>
       <bool name="FilteringEnabled">true</bool>

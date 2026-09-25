@@ -2,7 +2,8 @@
 -- Apachurrar en el mundo — versión mínima (Opción C de ROBLOX_ARCHITECTURE §6): mantener clic
 -- (o el dedo) sobre cualquier squishy a < 34 studs lo aplasta (squash & stretch) y al soltar sube
 -- lento con la recuperación de 2 fases de SYSTEMS_SPEC §7 (tauS = rise/3). El dueño se detiene.
--- La física de espuma completa con EditableMesh + manos que rodean el contorno es la Fase 7.
+-- Los brazos de tu avatar R15 lo agarran (AvatarHands.luau). La física de espuma completa con
+-- EditableMesh es la Fase 7.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -14,6 +15,7 @@ local Catalog = require(Shared.Logic.Catalog)
 local Damp = require(Shared.Util.Damp)
 local Modal = require(script.Parent.Parent.UI.Modal)
 local Audio = require(script.Parent.Audio)
+local AvatarHands = require(script.Parent.AvatarHands)
 local Companion = require(script.Parent.Companion)
 local State = require(script.Parent.State)
 
@@ -138,6 +140,7 @@ local function press(pos: Vector2)
 	local t = active :: Target
 	t.held = true
 	Companion.frozen = m
+	AvatarHands.grab(m)
 	Audio.play(if t.soft >= 1.1 then "squish2" else "squish", 0.9 + math.random() * 0.2)
 	task.spawn(State.request, "squish")
 	local npc = m:GetAttribute("NpcOwner")
@@ -147,6 +150,7 @@ local function press(pos: Vector2)
 end
 
 local function releaseAll()
+	AvatarHands.release()
 	local t = active
 	if t and t.held then
 		t.held = false
@@ -180,6 +184,7 @@ function Squish.init()
 	end)
 	RunService.RenderStepped:Connect(function(dt: number)
 		local t = active
+		AvatarHands.update(dt, if t then t.f + t.s else 0)
 		if not t then
 			return
 		end

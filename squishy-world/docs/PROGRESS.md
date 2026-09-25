@@ -32,7 +32,8 @@
   pociones/VIP), Máquina (moldes, virales, rellenos, probabilidades, medidor con zonas, mantener y
   soltar, squishy creciendo en la cúpula), Revelación, Inventario, Tienda (+ ⭐ Robux), Índice 413
   con siluetas, Intercambio NPC y con jugadores, Compañeros de todos (jugadores y NPCs), Apachurrar
-  mínimo (Opción C: squash & stretch con slow rise de 2 fases), Tutorial con rayo guía rosado.
+  mínimo (Opción C: squash & stretch con slow rise de 2 fases) **con los brazos de tu avatar R15
+  agarrándolo (IKControl, `AvatarHands.luau`)**, Tutorial con rayo guía rosado.
 - `SquishyFactory`: usa `ReplicatedStorage.Models.Squishies.<id>` si existe; si no, un squishy
   provisional (bolita con carita y orejas). Recolorea solo `Body` según la variante.
 
@@ -49,6 +50,9 @@
 - Cámara: se usa la cámara normal de Roblox; el panel de la máquina no mueve la cámara (el prototipo
   la encuadraba). Se puede agregar en el pulido.
 - Apachurrar: por ahora squash & stretch del modelo (Opción C); la espuma real llega en la Fase 7.
+- Manos: en vez de las manitos kawaii (`hand_mitten.glb`) se usan los brazos del avatar de Roblox
+  con IKControl (pedido de Yeison). Si te lejos, el personaje camina hasta el squishy. R6: sin brazos.
+  Por ahora el IK solo lo ve quien apachurra (los demás ven el squishy aplastarse cuando llegue SquishBroadcast).
 - Chat con NPCs: respuestas predefinidas (sin IA) hasta tener el proxy.
 - Misiones: `quest.i` es 1-based en Luau (el prototipo usa 0-based).
 
