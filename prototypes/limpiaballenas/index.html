@@ -1,0 +1,840 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+</head>
+<body>
+<title>Limpiaballenas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap">
+<style>
+  :root {
+    color-scheme: dark;
+    --abyss: #03131f;
+    --deep: #0b3a57;
+    --foam: #eaf5f1;
+    --mist: #9fc4cc;
+    --kelp: #8fd6c6;
+    --coral: #ff9e87;
+    --glass: rgba(6, 34, 54, 0.62);
+    --line: rgba(159, 196, 204, 0.22);
+  }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--abyss);
+    color: var(--foam);
+    font-family: "Atkinson Hyperlegible", system-ui, sans-serif;
+    overflow: hidden;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  #sea { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+
+  .hud {
+    position: fixed; left: 0; right: 0; top: 0;
+    padding: calc(env(safe-area-inset-top, 0px) + 14px) 16px 0;
+    display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;
+    pointer-events: none;
+  }
+  .brand h1 {
+    margin: 0; font-family: "Fredoka", "Trebuchet MS", sans-serif; font-weight: 600;
+    font-size: clamp(22px, 4vw, 30px); letter-spacing: 0.01em; line-height: 1;
+  }
+  .brand p { margin: 6px 0 0; color: var(--mist); font-size: 14px; }
+  .brand p b { color: var(--foam); font-weight: 700; }
+
+  .right { display: flex; align-items: center; gap: 10px; }
+  .count {
+    display: grid; gap: 6px; min-width: 132px;
+    padding: 8px 12px; border-radius: 14px;
+    background: var(--glass); border: 1px solid var(--line);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  }
+  .count span { font-size: 13px; color: var(--mist); font-variant-numeric: tabular-nums; }
+  .count span b { font-family: "Fredoka", sans-serif; font-size: 20px; color: var(--foam); margin-right: 4px; }
+  .bar { height: 5px; border-radius: 3px; background: rgba(159,196,204,0.18); overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0%; background: var(--kelp); border-radius: 3px; transition: width .4s ease; }
+
+  button {
+    font: inherit; color: var(--foam); cursor: pointer; pointer-events: auto;
+    background: var(--glass); border: 1px solid var(--line); border-radius: 12px;
+  }
+  button:focus-visible { outline: 2px solid var(--kelp); outline-offset: 2px; }
+  #mute { width: 44px; height: 44px; display: grid; place-items: center; }
+  #mute svg { width: 22px; height: 22px; }
+
+  .legend {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    padding: 0 16px calc(env(safe-area-inset-bottom, 0px) + 14px);
+    display: flex; justify-content: center; flex-wrap: wrap; gap: 8px 18px;
+    pointer-events: none; font-size: 14px; color: var(--mist);
+  }
+  .legend div { display: flex; align-items: center; gap: 8px; }
+  .legend svg { width: 26px; height: 26px; flex: none; }
+  .legend b { color: var(--foam); }
+  .legend em { font-size: 12px; opacity: .75; }
+
+  .card {
+    position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: min(360px, calc(100% - 32px)); box-sizing: border-box;
+    padding: 22px 22px 20px; border-radius: 22px; text-align: center;
+    background: rgba(5, 30, 48, 0.82); border: 1px solid var(--line);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 20px 60px rgba(0,0,0,.4);
+    animation: rise .6s ease both;
+  }
+  .card h2 { margin: 0 0 8px; font-family: "Fredoka", sans-serif; font-weight: 600; font-size: 26px; text-wrap: balance; }
+  .card p { margin: 0 0 18px; color: var(--mist); line-height: 1.45; }
+  #next {
+    padding: 12px 22px; border-radius: 999px; font-weight: 700;
+    background: var(--coral); color: #2a0f0a; border: none;
+  }
+  @media (max-width: 440px) {
+    .brand h1 { font-size: 20px; }
+    .count { min-width: 92px; padding: 6px 10px; }
+    .count span b { font-size: 18px; }
+    .legend { font-size: 13px; }
+  }
+  @keyframes rise { from { opacity: 0; transform: translate(-50%, -44%); } }
+  @media (prefers-reduced-motion: reduce) { .card { animation: none; } }
+</style>
+
+<canvas id="sea" aria-label="Una ballena jorobada cubierta de bellotas de mar y percebes"></canvas>
+
+<header class="hud">
+  <div class="brand">
+    <h1>Limpiaballenas</h1>
+    <p><b id="whaleName">Marina</b> · yubarta nº <span id="whaleNo">1</span></p>
+  </div>
+  <div class="right">
+    <div class="count" aria-live="polite">
+      <span><b id="left">0</b>por quitar</span>
+      <div class="bar"><i id="fill"></i></div>
+    </div>
+    <button id="mute" aria-label="Silenciar sonido" aria-pressed="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 9h4l5-4v14l-5-4H4z"/>
+        <path id="waves" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/>
+        <path id="cross" d="M17 9l5 6M22 9l-5 6" hidden/>
+      </svg>
+    </button>
+  </div>
+</header>
+
+<footer class="legend">
+  <div>
+    <svg viewBox="0 0 26 26"><circle cx="13" cy="14" r="10" fill="#cfc7b8"/><circle cx="13" cy="14" r="10" fill="none" stroke="#8d857a" stroke-width="1.5"/><ellipse cx="13" cy="13.5" rx="4" ry="3" fill="#3a3434"/></svg>
+    <span><b>Bellota de mar</b> · frótala hasta que se suelte <em>(Coronula)</em></span>
+  </div>
+  <div>
+    <svg viewBox="0 0 26 26"><path d="M4 21 Q9 16 15 12" stroke="#5a3a4a" stroke-width="4.5" stroke-linecap="round" fill="none"/><ellipse cx="17" cy="10" rx="5" ry="3.8" transform="rotate(-35 17 10)" fill="#ece5d7"/><ellipse cx="21.5" cy="4.8" rx="2.2" ry="3" transform="rotate(-10 21.5 4.8)" fill="#6b4658"/><ellipse cx="23.2" cy="9" rx="2.2" ry="3" transform="rotate(40 23.2 9)" fill="#6b4658"/></svg>
+    <span><b>Percebe</b> · agárralo y tira <em>(Conchoderma)</em></span>
+  </div>
+</footer>
+
+<div class="card" id="card" hidden>
+  <h2 id="cardTitle">Marina está limpia</h2>
+  <p id="cardText"></p>
+  <button id="next">Siguiente ballena</button>
+</div>
+
+<script>
+(() => {
+  const cv = document.getElementById('sea');
+  const ctx = cv.getContext('2d');
+  const hctx = document.createElement('canvas').getContext('2d'); // identity-transform hit tests
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let W = 0, H = 0, DPR = 1;
+
+  // ---------- storage ----------
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+  };
+  const NAMES = ['Marina', 'Tomasa', 'Nube', 'Bruno', 'Celestina', 'Perla', 'Anselmo', 'Remedios', 'Luz', 'Olvido', 'Gaspar', 'Brisa'];
+  let whaleNo = store.get('limpiaballenas.no', 1);
+  let soundOn = store.get('limpiaballenas.sound', true);
+
+  // ---------- whale geometry (local units, head at +x) ----------
+  const BODY = new Path2D('M 470 0 C 455 -90 330 -145 140 -140 C -40 -135 -220 -100 -390 -25 L -390 25 C -220 90 -40 150 160 150 C 330 150 460 90 470 0 Z');
+  const BELLY = new Path2D('M 480 12 C 420 70 300 104 140 110 C -40 114 -220 72 -400 12 L -400 200 L 480 200 Z');
+  const DORSAL = new Path2D('M -95 -126 C -140 -150 -185 -148 -222 -104 L -150 -118 Z');
+  const FLUKE = new Path2D('M 30 -24 C -40 -32 -82 -100 -138 -126 C -118 -62 -114 -16 -90 0 C -114 16 -118 62 -138 126 C -82 100 -40 32 30 24 Z');
+  const FIN = new Path2D('M 34 -14 C 0 50 -130 145 -240 168 C -250 156 -236 146 -222 140 C -238 132 -226 120 -210 118 C -222 106 -206 96 -190 96 C -130 60 -60 20 -30 6 Z');
+  const FIN_PIVOT = { x: 200, y: 95 };
+  const EYE = { x: 318, y: 40 };
+  const BLOWHOLE = { x: 255, y: -128 };
+
+  function inBody(x, y, inset) {
+    if (!hctx.isPointInPath(BODY, x, y)) return false;
+    for (let a = 0; a < 6.28; a += 1.05) if (!hctx.isPointInPath(BODY, x + Math.cos(a) * inset, y + Math.sin(a) * inset)) return false;
+    return true;
+  }
+  function nearFin(x, y, pad) {
+    for (let a = 0; a < 6.28; a += 0.8) {
+      if (hctx.isPointInPath(FIN, x - FIN_PIVOT.x + Math.cos(a) * pad, y - FIN_PIVOT.y + Math.sin(a) * pad)) return true;
+    }
+    return hctx.isPointInPath(FIN, x - FIN_PIVOT.x, y - FIN_PIVOT.y);
+  }
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const gauss = () => (Math.random() + Math.random() + Math.random() - 1.5) * 1.3;
+
+  // skin speckles and scars, regenerated per whale
+  let spots = [], scars = [], tubercles = [];
+  function genSkin() {
+    spots = []; scars = [];
+    while (spots.length < 90) {
+      const x = rnd(-390, 470), y = rnd(-145, 150);
+      if (hctx.isPointInPath(BODY, x, y)) spots.push({ x, y, r: rnd(1, 4.5), a: rnd(0.05, 0.16) });
+    }
+    while (scars.length < 7) {
+      const x = rnd(-300, 400), y = rnd(-120, 60);
+      if (inBody(x, y, 20)) scars.push({ x, y, a: rnd(-0.6, 0.6), l: rnd(14, 34) });
+    }
+    tubercles = [[440, -48], [410, -70], [378, -90], [345, -104], [452, -22], [420, -30], [390, -52]].map(([x, y]) => ({ x, y, r: rnd(4, 6) }));
+  }
+
+  // ---------- barnacles ----------
+  let barnacles = [], total = 0, removed = 0;
+  function genBarnacles(n) {
+    barnacles = [];
+    const centers = [];
+    const cc = 3 + Math.floor(Math.random() * 3);
+    while (centers.length < cc) {
+      const x = rnd(-330, 420), y = rnd(-120, 110);
+      if (inBody(x, y, 30) && !nearFin(x, y, 20)) centers.push({ x, y });
+    }
+    let tries = 0;
+    while (barnacles.length < n && tries < 8000) {
+      tries++;
+      const c = centers[Math.floor(Math.random() * cc)];
+      const loose = Math.random() < 0.22;
+      const x = loose ? rnd(-360, 440) : c.x + gauss() * 75;
+      const y = loose ? rnd(-130, 130) : c.y + gauss() * 45;
+      const goose = Math.random() < 0.34;
+      const r = goose ? 10 : rnd(10, 19);
+      if (!inBody(x, y, r + 6)) continue;
+      if (nearFin(x, y, r + 10)) continue;
+      if (Math.hypot(x - EYE.x, y - EYE.y) < 40) continue;
+      if (barnacles.some(b => Math.hypot(b.x - x, b.y - y) < b.r + r + 5)) continue;
+      const seed = Math.random() * 1000;
+      if (goose) {
+        // stalks trail toward the tail, the way the water pushes them
+        const ang = Math.PI + rnd(-0.9, 0.9) + (y < -60 ? -0.35 : y > 80 ? 0.35 : 0);
+        const len = rnd(26, 40);
+        const rx = x + Math.cos(ang) * len, ry = y + Math.sin(ang) * len;
+        barnacles.push({ kind: 'g', x, y, r, ang, len, rx, ry, tx: rx, ty: ry, vx: 0, vy: 0, need: rnd(55, 85), tension: 0, seed });
+      } else {
+        const cracks = Array.from({ length: 5 }, () => ({ a: rnd(0, 6.28), l: rnd(0.5, 0.95) }));
+        barnacles.push({ kind: 'a', x, y, r, rub: 0, need: 70 + r * 5, jig: 0, seed, cracks, rot: rnd(0, 6.28) });
+      }
+    }
+    total = barnacles.length; removed = 0;
+  }
+
+  // ---------- particles ----------
+  let debris = [], chips = [], bubbles = [], marks = [];
+  const plankton = Array.from({ length: 90 }, () => ({ x: Math.random(), y: Math.random(), z: rnd(0.3, 1), p: rnd(0, 6.28) }));
+  const ambient = Array.from({ length: 26 }, () => ({ x: Math.random(), y: Math.random(), r: rnd(1.2, 3.5), s: rnd(12, 30), p: rnd(0, 6.28) }));
+
+  // ---------- audio ----------
+  let AC = null, master, send, noise, creak = null;
+  function ensureAudio() {
+    if (AC) { if (AC.state === 'suspended') AC.resume(); return; }
+    try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; }
+    master = AC.createGain(); master.gain.value = soundOn ? 0.9 : 0;
+    const comp = AC.createDynamicsCompressor(); master.connect(comp); comp.connect(AC.destination);
+    // underwater echo
+    const delay = AC.createDelay(1); delay.delayTime.value = 0.31;
+    const fb = AC.createGain(); fb.gain.value = 0.38;
+    const dl = AC.createBiquadFilter(); dl.type = 'lowpass'; dl.frequency.value = 1100;
+    delay.connect(dl); dl.connect(fb); fb.connect(delay); dl.connect(master);
+    send = AC.createGain(); send.gain.value = 0.55; send.connect(delay);
+    // noise buffer (brown-ish)
+    const len = AC.sampleRate * 2;
+    noise = AC.createBuffer(1, len, AC.sampleRate);
+    const d = noise.getChannelData(0); let last = 0;
+    for (let i = 0; i < len; i++) { const w = Math.random() * 2 - 1; last = (last + 0.02 * w) / 1.02; d[i] = last * 3.2 + w * 0.04; }
+    // ocean bed
+    const src = AC.createBufferSource(); src.buffer = noise; src.loop = true;
+    const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 360;
+    const lfo = AC.createOscillator(); lfo.frequency.value = 0.07;
+    const lfoG = AC.createGain(); lfoG.gain.value = 180; lfo.connect(lfoG); lfoG.connect(lp.frequency);
+    const g = AC.createGain(); g.gain.value = 0.22;
+    src.connect(lp); lp.connect(g); g.connect(master); src.start(); lfo.start();
+  }
+  function env(g, t, peak, a, dcy) {
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(peak, t + a);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + a + dcy);
+  }
+  function sfxPop(pitch) {
+    if (!AC) return; const t = AC.currentTime;
+    const o = AC.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(560 * pitch, t); o.frequency.exponentialRampToValueAtTime(150 * pitch, t + 0.14);
+    const g = AC.createGain(); env(g, t, 0.45, 0.004, 0.2);
+    o.connect(g); g.connect(master); g.connect(send); o.start(t); o.stop(t + 0.3);
+    const n = AC.createBufferSource(); n.buffer = noise;
+    const bp = AC.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1800; bp.Q.value = 1.2;
+    const ng = AC.createGain(); env(ng, t, 0.5, 0.002, 0.05);
+    n.connect(bp); bp.connect(ng); ng.connect(master); n.start(t, Math.random()); n.stop(t + 0.08);
+    // trailing bloops
+    for (let i = 0; i < 3; i++) {
+      const tt = t + 0.08 + i * rnd(0.05, 0.09);
+      const b = AC.createOscillator(); b.type = 'sine';
+      b.frequency.setValueAtTime(rnd(380, 520), tt); b.frequency.exponentialRampToValueAtTime(rnd(900, 1300), tt + 0.06);
+      const bg = AC.createGain(); env(bg, tt, 0.06, 0.005, 0.06);
+      b.connect(bg); bg.connect(master); b.start(tt); b.stop(tt + 0.1);
+    }
+  }
+  let lastScratch = 0;
+  function sfxScratch(amt) {
+    if (!AC) return; const t = AC.currentTime;
+    if (t - lastScratch < 0.055) return; lastScratch = t;
+    const n = AC.createBufferSource(); n.buffer = noise; n.playbackRate.value = rnd(1.6, 2.4);
+    const bp = AC.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = rnd(2400, 3600); bp.Q.value = 3;
+    const g = AC.createGain(); env(g, t, 0.18 + amt * 0.2, 0.004, 0.05);
+    n.connect(bp); bp.connect(g); g.connect(master); n.start(t, Math.random()); n.stop(t + 0.08);
+  }
+  function creakStart() {
+    if (!AC || creak) return;
+    const o = AC.createOscillator(); o.type = 'triangle'; o.frequency.value = 110;
+    const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 700;
+    const g = AC.createGain(); g.gain.value = 0.0001;
+    o.connect(lp); lp.connect(g); g.connect(master); o.start();
+    creak = { o, g };
+  }
+  function creakSet(ten) {
+    if (!creak) return; const t = AC.currentTime;
+    creak.o.frequency.setTargetAtTime(95 + ten * 230, t, 0.03);
+    creak.g.gain.setTargetAtTime(ten > 0.02 ? 0.03 + ten * 0.07 : 0.0001, t, 0.04);
+  }
+  function creakStop() {
+    if (!creak) return; const c = creak; creak = null; const t = AC.currentTime;
+    c.g.gain.setTargetAtTime(0.0001, t, 0.03); c.o.stop(t + 0.2);
+  }
+  function sfxSong(big) {
+    if (!AC) return; const t = AC.currentTime;
+    const dur = big ? 3.6 : 2.4;
+    const pts = big ? [150, 230, 190, 310, 120] : [170, 250, 140];
+    [1, 1.5].forEach((mul, k) => {
+      const o = AC.createOscillator(); o.type = 'sine';
+      const vib = AC.createOscillator(); vib.frequency.value = 5.2;
+      const vg = AC.createGain(); vg.gain.value = 4 * mul; vib.connect(vg); vg.connect(o.frequency);
+      o.frequency.setValueAtTime(pts[0] * mul, t);
+      pts.forEach((f, i) => { if (i) o.frequency.exponentialRampToValueAtTime(f * mul, t + (dur * i) / (pts.length - 1)); });
+      const g = AC.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(k ? 0.04 : 0.13, t + 0.4);
+      g.gain.setValueAtTime(k ? 0.04 : 0.13, t + dur - 0.6);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 900;
+      o.connect(lp); lp.connect(g); g.connect(master); g.connect(send);
+      o.start(t); vib.start(t); o.stop(t + dur + 0.05); vib.stop(t + dur + 0.05);
+    });
+  }
+
+  // ---------- layout / transform ----------
+  let M = new DOMMatrix(), Minv = new DOMMatrix(), S = 1, portrait = false;
+  let swim = 0;
+  function resize() {
+    DPR = Math.min(2, window.devicePixelRatio || 1);
+    W = window.innerWidth; H = window.innerHeight;
+    cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+  }
+  function computeMatrix(t) {
+    portrait = H > W * 1.1;
+    const top = 90, bottom = portrait ? 110 : 80;
+    const bob = reduce ? 0 : 1;
+    if (portrait) {
+      S = Math.min((W - 24) / 440, (H - top - bottom) / 1040);
+    } else {
+      S = Math.min((W - 40) / 1060, (H - top - bottom) / 430);
+    }
+    const cx = W / 2, cy = top + (H - top - bottom) / 2 + Math.sin(t * 0.6) * 6 * bob;
+    const rot = (portrait ? -90 : 0) + Math.sin(t * 0.37) * 1.4 * bob;
+    M = new DOMMatrix().translate(cx, cy).rotate(rot).scale(S).translate(swim + 25, -55);
+    Minv = M.inverse();
+  }
+  const toLocal = (x, y) => { const p = Minv.transformPoint(new DOMPoint(x, y)); return { x: p.x, y: p.y }; };
+  const toWorld = (x, y) => { const p = M.transformPoint(new DOMPoint(x, y)); return { x: p.x, y: p.y }; };
+
+  // ---------- state ----------
+  let state = 'play'; // play | clean | exit | enter
+  let stateT = 0;
+  let eyeHappy = 0, blinkT = 3, blink = 0;
+  let milestones = new Set();
+  const hud = {
+    left: document.getElementById('left'), fill: document.getElementById('fill'),
+    name: document.getElementById('whaleName'), no: document.getElementById('whaleNo'),
+    card: document.getElementById('card'), cardTitle: document.getElementById('cardTitle'), cardText: document.getElementById('cardText')
+  };
+  const whaleName = () => NAMES[(whaleNo - 1) % NAMES.length];
+  function updateHud() {
+    hud.left.textContent = barnacles.length;
+    hud.fill.style.width = (total ? (removed / total) * 100 : 0) + '%';
+    hud.name.textContent = whaleName();
+    hud.no.textContent = whaleNo;
+  }
+  function newWhale() {
+    genSkin();
+    genBarnacles(Math.min(54, 26 + whaleNo * 4));
+    milestones = new Set();
+    marks = [];
+    updateHud();
+  }
+
+  // ---------- removal ----------
+  function detach(b, dirLocal) {
+    const i = barnacles.indexOf(b); if (i < 0) return;
+    barnacles.splice(i, 1);
+    removed++;
+    const cx = b.kind === 'g' ? b.tx : b.x, cy = b.kind === 'g' ? b.ty : b.y;
+    const w = toWorld(cx, cy);
+    const w2 = toWorld(cx + dirLocal.x, cy + dirLocal.y);
+    let dx = w2.x - w.x, dy = w2.y - w.y; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
+    const sp = b.kind === 'g' ? 260 : 150;
+    debris.push({ b, x: w.x, y: w.y, vx: dx * sp, vy: dy * sp - 40, rot: 0, vr: rnd(-4, 4), life: 0 });
+    marks.push({ x: b.x, y: b.y, r: b.kind === 'g' ? 7 : b.r * 0.9, t: 0 });
+    for (let k = 0; k < 10; k++) {
+      const a = rnd(0, 6.28), s = rnd(40, 170);
+      chips.push({ x: w.x, y: w.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0, max: rnd(0.4, 0.9), size: rnd(1.5, 3.5) * Math.max(0.6, S), col: Math.random() < 0.6 ? '#e8e1d2' : '#9d9488' });
+    }
+    for (let k = 0; k < 6; k++) bubbles.push({ x: w.x + rnd(-8, 8), y: w.y + rnd(-8, 8), vy: -rnd(40, 110), r: rnd(2, 6) * Math.max(0.7, S), life: 0, max: rnd(1.4, 2.6), p: rnd(0, 6.28) });
+    sfxPop(b.kind === 'g' ? rnd(0.8, 0.95) : rnd(1.05, 1.3));
+    eyeHappy = 0.9;
+    if (navigator.vibrate) { try { navigator.vibrate(12); } catch (e) {} }
+    const frac = removed / total;
+    for (const m of [0.25, 0.5, 0.75]) if (frac >= m && !milestones.has(m)) { milestones.add(m); setTimeout(() => sfxSong(false), 350); }
+    updateHud();
+    if (!barnacles.length) { state = 'clean'; stateT = 0; }
+  }
+
+  // ---------- input ----------
+  let pointerId = null, held = null, grabOff = null, pLocal = null, lastLocal = null, downAt = null;
+  function findGoose(p) {
+    const tol = 26 / S;
+    let best = null, bd = tol;
+    for (const b of barnacles) {
+      if (b.kind !== 'g') continue;
+      const d = Math.min(Math.hypot(p.x - b.tx, p.y - b.ty), segDist(p, { x: b.x, y: b.y }, { x: b.tx, y: b.ty }) + 6);
+      if (d < bd) { bd = d; best = b; }
+    }
+    return best;
+  }
+  function findAcorn(p, pad) {
+    let best = null, bd = Infinity;
+    for (const b of barnacles) {
+      if (b.kind !== 'a') continue;
+      const d = Math.hypot(p.x - b.x, p.y - b.y);
+      if (d < b.r + pad && d < bd) { bd = d; best = b; }
+    }
+    return best;
+  }
+  function segDist(p, a, b) {
+    const vx = b.x - a.x, vy = b.y - a.y, l2 = vx * vx + vy * vy || 1;
+    let t = ((p.x - a.x) * vx + (p.y - a.y) * vy) / l2; t = Math.max(0, Math.min(1, t));
+    return Math.hypot(p.x - a.x - vx * t, p.y - a.y - vy * t);
+  }
+  function rubAcorn(b, amt, p) {
+    b.rub += amt; b.jig = 1;
+    if (Math.random() < 0.35) {
+      const w = toWorld(p ? p.x : b.x, p ? p.y : b.y); const a = rnd(0, 6.28), s = rnd(30, 90);
+      chips.push({ x: w.x, y: w.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0, max: rnd(0.3, 0.6), size: rnd(1, 2.2) * Math.max(0.6, S), col: '#d9d1c2' });
+    }
+    sfxScratch(b.rub / b.need);
+    if (b.rub >= b.need) detach(b, { x: rnd(-0.4, 0.4), y: -1 });
+  }
+
+  cv.addEventListener('pointerdown', e => {
+    ensureAudio();
+    if (pointerId !== null || state !== 'play') return;
+    pointerId = e.pointerId; cv.setPointerCapture(e.pointerId);
+    const p = toLocal(e.clientX, e.clientY);
+    pLocal = p; lastLocal = p; downAt = p;
+    const g = findGoose(p);
+    if (g) {
+      held = g; grabOff = { x: p.x - g.tx, y: p.y - g.ty };
+      cv.style.cursor = 'grabbing';
+      creakStart();
+    } else {
+      const a = findAcorn(p, 6 / S + 2);
+      if (a) rubAcorn(a, 24, p);
+    }
+  });
+  cv.addEventListener('pointermove', e => {
+    const p = toLocal(e.clientX, e.clientY);
+    if (e.pointerId !== pointerId) {
+      if (pointerId === null && e.pointerType === 'mouse') cv.style.cursor = findGoose(p) ? 'grab' : findAcorn(p, 4) ? 'pointer' : 'default';
+      return;
+    }
+    pLocal = p;
+    if (!held && state === 'play' && lastLocal) {
+      const L = Math.hypot(p.x - lastLocal.x, p.y - lastLocal.y);
+      if (L > 0.5) {
+        const pad = 8 / S + 2;
+        for (const b of barnacles.slice()) {
+          if (b.kind === 'a' && segDist(b, lastLocal, p) < b.r + pad) rubAcorn(b, Math.min(L, 30), p);
+        }
+      }
+      lastLocal = p;
+    }
+  });
+  function release(e) {
+    if (e.pointerId !== pointerId) return;
+    pointerId = null; held = null; lastLocal = null;
+    creakStop();
+    cv.style.cursor = 'default';
+  }
+  cv.addEventListener('pointerup', release);
+  cv.addEventListener('pointercancel', release);
+
+  document.getElementById('mute').addEventListener('click', e => {
+    soundOn = !soundOn; store.set('limpiaballenas.sound', soundOn);
+    ensureAudio();
+    if (master) master.gain.setTargetAtTime(soundOn ? 0.9 : 0, AC.currentTime, 0.05);
+    syncMute();
+  });
+  function syncMute() {
+    const b = document.getElementById('mute');
+    b.setAttribute('aria-pressed', String(!soundOn));
+    b.setAttribute('aria-label', soundOn ? 'Silenciar sonido' : 'Activar sonido');
+    document.getElementById('waves').toggleAttribute('hidden', !soundOn);
+    document.getElementById('cross').toggleAttribute('hidden', soundOn);
+  }
+  document.getElementById('next').addEventListener('click', () => {
+    ensureAudio();
+    hud.card.hidden = true;
+    state = 'exit'; stateT = 0;
+  });
+
+  // ---------- drawing ----------
+  function drawBackground(t) {
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#0f5475'); g.addColorStop(0.45, '#083049'); g.addColorStop(1, '#020d17');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    // light shafts
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 6; i++) {
+      const sway = reduce ? 0 : Math.sin(t * 0.18 + i * 1.7) * 40;
+      const x = (i + 0.5) / 6 * W + sway, w = 30 + (i % 3) * 26;
+      const lg = ctx.createLinearGradient(0, 0, 0, H * 0.85);
+      lg.addColorStop(0, `rgba(170,230,235,${0.07 + 0.03 * Math.sin(t * 0.5 + i)})`); lg.addColorStop(1, 'rgba(170,230,235,0)');
+      ctx.fillStyle = lg;
+      ctx.beginPath(); ctx.moveTo(x - w * 0.4, 0); ctx.lineTo(x + w * 0.4, 0); ctx.lineTo(x + w * 2.2 - 120, H * 0.85); ctx.lineTo(x - w * 0.6 - 120, H * 0.85); ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+    // plankton
+    for (const p of plankton) {
+      const x = ((p.x * W + t * 6 * p.z + Math.sin(t * 0.3 + p.p) * 10) % W + W) % W;
+      const y = ((p.y * H - t * 3 * p.z) % H + H) % H;
+      ctx.fillStyle = `rgba(200,235,235,${0.12 + 0.25 * p.z})`;
+      ctx.fillRect(x, y, 1.4 * p.z + 0.4, 1.4 * p.z + 0.4);
+    }
+    for (const b of ambient) {
+      const y = (((b.y * (H + 40)) - t * b.s) % (H + 40) + (H + 40)) % (H + 40) - 20;
+      const x = b.x * W + Math.sin(t * 1.3 + b.p) * 6;
+      ctx.strokeStyle = 'rgba(210,245,245,0.35)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(x, y, b.r, 0, 6.28); ctx.stroke();
+    }
+  }
+
+  function drawAcorn(r, cracks, crackFrac, rot) {
+    // shadow
+    ctx.fillStyle = 'rgba(8,14,24,0.35)';
+    ctx.beginPath(); ctx.ellipse(1.5, 3, r * 1.02, r * 0.95, 0, 0, 6.28); ctx.fill();
+    // cone
+    const g = ctx.createRadialGradient(-r * 0.3, -r * 0.35, r * 0.1, 0, 0, r);
+    g.addColorStop(0, '#f3eee3'); g.addColorStop(0.7, '#cdc5b6'); g.addColorStop(1, '#9a9184');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, 6.28); ctx.fill();
+    // six plates
+    ctx.strokeStyle = 'rgba(95,86,76,0.55)'; ctx.lineWidth = Math.max(0.8, r * 0.07);
+    for (let k = 0; k < 6; k++) {
+      const a = rot + k * 1.047;
+      ctx.beginPath(); ctx.moveTo(Math.cos(a) * r * 0.45, Math.sin(a) * r * 0.45); ctx.lineTo(Math.cos(a) * r * 0.97, Math.sin(a) * r * 0.97); ctx.stroke();
+    }
+    ctx.strokeStyle = 'rgba(110,100,90,0.35)';
+    ctx.beginPath(); ctx.arc(0, 0, r * 0.72, 0, 6.28); ctx.stroke();
+    // opening
+    ctx.fillStyle = '#342e2f';
+    ctx.beginPath(); ctx.ellipse(0, -r * 0.05, r * 0.36, r * 0.27, rot, 0, 6.28); ctx.fill();
+    ctx.strokeStyle = 'rgba(230,220,205,0.6)'; ctx.lineWidth = Math.max(0.7, r * 0.05);
+    ctx.beginPath(); ctx.moveTo(-r * 0.2 * Math.cos(rot), -r * 0.05 - r * 0.2 * Math.sin(rot)); ctx.lineTo(r * 0.2 * Math.cos(rot), -r * 0.05 + r * 0.2 * Math.sin(rot)); ctx.stroke();
+    // cracks show how loose it is
+    if (crackFrac > 0.05) {
+      ctx.strokeStyle = 'rgba(60,45,40,0.75)'; ctx.lineWidth = Math.max(0.8, r * 0.06);
+      const n = Math.ceil(crackFrac * cracks.length);
+      for (let k = 0; k < n; k++) {
+        const c = cracks[k];
+        ctx.beginPath(); ctx.moveTo(Math.cos(c.a) * r * 0.4, Math.sin(c.a) * r * 0.4);
+        ctx.lineTo(Math.cos(c.a + 0.25) * r * 0.7, Math.sin(c.a + 0.25) * r * 0.7);
+        ctx.lineTo(Math.cos(c.a - 0.1) * r * c.l * 1.05, Math.sin(c.a - 0.1) * r * c.l * 1.05);
+        ctx.stroke();
+      }
+    }
+  }
+
+  function drawGoose(ax, ay, tx, ty, t, seed, tension) {
+    const dx = tx - ax, dy = ty - ay, L = Math.hypot(dx, dy) || 1, nx = -dy / L, ny = dx / L;
+    const bend = Math.sin(t * 1.4 + seed) * 4 * (1 - Math.min(1, tension * 1.5));
+    const mx = ax + dx * 0.5 + nx * bend, my = ay + dy * 0.5 + ny * bend;
+    const thick = 9 * (1 - Math.min(0.45, tension * 0.45));
+    // shadow
+    ctx.strokeStyle = 'rgba(8,14,24,0.3)'; ctx.lineCap = 'round'; ctx.lineWidth = thick + 2;
+    ctx.beginPath(); ctx.moveTo(ax + 1.5, ay + 3); ctx.quadraticCurveTo(mx + 1.5, my + 3, tx + 1.5, ty + 3); ctx.stroke();
+    // stalk
+    ctx.strokeStyle = tension > 0.02 ? `rgb(${88 + tension * 60},${56 + tension * 10},${72})` : '#583a4a';
+    ctx.lineWidth = thick;
+    ctx.beginPath(); ctx.moveTo(ax, ay); ctx.quadraticCurveTo(mx, my, tx, ty); ctx.stroke();
+    ctx.strokeStyle = 'rgba(160,110,130,0.45)'; ctx.lineWidth = thick * 0.35;
+    ctx.setLineDash([3, 4]);
+    ctx.beginPath(); ctx.moveTo(ax, ay); ctx.quadraticCurveTo(mx, my, tx, ty); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#3c2733';
+    ctx.beginPath(); ctx.arc(ax, ay, thick * 0.55, 0, 6.28); ctx.fill();
+    // head: pale shell plates and two "rabbit ear" siphons
+    const ang = Math.atan2(ty - my, tx - mx);
+    ctx.save(); ctx.translate(tx, ty); ctx.rotate(ang);
+    ctx.fillStyle = '#6b4658';
+    for (const s of [-1, 1]) {
+      ctx.save(); ctx.translate(9, s * 5); ctx.rotate(s * 0.55 + Math.sin(t * 2 + seed + s) * 0.12);
+      ctx.beginPath(); ctx.ellipse(5, 0, 7, 3.6, 0, 0, 6.28); ctx.fill();
+      ctx.fillStyle = '#c9a3b2'; ctx.beginPath(); ctx.ellipse(10.5, 0, 1.6, 2.2, 0, 0, 6.28); ctx.fill();
+      ctx.fillStyle = '#6b4658';
+      ctx.restore();
+    }
+    const g = ctx.createLinearGradient(0, -7, 0, 7);
+    g.addColorStop(0, '#fbf7ee'); g.addColorStop(1, '#c9c0b0');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.ellipse(2, 0, 9, 7, 0, 0, 6.28); ctx.fill();
+    ctx.strokeStyle = 'rgba(110,95,85,0.6)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(-5, 0); ctx.lineTo(9, 0); ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawWhale(t) {
+    const flap = reduce ? 0 : 1;
+    // fluke (behind)
+    ctx.save(); ctx.translate(-385, 0); ctx.rotate(Math.sin(t * 0.9) * 0.12 * flap);
+    ctx.fillStyle = '#3a4f66'; ctx.fill(FLUKE);
+    ctx.restore();
+    ctx.fillStyle = '#34485d'; ctx.fill(DORSAL);
+
+    // body
+    const bg = ctx.createLinearGradient(0, -145, 0, 150);
+    bg.addColorStop(0, '#2d3f53'); bg.addColorStop(0.55, '#445b73'); bg.addColorStop(1, '#526a82');
+    ctx.fillStyle = bg; ctx.fill(BODY);
+    ctx.save(); ctx.clip(BODY);
+    // belly with throat grooves
+    ctx.fillStyle = '#b9c7d1'; ctx.fill(BELLY);
+    ctx.save(); ctx.clip(BELLY);
+    ctx.strokeStyle = 'rgba(70,90,110,0.45)'; ctx.lineWidth = 2.4;
+    for (let i = 0; i < 9; i++) {
+      ctx.beginPath(); ctx.moveTo(470, 24 + i * 12); ctx.bezierCurveTo(300, 70 + i * 10, 120, 100 + i * 8, -60, 104 + i * 8); ctx.stroke();
+    }
+    ctx.restore();
+    // skin speckles, scars and head knobs
+    for (const s of spots) { ctx.fillStyle = `rgba(215,228,236,${s.a})`; ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, 6.28); ctx.fill(); }
+    ctx.strokeStyle = 'rgba(220,232,238,0.28)'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+    for (const s of scars) { ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(s.x + Math.cos(s.a) * s.l, s.y + Math.sin(s.a) * s.l); ctx.stroke(); }
+    for (const k of tubercles) {
+      ctx.fillStyle = 'rgba(30,42,56,0.5)'; ctx.beginPath(); ctx.arc(k.x + 1, k.y + 1.5, k.r, 0, 6.28); ctx.fill();
+      ctx.fillStyle = '#4f667d'; ctx.beginPath(); ctx.arc(k.x, k.y, k.r, 0, 6.28); ctx.fill();
+    }
+    // top rim light
+    ctx.strokeStyle = 'rgba(160,210,225,0.22)'; ctx.lineWidth = 6;
+    ctx.beginPath(); ctx.moveTo(440, -60); ctx.bezierCurveTo(330, -140, 100, -140, -250, -80); ctx.stroke();
+    // healing marks where barnacles were
+    for (const m of marks) {
+      const a = Math.max(0, 1 - m.t / 12);
+      if (a <= 0) continue;
+      ctx.fillStyle = `rgba(233,166,152,${0.55 * a})`;
+      ctx.beginPath(); ctx.arc(m.x, m.y, m.r, 0, 6.28); ctx.fill();
+      ctx.strokeStyle = `rgba(250,215,205,${0.6 * a})`; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(m.x, m.y, m.r * 0.75, 0, 6.28); ctx.stroke();
+    }
+    ctx.restore();
+
+    // mouth, eye, blowhole
+    ctx.strokeStyle = 'rgba(20,30,42,0.75)'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(468, 6); ctx.bezierCurveTo(430, 40, 380, 58, 300, 60); ctx.stroke();
+    ctx.fillStyle = 'rgba(20,30,42,0.7)';
+    ctx.beginPath(); ctx.ellipse(BLOWHOLE.x, BLOWHOLE.y + 4, 9, 2.5, -0.05, 0, 6.28); ctx.fill();
+    const closed = Math.max(eyeHappy > 0.05 ? 1 : 0, blink);
+    if (eyeHappy > 0.05 || state === 'clean') {
+      ctx.strokeStyle = '#0d1620'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(EYE.x, EYE.y + 4, 8, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke();
+    } else {
+      ctx.fillStyle = '#0d1620';
+      ctx.beginPath(); ctx.ellipse(EYE.x, EYE.y, 9, Math.max(0.8, 6.5 * (1 - closed)), 0, 0, 6.28); ctx.fill();
+      if (closed < 0.5) { ctx.fillStyle = 'rgba(230,245,250,0.85)'; ctx.beginPath(); ctx.arc(EYE.x + 3, EYE.y - 2, 1.8, 0, 6.28); ctx.fill(); }
+    }
+
+    // barnacles
+    for (const b of barnacles) if (b.kind === 'a') {
+      const j = b.jig * (reduce ? 0.5 : 1);
+      ctx.save(); ctx.translate(b.x + Math.sin(t * 60 + b.seed) * j * 1.6, b.y + Math.cos(t * 53 + b.seed) * j * 1.6);
+      drawAcorn(b.r, b.cracks, b.rub / b.need, b.rot);
+      ctx.restore();
+    }
+    for (const b of barnacles) if (b.kind === 'g') drawGoose(b.x, b.y, b.tx, b.ty, t, b.seed, b.tension);
+
+    // pectoral fin (in front), pale like a real humpback's
+    ctx.save(); ctx.translate(FIN_PIVOT.x, FIN_PIVOT.y); ctx.rotate(Math.sin(t * 0.8 + 1) * 0.07 * flap);
+    const pg = ctx.createLinearGradient(30, 0, -240, 160);
+    pg.addColorStop(0, '#6e8499'); pg.addColorStop(0.5, '#b5c4cf'); pg.addColorStop(1, '#dfe7ec');
+    ctx.fillStyle = 'rgba(10,20,32,0.25)'; ctx.save(); ctx.translate(3, 6); ctx.fill(FIN); ctx.restore();
+    ctx.fillStyle = pg; ctx.fill(FIN);
+    ctx.restore();
+  }
+
+  function drawBarnacleLoose(d, t) {
+    const b = d.b;
+    ctx.save();
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.translate(d.x, d.y);
+    ctx.rotate(d.rot + (portrait ? -Math.PI / 2 : 0));
+    ctx.scale(S, S);
+    ctx.globalAlpha = Math.max(0, 1 - Math.max(0, d.life - 2.2) / 1.2);
+    if (b.kind === 'a') drawAcorn(b.r, b.cracks, 1, b.rot);
+    else {
+      const ox = b.x - b.tx, oy = b.y - b.ty;
+      const L = Math.hypot(ox, oy) || 1, s = b.len * 0.8 / L;
+      drawGoose(ox * s, oy * s, 0, 0, t, b.seed, 0);
+    }
+    ctx.restore();
+  }
+
+  // ---------- update ----------
+  function update(dt, t) {
+    // whale swaps
+    stateT += dt;
+    if (state === 'clean') {
+      if (stateT - dt < 0.5 && stateT >= 0.5) {
+        sfxSong(true);
+        for (let k = 0; k < 40; k++) {
+          const w = toWorld(BLOWHOLE.x + rnd(-8, 8), BLOWHOLE.y);
+          bubbles.push({ x: w.x, y: w.y, vy: -rnd(60, 190), r: rnd(2, 8) * Math.max(0.7, S), life: -k * 0.03, max: rnd(2, 3.5), p: rnd(0, 6.28) });
+        }
+      }
+      if (stateT - dt < 1.6 && stateT >= 1.6) {
+        hud.cardTitle.textContent = `${whaleName()} está limpia`;
+        hud.cardText.textContent = `Le has quitado ${total} bellotas y percebes. Ya nada más ligera.`;
+        hud.card.hidden = false;
+        whaleNo++; store.set('limpiaballenas.no', whaleNo);
+      }
+    } else if (state === 'exit') {
+      const k = Math.min(1, stateT / 1.8);
+      swim = 2400 * k * k;
+      if (k >= 1) { newWhale(); swim = -2400; state = 'enter'; stateT = 0; }
+    } else if (state === 'enter') {
+      const k = Math.min(1, stateT / 2.4);
+      swim = -2400 * Math.pow(1 - k, 3);
+      if (k >= 1) { swim = 0; state = 'play'; }
+    }
+
+    // eye
+    eyeHappy = Math.max(0, eyeHappy - dt * 1.2);
+    blinkT -= dt;
+    if (blinkT < 0) { blink = Math.min(1, blink + dt * 10); if (blinkT < -0.18) { blinkT = rnd(3, 7); } }
+    else blink = Math.max(0, blink - dt * 8);
+
+    // barnacles
+    for (const b of barnacles) {
+      if (b.kind === 'a') { b.jig = Math.max(0, b.jig - dt * 5); continue; }
+      if (b === held && pLocal) {
+        const gx = pLocal.x - grabOff.x, gy = pLocal.y - grabOff.y;
+        let dx = gx - b.x, dy = gy - b.y; const d = Math.hypot(dx, dy) || 1;
+        const stretch = Math.max(0, d - b.len);
+        b.tension = stretch / b.need;
+        const disp = d <= b.len ? d : b.len + stretch * 0.55;
+        const tr = b.tension > 0.55 ? (Math.random() - 0.5) * b.tension * 3 : 0;
+        b.tx = b.x + dx / d * disp + tr; b.ty = b.y + dy / d * disp + tr;
+        b.vx = b.vy = 0;
+        creakSet(Math.min(1, b.tension));
+        if (b.tension >= 1) {
+          held = null; creakStop(); cv.style.cursor = 'default';
+          detach(b, { x: dx / d, y: dy / d });
+        }
+      } else {
+        b.tension = Math.max(0, b.tension - dt * 3);
+        b.vx += (b.rx - b.tx) * 140 * dt; b.vy += (b.ry - b.ty) * 140 * dt;
+        const damp = Math.exp(-7 * dt); b.vx *= damp; b.vy *= damp;
+        b.tx += b.vx * dt; b.ty += b.vy * dt;
+      }
+    }
+    for (const m of marks) m.t += dt;
+    marks = marks.filter(m => m.t < 12);
+
+    for (const d of debris) {
+      d.life += dt;
+      d.vx *= Math.exp(-2.2 * dt); d.vy = d.vy * Math.exp(-2.2 * dt) + 110 * dt;
+      d.x += d.vx * dt + Math.sin(d.life * 2) * 8 * dt; d.y += d.vy * dt;
+      d.rot += d.vr * dt; d.vr *= Math.exp(-0.8 * dt);
+    }
+    debris = debris.filter(d => d.life < 3.4 && d.y < H + 60);
+    for (const c of chips) {
+      c.life += dt; c.vx *= Math.exp(-3 * dt); c.vy = c.vy * Math.exp(-3 * dt) + 60 * dt;
+      c.x += c.vx * dt; c.y += c.vy * dt;
+    }
+    chips = chips.filter(c => c.life < c.max);
+    for (const b of bubbles) {
+      b.life += dt; if (b.life < 0) continue;
+      b.y += b.vy * dt; b.x += Math.sin(b.life * 5 + b.p) * 18 * dt; b.vy *= Math.exp(-0.3 * dt);
+    }
+    bubbles = bubbles.filter(b => b.life < b.max);
+  }
+
+  function render(t) {
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    drawBackground(t);
+    ctx.setTransform(new DOMMatrix().scale(DPR).multiply(M));
+    drawWhale(t);
+    for (const d of debris) drawBarnacleLoose(d, t);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    for (const c of chips) {
+      ctx.globalAlpha = 1 - c.life / c.max; ctx.fillStyle = c.col;
+      ctx.fillRect(c.x - c.size / 2, c.y - c.size / 2, c.size, c.size);
+    }
+    ctx.globalAlpha = 1;
+    for (const b of bubbles) {
+      if (b.life < 0) continue;
+      const a = Math.min(1, b.life * 4) * (1 - b.life / b.max);
+      ctx.strokeStyle = `rgba(225,248,248,${0.75 * a})`; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 6.28); ctx.stroke();
+      ctx.fillStyle = `rgba(255,255,255,${0.5 * a})`;
+      ctx.beginPath(); ctx.arc(b.x - b.r * 0.35, b.y - b.r * 0.35, b.r * 0.25, 0, 6.28); ctx.fill();
+    }
+  }
+
+  // ---------- loop ----------
+  let last = performance.now(), T = 0;
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now; T += dt;
+    computeMatrix(T);
+    if (pointerId !== null && lastClient) pLocal = toLocal(lastClient.x, lastClient.y);
+    update(dt, T);
+    computeMatrix(T);
+    render(T);
+    requestAnimationFrame(frame);
+  }
+  // keep the held point glued to the finger while the whale bobs
+  let lastClient = null;
+  cv.addEventListener('pointermove', e => { if (e.pointerId === pointerId) lastClient = { x: e.clientX, y: e.clientY }; });
+  cv.addEventListener('pointerdown', e => { lastClient = { x: e.clientX, y: e.clientY }; });
+
+  window.addEventListener('resize', resize);
+  resize();
+  syncMute();
+  newWhale();
+  requestAnimationFrame(frame);
+})();
+</script>
+
+</body>
+</html>
