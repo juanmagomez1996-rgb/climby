@@ -1,0 +1,165 @@
+{
+ "frames": {
+  "vfx_explosion_00": {
+   "frame": {
+    "x": 0,
+    "y": 0,
+    "w": 256,
+    "h": 256
+   }
+  },
+  "vfx_explosion_01": {
+   "frame": {
+    "x": 256,
+    "y": 0,
+    "w": 256,
+    "h": 256
+   }
+  },
+  "vfx_explosion_02": {
+   "frame": {
+    "x": 512,
+    "y": 0,
+    "w": 256,
+    "h": 256
+   }
+  },
+  "vfx_explosion_03": {
+   "frame": {
+    "x": 768,
+    "y": 0,
+    "w": 256,
+    "h": 256
+   }
+  },
+  "vfx_explosion_04": {
+   "frame": {
+    "x": 0,
+    "y": 256,
+    "w": 256,
+    "h": 256
+   }
+  },
+  "vfx_explosion_05": {
+   "frame": {
+    "x": 256,
+    "y": 256,
+    "w": 256,
+    "h": 256
+   }
+  },
+  "vfx_explosion_06": {
+   "frame": {
+    "x": 512,
+    "y": 256,
+    "w": 256,
+    "h": 256
+   }
+  },
+  "vfx_explosion_07": {
+   "frame": {
+    "x": 768,
+    "y": 256,
+    "w": 256,
+    "h": 256
+   }
+  },
+  "vfx_explosion_08": {
+   "frame": {
+    "x": 0,
+    "y": 512,
+    "w": 256,
+    "h": 256
+   }
+  },
+  "vfx_explosion_09": {
+   "frame": {
+    "x": 256,
+    "y": 512,
+    "w": 256,
+    "h": 256
+   }
+  },
+  "vfx_explosion_10": {
+   "frame": {
+    "x": 512,
+    "y": 512,
+    "w": 256,
+    "h": 256
+   }
+  },
+  "vfx_explosion_11": {
+   "frame": {
+    "x": 768,
+    "y": 512,
+    "w": 256,
+    "h": 256
+   }
+  },
+  "vfx_explosion_12": {
+   "frame": {
+    "x": 0,
+    "y": 768,
+    "w": 256,
+    "h": 256
+   }
+  },
+  "vfx_explosion_13": {
+   "frame": {
+    "x": 256,
+    "y": 768,
+    "w": 256,
+    "h": 256
+   }
+  },
+  "vfx_explosion_14": {
+   "frame": {
+    "x": 512,
+    "y": 768,
+    "w": 256,
+    "h": 256
+   }
+  },
+  "vfx_explosion_15": {
+   "frame": {
+    "x": 768,
+    "y": 768,
+    "w": 256,
+    "h": 256
+   }
+  }
+ },
+ "animations": {
+  "vfx_explosion": [
+   "vfx_explosion_00",
+   "vfx_explosion_01",
+   "vfx_explosion_02",
+   "vfx_explosion_03",
+   "vfx_explosion_04",
+   "vfx_explosion_05",
+   "vfx_explosion_06",
+   "vfx_explosion_07",
+   "vfx_explosion_08",
+   "vfx_explosion_09",
+   "vfx_explosion_10",
+   "vfx_explosion_11",
+   "vfx_explosion_12",
+   "vfx_explosion_13",
+   "vfx_explosion_14",
+   "vfx_explosion_15"
+  ]
+ },
+ "meta": {
+  "image": "vfx_explosion.png",
+  "size": {
+   "w": 1024,
+   "h": 1024
+  },
+  "frameSize": 256,
+  "cols": 4,
+  "rows": 4,
+  "count": 16,
+  "fps": 24,
+  "loop": false
+ }
+}

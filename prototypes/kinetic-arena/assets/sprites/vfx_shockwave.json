@@ -1,0 +1,165 @@
+{
+ "frames": {
+  "vfx_shockwave_00": {
+   "frame": {
+    "x": 0,
+    "y": 0,
+    "w": 256,
+    "h": 256
+   }
+  },
+  "vfx_shockwave_01": {
+   "frame": {
+    "x": 256,
+    "y": 0,
+    "w": 256,
+    "h": 256
+   }
+  },
+  "vfx_shockwave_02": {
+   "frame": {
+    "x": 512,
+    "y": 0,
+    "w": 256,
+    "h": 256
+   }
+  },
+  "vfx_shockwave_03": {
+   "frame": {
+    "x": 768,
+    "y": 0,
+    "w": 256,
+    "h": 256
+   }
+  },
+  "vfx_shockwave_04": {
+   "frame": {
+    "x": 0,
+    "y": 256,
+    "w": 256,
+    "h": 256
+   }
+  },
+  "vfx_shockwave_05": {
+   "frame": {
+    "x": 256,
+    "y": 256,
+    "w": 256,
+    "h": 256
+   }
+  },
+  "vfx_shockwave_06": {
+   "frame": {
+    "x": 512,
+    "y": 256,
+    "w": 256,
+    "h": 256
+   }
+  },
+  "vfx_shockwave_07": {
+   "frame": {
+    "x": 768,
+    "y": 256,
+    "w": 256,
+    "h": 256
+   }
+  },
+  "vfx_shockwave_08": {
+   "frame": {
+    "x": 0,
+    "y": 512,
+    "w": 256,
+    "h": 256
+   }
+  },
+  "vfx_shockwave_09": {
+   "frame": {
+    "x": 256,
+    "y": 512,
+    "w": 256,
+    "h": 256
+   }
+  },
+  "vfx_shockwave_10": {
+   "frame": {
+    "x": 512,
+    "y": 512,
+    "w": 256,
+    "h": 256
+   }
+  },
+  "vfx_shockwave_11": {
+   "frame": {
+    "x": 768,
+    "y": 512,
+    "w": 256,
+    "h": 256
+   }
+  },
+  "vfx_shockwave_12": {
+   "frame": {
+    "x": 0,
+    "y": 768,
+    "w": 256,
+    "h": 256
+   }
+  },
+  "vfx_shockwave_13": {
+   "frame": {
+    "x": 256,
+    "y": 768,
+    "w": 256,
+    "h": 256
+   }
+  },
+  "vfx_shockwave_14": {
+   "frame": {
+    "x": 512,
+    "y": 768,
+    "w": 256,
+    "h": 256
+   }
+  },
+  "vfx_shockwave_15": {
+   "frame": {
+    "x": 768,
+    "y": 768,
+    "w": 256,
+    "h": 256
+   }
+  }
+ },
+ "animations": {
+  "vfx_shockwave": [
+   "vfx_shockwave_00",
+   "vfx_shockwave_01",
+   "vfx_shockwave_02",
+   "vfx_shockwave_03",
+   "vfx_shockwave_04",
+   "vfx_shockwave_05",
+   "vfx_shockwave_06",
+   "vfx_shockwave_07",
+   "vfx_shockwave_08",
+   "vfx_shockwave_09",
+   "vfx_shockwave_10",
+   "vfx_shockwave_11",
+   "vfx_shockwave_12",
+   "vfx_shockwave_13",
+   "vfx_shockwave_14",
+   "vfx_shockwave_15"
+  ]
+ },
+ "meta": {
+  "image": "vfx_shockwave.png",
+  "size": {
+   "w": 1024,
+   "h": 1024
+  },
+  "frameSize": 256,
+  "cols": 4,
+  "rows": 4,
+  "count": 16,
+  "fps": 30,
+  "loop": false
+ }
+}

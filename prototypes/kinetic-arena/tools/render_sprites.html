@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Render de spritesheets</title>
+<!--
+  Renderiza el héroe riggeado (y el dron) a spritesheets PNG con fondo transparente.
+  Lo ejecuta tools/render_sprites.js con Chromium sin pantalla, pero también se puede abrir
+  en un navegador (servido por HTTP desde prototypes/kinetic-arena/) para ver el resultado.
+  Filas = 8 direcciones (S, SO, O, NO, N, NE, E, SE), columnas = fotogramas.
+-->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<style>body{margin:0;background:#222;color:#eee;font:14px sans-serif}img{max-width:100%;display:block;margin:8px 0;background:repeating-conic-gradient(#555 0 25%,#444 0 50%) 0 0/16px 16px}</style>
+</head>
+<body>
+<script>
+const CELL = 256;
+const DIRS = ['S', 'SW', 'W', 'NW', 'N', 'NE', 'E', 'SE'];
+const ANIMS = [
+  { name: 'idle', file: 'hero.glb', frames: 8, loop: true },
+  { name: 'run', file: 'hero_run.glb', frames: 8, loop: true },
+  { name: 'jump', file: 'hero_jump.glb', frames: 8, loop: false },
+  { name: 'hit', file: 'hero_hit.glb', frames: 6, loop: false },
+];
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1);
+renderer.setSize(CELL, CELL);
+renderer.setClearColor(0x000000, 0);
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+const scene = new THREE.Scene();
+scene.add(new THREE.HemisphereLight(0xd8ccff, 0x2a2238, 1.1));
+const key = new THREE.DirectionalLight(0xffe2cc, 2.2); key.position.set(-3, 6, 5); scene.add(key);
+const rim = new THREE.DirectionalLight(0x9a78ff, 2.0); rim.position.set(4, 3, -5); scene.add(rim);
+
+const loader = new THREE.GLTFLoader();
+const load = f => new Promise((res, rej) => loader.load('../assets/models/' + f, res, undefined, rej));
+
+function cleanClip(clip, restHipsY, flattenY) {
+  const c = clip.clone();
+  c.tracks = c.tracks.filter(t => !t.name.endsWith('.scale') && (!t.name.endsWith('.position') || t.name === 'Hips.position'));
+  for (const t of c.tracks) {
+    if (t.name !== 'Hips.position') continue;
+    const v = t.values, x0 = v[0], y0 = v[1], z0 = v[2], dy = restHipsY - y0;
+    for (let i = 0; i < v.length; i += 3) { v[i] = x0; v[i + 2] = z0; v[i + 1] = flattenY ? y0 + dy : v[i + 1] + dy; }
+  }
+  return c;
+}
+function toBlobURL(canvas) { return canvas.toDataURL('image/png'); }
+
+async function renderHero() {
+  const base = await load('hero.glb');
+  const model = base.scene;
+  scene.add(model);
+  let restY = 0;
+  model.traverse(o => { if (o.isBone && o.name === 'Hips') restY = o.position.y; if (o.isSkinnedMesh) o.frustumCulled = false;
+    if (o.material && o.material.emissiveMap) o.material.emissiveIntensity = 2; });
+  // cámara ortográfica a 30° de elevación (misma lectura que la cámara del juego)
+  const H = 2.3;
+  const cam = new THREE.OrthographicCamera(-H / 2, H / 2, H / 2, -H / 2, 0.1, 50);
+  const el = THREE.MathUtils.degToRad(30), dist = 10;
+  cam.position.set(0, 0.95 + Math.sin(el) * dist, Math.cos(el) * dist);
+  cam.lookAt(0, 0.95, 0);
+  const mixer = new THREE.AnimationMixer(model);
+  const out = {};
+  for (const a of ANIMS) {
+    const g = a.file === 'hero.glb' ? base : await load(a.file);
+    const clip = cleanClip(g.animations[0], restY, a.name === 'jump' || a.name === 'hit');
+    mixer.stopAllAction();
+    const act = mixer.clipAction(clip); act.play();
+    const sheet = document.createElement('canvas');
+    sheet.width = CELL * a.frames; sheet.height = CELL * DIRS.length;
+    const ctx = sheet.getContext('2d');
+    const frames = {};
+    for (let d = 0; d < DIRS.length; d++) {
+      model.rotation.y = d / DIRS.length * Math.PI * 2; // S = de frente a la cámara
+      for (let f = 0; f < a.frames; f++) {
+        const t = a.loop ? f / a.frames * clip.duration : f / (a.frames - 1) * clip.duration * 0.999;
+        mixer.setTime(t);
+        renderer.render(scene, cam);
+        ctx.drawImage(renderer.domElement, f * CELL, d * CELL);
+        frames[`hero_${a.name}_${DIRS[d]}_${f}`] = { frame: { x: f * CELL, y: d * CELL, w: CELL, h: CELL } };
+      }
+    }
+    mixer.uncacheClip(clip);
+    out[`hero_${a.name}`] = { png: toBlobURL(sheet), json: { frames, meta: {
+      image: `hero_${a.name}.png`, size: { w: sheet.width, h: sheet.height }, frameSize: CELL,
+      cols: a.frames, rows: DIRS.length, directions: DIRS, fps: a.name === 'run' ? 14 : 10, loop: a.loop,
+      pivot: { x: 0.5, y: 0.86 }, note: 'Filas = direcciones, columnas = fotogramas. Pivot = pies del personaje.' } } };
+  }
+  scene.remove(model);
+  return out;
+}
+
+async function renderDrone() {
+  const g = await load('drone.glb');
+  const m = g.scene;
+  const box = new THREE.Box3().setFromObject(m);
+  const s = 1 / Math.max(...box.getSize(new THREE.Vector3()).toArray());
+  m.scale.setScalar(s);
+  const c = new THREE.Box3().setFromObject(m).getCenter(new THREE.Vector3());
+  m.position.sub(c);
+  const pivot = new THREE.Group(); pivot.add(m); scene.add(pivot);
+  const cam = new THREE.OrthographicCamera(-0.7, 0.7, 0.7, -0.7, 0.1, 50);
+  cam.position.set(0, Math.sin(0.4) * 8, Math.cos(0.4) * 8); cam.lookAt(0, 0, 0);
+  const N = 16, C = 128;
+  renderer.setSize(C, C);
+  const sheet = document.createElement('canvas'); sheet.width = C * N; sheet.height = C;
+  const ctx = sheet.getContext('2d'); const frames = {};
+  for (let i = 0; i < N; i++) {
+    pivot.rotation.y = i / N * Math.PI * 2;
+    pivot.position.y = Math.sin(i / N * Math.PI * 2) * 0.04;
+    renderer.render(scene, cam);
+    ctx.drawImage(renderer.domElement, i * C, 0);
+    frames[`drone_spin_${i}`] = { frame: { x: i * C, y: 0, w: C, h: C } };
+  }
+  scene.remove(pivot);
+  return { drone_spin: { png: toBlobURL(sheet), json: { frames, meta: { image: 'drone_spin.png', size: { w: sheet.width, h: C }, frameSize: C, cols: N, rows: 1, fps: 12, loop: true } } } };
+}
+
+(async () => {
+  try {
+    const res = Object.assign(await renderHero(), await renderDrone());
+    for (const [k, v] of Object.entries(res)) {
+      const h = document.createElement('h3'); h.textContent = k; document.body.appendChild(h);
+      const img = new Image(); img.src = v.png; document.body.appendChild(img);
+    }
+    window.RESULT = res;
+  } catch (e) { window.RESULT = { error: String(e && e.stack || e) }; }
+  document.title = 'DONE';
+})();
+</script>
+</body>
+</html>
