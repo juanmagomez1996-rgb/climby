@@ -1,0 +1,583 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body>
+<title>Una rosa cada día</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600&family=Gochi+Hand&family=Newsreader:ital,opsz,wght@1,6..72,400&display=swap">
+<style>
+:root{
+  color-scheme:dark;
+  --ink:#1c1726; --panel:#2a2238; --panel2:#241d31; --line:#3b3150; --line-on:#76638f;
+  --text:#efe6f0; --muted:#b3a5bd; --rose:#d6456b; --rose2:#f2b8c9; --gold:#e8c07a;
+}
+[hidden]{display:none!important}
+html,body{margin:0;background:var(--ink);color:var(--text)}
+body{font-family:'Figtree',system-ui,-apple-system,sans-serif;font-size:16px}
+.wrap{max-width:1080px;margin:0 auto;padding-inline:16px;padding-block:20px 32px;display:flex;flex-direction:column;gap:16px}
+header{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+header h1{font-family:'Newsreader',Georgia,serif;font-style:italic;font-weight:400;font-size:clamp(26px,4vw,38px);margin:0;letter-spacing:-.01em;text-wrap:balance}
+#dayLbl{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-variant-numeric:tabular-nums}
+.stage{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px;display:flex;flex-direction:column;gap:8px;transition:opacity .6s,border-color .6s}
+.panel.dim{opacity:.42}
+.panel.on{border-color:var(--line-on)}
+.lbl{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding-inline:4px}
+.lbl b{font-family:'Newsreader',Georgia,serif;font-style:italic;font-weight:400;font-size:19px}
+.lbl span{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+canvas{display:block;width:100%;max-width:100%;aspect-ratio:4/3;border-radius:10px;cursor:pointer}
+#story{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:18px 20px;display:flex;flex-direction:column;gap:14px;min-height:150px}
+#story.in #lines{animation:fade .7s ease}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}}
+#lines{display:flex;flex-direction:column;gap:10px;max-width:65ch}
+#lines p{margin:0;font-size:17px;line-height:1.55}
+#lines p.hand{font-family:'Gochi Hand',cursive;font-size:23px;line-height:1.3;color:var(--rose2)}
+#lines .who{display:block;font-family:'Figtree',system-ui,sans-serif;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
+#lines p.big{font-family:'Newsreader',Georgia,serif;font-style:italic;font-size:clamp(22px,3.2vw,30px);line-height:1.3;text-wrap:balance}
+#lines p.hint{font-size:14px;color:var(--muted)}
+#acts{display:flex;flex-wrap:wrap;gap:10px}
+button{font:600 15px 'Figtree',system-ui,sans-serif;background:var(--rose);color:#fff;border:0;border-radius:999px;padding:11px 18px;cursor:pointer}
+button:hover{filter:brightness(1.08)}
+button:disabled{opacity:.5;cursor:default}
+button:focus-visible,input:focus-visible{outline:2px solid var(--gold);outline-offset:3px}
+@media (max-width:760px){.stage{grid-template-columns:1fr}.panel.dim{display:none}}
+.petal{position:fixed;left:0;top:0;width:11px;height:15px;border-radius:70% 0 70% 0;pointer-events:none;z-index:50}
+.veil{position:fixed;inset:0;background:var(--ink);display:grid;place-items:center;z-index:40;opacity:0;pointer-events:none;transition:opacity .7s}
+.veil.show{opacity:1;pointer-events:auto}
+.veil p{font-family:'Newsreader',Georgia,serif;font-style:italic;font-size:34px;margin:0}
+#intro{position:fixed;inset:0;z-index:60;background:rgba(28,23,38,.94);display:grid;place-items:center;padding-inline:16px;overflow-y:auto}
+#intro .card{max-width:520px;display:flex;flex-direction:column;gap:16px;padding-block:24px}
+#intro h2{font-family:'Newsreader',Georgia,serif;font-style:italic;font-weight:400;font-size:clamp(34px,7vw,52px);margin:0;line-height:1.05;text-wrap:balance}
+#intro .quote{font-family:'Gochi Hand',cursive;font-size:24px;color:var(--rose2);line-height:1.3;margin:0}
+#intro label{display:flex;flex-direction:column;gap:6px;font-size:14px;color:var(--muted)}
+#intro input{font:16px 'Figtree',system-ui,sans-serif;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+#intro small{color:var(--muted);font-size:13px;line-height:1.5}
+@media (prefers-reduced-motion:reduce){#story.in #lines{animation:none}.veil,.panel{transition:none}}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Una rosa cada día</h1>
+    <span id="dayLbl">Prototipo</span>
+  </header>
+  <div class="stage" id="stage">
+    <section class="panel" id="pHouse">
+      <div class="lbl"><b>La casa</b><span>Juegas como tú</span></div>
+      <canvas id="house" aria-label="La casa. Tu mamá sentada en su silla."></canvas>
+    </section>
+    <section class="panel" id="pGarden">
+      <div class="lbl"><b id="lblG">El jardín</b><span id="lblGs">Juegas como él</span></div>
+      <canvas id="garden" aria-label="El jardín entre dos mundos, con una rosa."></canvas>
+    </section>
+  </div>
+  <section id="story" aria-live="polite">
+    <div id="lines"></div>
+    <div id="acts"></div>
+  </section>
+</div>
+
+<div class="veil" id="veil"><p id="veilText"></p></div>
+
+<div id="intro">
+  <div class="card">
+    <h2>Una rosa cada día</h2>
+    <p class="quote">«Mamá, cuando tú mueras yo me voy contigo. Si no, todos los días te llevaré una rosa.»</p>
+    <label for="nameH">¿Cómo se llamaba tu hermano? (opcional)
+      <input id="nameH" maxlength="24" autocomplete="off" placeholder="tu hermano">
+    </label>
+    <label for="nameM">¿Cómo le dicen a tu mamá? (opcional)
+      <input id="nameM" maxlength="24" autocomplete="off" placeholder="mamá">
+    </label>
+    <div><button id="startBtn">Empezar</button></div>
+    <small>Un prototipo: cinco días, unos cinco minutos. La casa empieza en gris. Cada rosa que él manda, y cada cosa pequeña que tú haces, le devuelve un poco de color.</small>
+  </div>
+</div>
+
+<script>
+(() => {
+const W = 400, H = 300;
+const $ = s => document.querySelector(s);
+const houseC = $('#house'), gardenC = $('#garden');
+const hx = houseC.getContext('2d'), gx = gardenC.getContext('2d');
+const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+let names = { h: '', m: '' };
+try { const n = JSON.parse(localStorage.getItem('rosa-names') || 'null'); if (n) names = n; } catch (e) {}
+const Hn = () => names.h.trim() || 'tu hermano';
+const Mn = () => names.m.trim() || 'tu mamá';
+const Ms = () => names.m.trim() || 'mamá';
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+
+const fresh = () => ({ phase: 'intro', day: 1, color: .04, dc: .04, roses: 0, rose: 0,
+  curtains: false, coffee: false, sat: false, mem: null, memStep: 0, tendT: -9, endStep: 0, endT: 0, parts: [] });
+let S = fresh();
+
+/* ---------- drawing helpers ---------- */
+function rr(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
+function circ(c, x, y, r, col) { c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fillStyle = col; c.fill(); }
+function roseHead(c, x, y, r, col = '#d6456b') {
+  for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; circ(c, x + Math.cos(a) * r * .45, y + Math.sin(a) * r * .45, r * .6, col); }
+  circ(c, x, y, r * .55, '#b8325a');
+  c.strokeStyle = '#8f2045'; c.lineWidth = Math.max(1, r * .14); c.beginPath(); c.arc(x, y, r * .28, 0, 4.6); c.stroke();
+}
+function glow(c, x, y, r, t) {
+  const a = .35 + .3 * Math.sin(t * 4);
+  c.strokeStyle = `rgba(255,255,255,${a})`; c.lineWidth = 3;
+  c.beginPath(); c.arc(x, y, r + Math.sin(t * 4) * 2, 0, Math.PI * 2); c.stroke();
+}
+function fit(cv) {
+  const d = window.devicePixelRatio || 1, w = Math.round(cv.clientWidth * d), h = Math.round(cv.clientHeight * d);
+  if (!w) return false;
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  return true;
+}
+
+let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+const STARS = Array.from({ length: 42 }, () => ({ x: rnd() * W, y: rnd() * 150, r: rnd() < .2 ? 2 : 1.2, k: .5 + rnd() * 1.5, p: rnd() * 6 }));
+const BGROSES = [[22, 286, 5], [44, 270, 5], [74, 262, 6], [108, 276, 5], [296, 266, 6], [328, 278, 5], [358, 262, 6], [386, 280, 5]]
+  .map(([x, y, s]) => ({ x, y, s, p: rnd() * 6, col: ['#d6456b', '#e0708f', '#c23a5f'][Math.floor(rnd() * 3)] }));
+const FLIES = Array.from({ length: 7 }, () => ({ x: rnd() * W, y: 150 + rnd() * 90, p: rnd() * 6, k: .3 + rnd() * .5 }));
+
+/* ---------- memories, one per day ---------- */
+const MEM = [
+  { id: 'foto', obj: { x: 178, y: 234, w: 56, h: 38 }, g: [206, 250, 32], gain: .1,
+    intro: () => `Mientras ${Mn()} mira a la nada, una foto se cae de la pared. Son ${Hn()} y ella en la playa.`,
+    pick: 'Recoger la foto', picked: 'La foto tiene una esquina doblada. Él siempre las doblaba.',
+    share: () => `Dársela a ${Ms()}`,
+    resp: () => `${cap(Mn())} la sostiene mucho rato. Al final dice: «Aquí tenía seis años. No quería salir del agua.»` },
+  { id: 'radio', obj: { x: 28, y: 158, w: 64, h: 44 }, g: [60, 180, 34], gain: .1,
+    intro: () => 'La radio se enciende sola. Suena la canción que él cantaba a gritos en el carro.',
+    pick: 'Subir el volumen', picked: 'Subes el volumen. Él la cantaba mal a propósito, para hacerla reír.',
+    share: () => 'Sentarte a escucharla con ella',
+    resp: () => 'Ella no canta. Pero mueve un dedo al ritmo, sobre la rodilla. Tú lo ves.' },
+  { id: 'dibujo', obj: { x: 92, y: 242, w: 46, h: 34 }, g: [114, 259, 27], gain: .05,
+    intro: () => 'Debajo del sofá aparece un dibujo suyo: una casa, tres personas y un sol.',
+    pick: 'Recoger el dibujo', picked: 'Por detrás dice, con letra torcida: «Para mamá».',
+    share: () => `Dárselo a ${Ms()}`,
+    resp: () => 'Hoy no puede. Lo aprieta contra el pecho y llora. Tú te quedas a su lado. Eso también cuenta.' },
+  { id: 'ventana', obj: { x: 18, y: 28, w: 148, h: 132 }, g: [90, 94, 70], gain: .1,
+    intro: () => 'Por la ventana entra olor a rosas. No hay rosales en toda la calle.',
+    pick: 'Abrir la ventana', picked: 'Abres la ventana. Entran pétalos, despacio, y caen cerca de su silla.',
+    share: () => 'Llevarle un pétalo',
+    resp: () => '«¿Lo hueles?», te pregunta. Es lo primero que te pregunta en semanas.' },
+  { id: 'taza', obj: { x: 226, y: 182, w: 26, h: 26 }, g: [239, 197, 20], gain: .1,
+    intro: () => `En la mesa aparece su taza de dinosaurios. Nadie la había sacado del armario desde que ${Hn()} se fue.`,
+    pick: 'Tomar la taza', picked: 'Está tibia, como si alguien acabara de usarla.',
+    share: () => `Ponerla frente a ${Ms()}`,
+    resp: () => 'Ella la llena de chocolate caliente. Luego saca otra taza y te sirve a ti también.' },
+];
+const MOM_R = { x: 292, y: 92, w: 84, h: 140 };
+
+const DAY_INTRO = [
+  () => `Día 1. ${cap(Mn())} está sentada en la misma silla de siempre. Desde que ${Hn()} se fue, una parte de ella se fue con él, y la casa perdió el color.`,
+  () => 'Día 2. Anoche durmió un poco más.',
+  () => 'Día 3. Hoy es un día malo. Hay días así.',
+  () => 'Día 4. Ella te dio los buenos días. Bajito, pero te los dio.',
+  () => 'Día 5. Hoy la casa huele distinto.',
+];
+const BRO = [
+  ['Te lo prometí, ma. Una rosa todos los días.', 'Ya está. Ahora necesito que alguien allá se la haga llegar.'],
+  ['Esta huele a tu champú, ¿te acuerdas?', 'Lista. Mándasela.'],
+  ['Hoy está difícil, ¿verdad? Igual se la mando.', 'Aunque hoy no la vea, le llega.'],
+  ['Ya casi le vuelve el color. Lo veo desde aquí.', 'Va otra.'],
+  ['Esta es la última que le mando así.', 'Mañana la quiero ver aquí, aunque sea un ratito.'],
+];
+
+/* ---------- house ---------- */
+function frame(c, x, y, rot) {
+  c.save(); c.translate(x + 26, y + 20); c.rotate(rot);
+  c.fillStyle = '#6b4226'; c.fillRect(-26, -20, 52, 40);
+  c.fillStyle = '#5aa6d6'; c.fillRect(-21, -15, 42, 18);
+  c.fillStyle = '#f0d59a'; c.fillRect(-21, 3, 42, 12);
+  circ(c, -6, -3, 4, '#3b2a22'); c.fillStyle = '#3f8a80'; c.fillRect(-10, 1, 8, 10);
+  circ(c, 7, 2, 3, '#2b1d17'); c.fillStyle = '#e8c07a'; c.fillRect(4, 5, 6, 7);
+  c.restore();
+}
+function drawing(c, x, y, rot) {
+  c.save(); c.translate(x, y); c.rotate(rot);
+  c.fillStyle = '#fbf7ef'; c.fillRect(-17, -13, 34, 26);
+  c.strokeStyle = '#c0463a'; c.lineWidth = 1.2; c.beginPath(); c.moveTo(-12, 0); c.lineTo(-6, -7); c.lineTo(0, 0); c.closePath(); c.stroke(); c.strokeRect(-11, 0, 10, 8);
+  circ(c, 11, -7, 3.5, '#f2b632');
+  c.strokeStyle = '#34406b';
+  for (const px of [4, 9, 13]) { c.beginPath(); c.arc(px, 2, 1.6, 0, 7); c.moveTo(px, 3.6); c.lineTo(px, 9); c.stroke(); }
+  c.restore();
+}
+function dinoCup(c, x, y) {
+  rr(c, x - 7, y - 12, 14, 13, 3); c.fillStyle = '#6bbf59'; c.fill();
+  c.strokeStyle = '#6bbf59'; c.lineWidth = 2; c.beginPath(); c.arc(x + 8, y - 6, 3.5, -1.3, 1.3); c.stroke();
+  circ(c, x - 2, y - 7, 1.6, '#3f7a3a'); circ(c, x + 3, y - 4, 1.3, '#3f7a3a');
+}
+function steam(c, x, y, t) {
+  c.strokeStyle = 'rgba(255,255,255,.55)'; c.lineWidth = 1.3;
+  for (let i = 0; i < 2; i++) { c.beginPath(); for (let k = 0; k < 10; k++) { const yy = y - k * 1.6; const xx = x + i * 5 + Math.sin(t * 3 + k * .6 + i) * 1.6; k ? c.lineTo(xx, yy) : c.moveTo(xx, yy); } c.stroke(); }
+}
+function youSitting(c, x, base) {
+  c.fillStyle = '#6e3f24'; c.fillRect(x - 12, base - 34, 26, 6); c.fillRect(x - 10, base - 28, 4, 28); c.fillRect(x + 8, base - 28, 4, 28);
+  c.fillStyle = '#34406b'; rr(c, x - 4, base - 44, 24, 11, 5); c.fill(); rr(c, x + 11, base - 40, 10, 40, 5); c.fill();
+  c.fillStyle = '#e07b39'; rr(c, x - 12, base - 88, 24, 48, 10); c.fill();
+  circ(c, x - 2, base - 100, 11.5, '#2b1d17'); circ(c, x + 2, base - 98, 10, '#d9a07c');
+  c.fillStyle = '#2b1d17'; c.beginPath(); c.arc(x, base - 101, 11.5, Math.PI * 1.05, Math.PI * 1.95); c.fill();
+  circ(c, x + 7, base - 99, 1.4, '#2b1d17');
+}
+function momSitting(c, x, base, lift, t) {
+  const drop = (1 - lift) * 13, fwd = (1 - lift) * 8, br = RM ? 0 : Math.sin(t * 1.6);
+  c.fillStyle = '#7a4b8a'; rr(c, x + 16, base - 112, 9, 112, 4); c.fill();
+  c.fillRect(x - 24, base - 52, 48, 8); c.fillRect(x - 22, base - 44, 5, 44);
+  c.fillStyle = '#4b4e6e'; rr(c, x - 32, base - 60, 42, 14, 6); c.fill(); rr(c, x - 32, base - 54, 13, 54, 5); c.fill();
+  c.fillStyle = '#2c2a3a'; rr(c, x - 38, base - 6, 20, 7, 3); c.fill();
+  c.save(); c.translate(x, base - 56); c.rotate(-(1 - lift) * .2);
+  c.fillStyle = '#3f8a80'; rr(c, -12, -58 + br, 28, 60, 11); c.fill();
+  c.fillStyle = '#347468'; rr(c, -15, -50 + br, 10, 42, 5); c.fill();
+  circ(c, -12, -6, 5, '#e0a582');
+  c.restore();
+  const hX = x - 2 - fwd, hY = base - 128 + drop + br;
+  circ(c, hX + 5, hY - 3, 14, '#3b2a22'); circ(c, hX + 15, hY - 9, 7, '#3b2a22');
+  circ(c, hX, hY, 12.5, '#e0a582');
+  c.fillStyle = '#3b2a22'; c.beginPath(); c.arc(hX + 2, hY - 3, 13.5, Math.PI * 1.02, Math.PI * 1.95); c.fill();
+  c.strokeStyle = '#2b1d17'; c.lineWidth = 1.6;
+  if (lift < .45) { c.beginPath(); c.moveTo(hX - 9, hY + 1); c.lineTo(hX - 4, hY + 2); c.stroke(); }
+  else circ(c, hX - 6, hY, 1.6, '#2b1d17');
+  c.beginPath();
+  if (lift > .7) c.arc(hX - 6, hY + 5, 3, .25, Math.PI - .25);
+  else { c.moveTo(hX - 9, hY + 7); c.lineTo(hX - 4, hY + 7); }
+  c.stroke();
+  if (lift > .6) circ(c, hX - 3, hY + 4, 2.4, 'rgba(230,110,120,.45)');
+}
+function drawHouse(c, t) {
+  const m = S.mem, st = S.memStep, done = S.phase === 'done';
+  const lift = done ? 1 : Math.min(1, S.dc * 1.15);
+  c.fillStyle = '#e7a980'; c.fillRect(0, 0, W, 232);
+  c.fillStyle = 'rgba(255,255,255,.08)'; for (let x = 10; x < W; x += 28) c.fillRect(x, 0, 10, 232);
+  c.fillStyle = '#8b5a3a'; c.fillRect(0, 232, W, 68);
+  c.fillStyle = 'rgba(0,0,0,.12)'; for (let y = 246; y < H; y += 14) c.fillRect(0, y, W, 2);
+  c.fillStyle = '#f4e3d0'; c.fillRect(0, 226, W, 7);
+
+  // window
+  const open = S.curtains || done || (m && m.id === 'ventana' && st >= 1);
+  c.fillStyle = '#f4e3d0'; c.fillRect(26, 34, 128, 118);
+  c.fillStyle = '#9ed2ef'; c.fillRect(32, 40, 116, 106);
+  circ(c, 122, 64, 12, '#ffd96b'); circ(c, 60, 130, 22, '#5c9e58'); circ(c, 80, 124, 18, '#6db367');
+  c.fillStyle = '#f4e3d0'; c.fillRect(88, 40, 4, 106); c.fillRect(32, 91, 116, 4);
+  c.fillStyle = '#5b7fc4';
+  if (open) {
+    rr(c, 16, 28, 22, 130, 6); c.fill(); rr(c, 142, 28, 22, 130, 6); c.fill();
+    c.fillStyle = 'rgba(255,236,170,.22)'; c.beginPath(); c.moveTo(32, 146); c.lineTo(148, 146); c.lineTo(260, 300); c.lineTo(70, 300); c.closePath(); c.fill();
+  } else {
+    rr(c, 16, 28, 76, 130, 6); c.fill(); rr(c, 88, 28, 76, 130, 6); c.fill();
+    c.strokeStyle = 'rgba(0,0,0,.15)'; c.lineWidth = 2;
+    for (let x = 28; x < 160; x += 14) { c.beginPath(); c.moveTo(x, 32); c.lineTo(x, 154); c.stroke(); }
+  }
+  c.fillStyle = '#4a3a30'; c.fillRect(12, 26, 156, 5);
+
+  // photo on the wall
+  const fotoOut = m && m.id === 'foto';
+  circ(c, 216, 48, 2, '#6b4226');
+  if (!fotoOut && !done) frame(c, 190, 52, 0);
+  if (fotoOut && st === 0) frame(c, 180, 236, -.25);
+  if (done) frame(c, 190, 52, 0);
+
+  // radio on side table
+  c.fillStyle = '#6e3f24'; c.fillRect(22, 196, 78, 8); c.fillRect(28, 204, 5, 24); c.fillRect(90, 204, 5, 24);
+  c.strokeStyle = '#3a2a22'; c.lineWidth = 2; c.beginPath(); c.moveTo(78, 168); c.lineTo(92, 146); c.stroke();
+  rr(c, 34, 166, 52, 30, 6); c.fillStyle = '#c0463a'; c.fill();
+  circ(c, 50, 181, 9, '#7d2a22'); c.fillStyle = '#f4e3d0'; c.fillRect(64, 174, 16, 6); circ(c, 72, 187, 3.5, '#f4e3d0');
+  if (m && m.id === 'radio') {
+    c.fillStyle = '#2b2238'; c.font = '16px serif';
+    for (let i = 0; i < 3; i++) { const k = ((t * 18 + i * 22) % 60); c.globalAlpha = 1 - k / 60; c.fillText(i % 2 ? '♫' : '♪', 44 + i * 14 + Math.sin(t * 2 + i) * 4, 160 - k); }
+    c.globalAlpha = 1;
+  }
+
+  // drawing on the floor
+  if (m && m.id === 'dibujo' && st === 0) drawing(c, 114, 259, .18);
+
+  // table
+  c.fillStyle = '#6e3f24'; c.fillRect(170, 206, 122, 9); c.fillRect(178, 215, 6, 15); c.fillRect(278, 215, 6, 15);
+
+  // vase with the roses that have crossed
+  if (S.roses > 0) {
+    const n = S.roses;
+    for (let i = 0; i < n; i++) {
+      const sx = 206 + (i - (n - 1) / 2) * 8, sy = 160 - (i % 2) * 9;
+      c.strokeStyle = '#3f7a4a'; c.lineWidth = 1.6; c.beginPath(); c.moveTo(206, 182); c.lineTo(sx, sy); c.stroke();
+      roseHead(c, sx, sy, 5.5);
+    }
+    rr(c, 196, 178, 20, 28, 7); c.fillStyle = '#4f8fbf'; c.fill();
+  }
+
+  if (S.sat) youSitting(c, 262, 230);
+  if (S.coffee) { rr(c, 272, 194, 13, 12, 3); c.fillStyle = '#f4efe9'; c.fill(); steam(c, 275, 191, t); }
+  if (m && m.id === 'taza' && st < 2) dinoCup(c, 239, 206);
+
+  momSitting(c, 335, 230, lift, t);
+
+  // things in her hands
+  if (m && st === 2 && m.id === 'foto') { c.save(); c.translate(300, 158); c.scale(.55, .55); frame(c, 0, 0, .35); c.restore(); }
+  if (m && st === 2 && m.id === 'dibujo') drawing(c, 318, 128, -.2);
+  if (m && st === 2 && m.id === 'taza') { dinoCup(c, 308, 176); steam(c, 305, 162, t); rr(c, 250, 194, 13, 12, 3); c.fillStyle = '#f4efe9'; c.fill(); steam(c, 253, 191, t); }
+  if (m && m.id === 'ventana' && st >= 1) {
+    for (let i = 0; i < 8; i++) {
+      const k = ((t * 12 + i * 29) % 180) / 180;
+      const px = 90 + k * 200 + Math.sin(t + i) * 10, py = 80 + k * 150 + Math.sin(t * 2 + i) * 6;
+      c.save(); c.translate(px, py); c.rotate(t + i); c.fillStyle = '#d6456b'; c.beginPath(); c.ellipse(0, 0, 4, 2.5, 0, 0, 7); c.fill(); c.restore();
+    }
+  }
+
+  if (S.phase === 'memory' && m) {
+    if (st === 0) glow(c, m.g[0], m.g[1], m.g[2], t);
+    if (st === 1) glow(c, 330, 150, 56, t);
+  }
+}
+
+/* ---------- garden ---------- */
+function stand(c, o) {
+  const u = o.h / 100, f = o.face || 1;
+  c.save(); c.translate(o.x, o.base); c.scale(f * u, u);
+  if (o.glow) {
+    const gr = c.createRadialGradient(0, -55, 5, 0, -55, 75);
+    gr.addColorStop(0, 'rgba(255,225,160,.35)'); gr.addColorStop(1, 'rgba(255,225,160,0)');
+    c.fillStyle = gr; c.fillRect(-85, -135, 170, 150);
+  }
+  c.fillStyle = o.legs; rr(c, -9, -40, 8, 40, 3); c.fill(); rr(c, 1, -40, 8, 40, 3); c.fill();
+  c.fillStyle = '#2c2a3a'; rr(c, -10, -4, 11, 5, 2); c.fill(); rr(c, 1, -4, 11, 5, 2); c.fill();
+  c.fillStyle = o.shirt; rr(c, -12, -76, 24, 42, 9); c.fill();
+  if (o.skirt) { c.fillStyle = o.skirt; c.beginPath(); c.moveTo(-12, -42); c.lineTo(12, -42); c.lineTo(17, -12); c.lineTo(-17, -12); c.closePath(); c.fill(); }
+  const hy = -90;
+  circ(c, -3, hy - 2, 13, o.hair); if (o.bun) circ(c, -13, hy - 8, 6.5, o.hair);
+  circ(c, 2, hy, 11.5, o.skin);
+  c.fillStyle = o.hair; c.beginPath(); c.arc(0, hy - 3, 13, Math.PI * 1.05, Math.PI * 1.98); c.fill();
+  if (o.spiky) { c.beginPath(); c.moveTo(-11, hy - 9); c.lineTo(-7, hy - 21); c.lineTo(-2, hy - 13); c.lineTo(3, hy - 22); c.lineTo(6, hy - 13); c.lineTo(12, hy - 18); c.lineTo(12, hy - 7); c.closePath(); c.fill(); }
+  circ(c, 8, hy - 1, 1.5, '#2b1d17');
+  c.strokeStyle = '#2b1d17'; c.lineWidth = 1.4; c.beginPath(); c.arc(7, hy + 5, 3, .2, Math.PI - .6); c.stroke();
+  c.save(); c.translate(3, -70); c.rotate(-.15 - (o.arm || 0) * 1.2);
+  c.fillStyle = o.shirt; rr(c, -4, 0, 8, 28, 4); c.fill(); circ(c, 0, 30, 4, o.skin);
+  if (o.rose) { c.strokeStyle = '#3f7a4a'; c.lineWidth = 2; c.beginPath(); c.moveTo(0, 30); c.lineTo(0, 42); c.stroke(); roseHead(c, 0, 44, 6.5); }
+  c.restore();
+  c.restore();
+}
+const BROTHER = { shirt: '#e8c07a', legs: '#34406b', skin: '#d9a07c', hair: '#2b1d17', spiky: true, glow: true, h: 80 };
+const MOM = { shirt: '#3f8a80', legs: '#e0a582', skirt: '#4b4e6e', skin: '#e0a582', hair: '#3b2a22', bun: true, h: 100 };
+
+function mainRose(c, x, base, g, t) {
+  const sw = RM ? 0 : Math.sin(t * 1.3) * 2;
+  const top = base - 18 - 64 * g;
+  c.fillStyle = '#2f5a3a'; c.beginPath(); c.ellipse(x, base, 26, 8, 0, 0, 7); c.fill();
+  c.strokeStyle = '#3f7a4a'; c.lineWidth = 3; c.beginPath(); c.moveTo(x, base); c.quadraticCurveTo(x - 4, (base + top) / 2, x + sw, top); c.stroke();
+  if (g > .2) { c.fillStyle = '#4f9058'; c.beginPath(); c.ellipse(x - 8, base - 30 * g, 8, 4, -.5, 0, 7); c.fill(); c.beginPath(); c.ellipse(x + 8, base - 48 * g, 8, 4, .5, 0, 7); c.fill(); }
+  if (g < .3) circ(c, x + sw, top, 3.5, '#5c9e58');
+  else if (g < .75) {
+    c.fillStyle = '#d6456b'; c.beginPath(); c.ellipse(x + sw, top - 3, 4.5, 7, 0, 0, 7); c.fill();
+    c.fillStyle = '#4f9058'; c.beginPath(); c.moveTo(x + sw - 6, top + 2); c.lineTo(x + sw, top - 4); c.lineTo(x + sw + 6, top + 2); c.lineTo(x + sw, top + 4); c.closePath(); c.fill();
+  } else roseHead(c, x + sw, top - 2, 7 + 7 * ((g - .75) / .25));
+  if (S.phase === 'garden' && S.rose < 1) glow(c, x, top - 2, 16, t);
+}
+function drawGarden(c, t) {
+  const g = c.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#241c46'); g.addColorStop(.6, '#5b3f73'); g.addColorStop(1, '#a0607a');
+  c.fillStyle = g; c.fillRect(0, 0, W, H);
+  for (const s of STARS) { c.fillStyle = `rgba(255,244,220,${.35 + .65 * Math.abs(Math.sin(t * s.k + s.p))})`; c.fillRect(s.x, s.y, s.r, s.r); }
+  circ(c, 336, 52, 18, '#fbeecb'); circ(c, 344, 46, 16, '#2a2049');
+  c.fillStyle = '#35593f'; c.beginPath(); c.moveTo(0, 215); c.quadraticCurveTo(110, 178, 220, 210); c.quadraticCurveTo(320, 238, 400, 198); c.lineTo(400, 300); c.lineTo(0, 300); c.closePath(); c.fill();
+  c.fillStyle = '#2c4a35'; c.beginPath(); c.moveTo(0, 250); c.quadraticCurveTo(200, 236, 400, 252); c.lineTo(400, 300); c.lineTo(0, 300); c.closePath(); c.fill();
+  for (const r of BGROSES) {
+    const sw = RM ? 0 : Math.sin(t * 1.1 + r.p) * 1.5;
+    c.strokeStyle = '#3f7a4a'; c.lineWidth = 1.5; c.beginPath(); c.moveTo(r.x, r.y + 10); c.lineTo(r.x + sw, r.y - r.s * 2); c.stroke();
+    roseHead(c, r.x + sw, r.y - r.s * 2, r.s, r.col);
+  }
+  for (const f of FLIES) {
+    const x = f.x + Math.sin(t * f.k + f.p) * 18, y = f.y + Math.cos(t * f.k * 1.3 + f.p) * 10;
+    circ(c, x, y, 4, 'rgba(232,192,122,.18)'); circ(c, x, y, 1.6, '#f5dca0');
+  }
+
+  const ending = S.phase === 'ending' || S.phase === 'done';
+  if (!ending) {
+    mainRose(c, 238, 258, S.rose, t);
+    const arm = Math.max(0, 1 - (t - S.tendT) / .7);
+    stand(c, { ...BROTHER, x: 192, base: 262, face: 1, arm: arm * .9 });
+  } else {
+    const k = Math.min(1, (t - S.endT) / 3), e = 1 - Math.pow(1 - k, 3);
+    if (S.endStep === 0) mainRose(c, 290, 258, 1, t);
+    else mainRose(c, 290, 258, .1, t);
+    stand(c, { ...MOM, x: -40 + 210 * e, base: 264, face: 1, arm: S.endStep >= 2 ? .7 : 0, rose: S.endStep >= 2 });
+    stand(c, { ...BROTHER, x: 222, base: 262, face: -1, arm: S.endStep === 1 ? .9 : 0, rose: S.endStep === 1 });
+  }
+
+  S.parts = S.parts.filter(p => (p.life -= 1 / 60) > 0);
+  for (const p of S.parts) { p.x += p.vx; p.y += p.vy; p.vy += .03; circ(c, p.x, p.y, 1.8, `rgba(245,220,160,${p.life})`); }
+}
+
+/* ---------- loop ---------- */
+function loop(now) {
+  const t = now / 1000;
+  S.dc += (S.color - S.dc) * .03;
+  if (fit(houseC)) {
+    hx.setTransform(houseC.width / W, 0, 0, houseC.height / H, 0, 0);
+    drawHouse(hx, t);
+    const d = S.dc;
+    houseC.style.filter = `grayscale(${(1 - d).toFixed(3)}) brightness(${(.78 + .22 * d).toFixed(3)}) contrast(${(.85 + .15 * d).toFixed(3)})`;
+  }
+  if (fit(gardenC)) { gx.setTransform(gardenC.width / W, 0, 0, gardenC.height / H, 0, 0); drawGarden(gx, t); }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+/* ---------- UI ---------- */
+function story(lines, acts) {
+  const box = $('#lines'); box.innerHTML = '';
+  for (const l of lines) {
+    const p = document.createElement('p');
+    if (l.hand) { p.className = 'hand'; const w = document.createElement('span'); w.className = 'who'; w.textContent = cap(Hn()); p.appendChild(w); p.appendChild(document.createTextNode(l.t)); }
+    else { if (l.cls) p.className = l.cls; p.textContent = l.t; }
+    box.appendChild(p);
+  }
+  const a = $('#acts'); a.innerHTML = '';
+  for (const x of acts) { const b = document.createElement('button'); b.textContent = x.label; b.onclick = x.fn; a.appendChild(b); }
+  const s = $('#story'); s.classList.remove('in'); void s.offsetWidth; s.classList.add('in');
+}
+function setFocus(w) {
+  $('#pHouse').classList.toggle('dim', w === 'garden'); $('#pGarden').classList.toggle('dim', w === 'house');
+  $('#pHouse').classList.toggle('on', w === 'house'); $('#pGarden').classList.toggle('on', w === 'garden');
+}
+function labels() {
+  $('#lblG').textContent = `El jardín de ${Hn()}`;
+  $('#lblGs').textContent = names.h.trim() ? `Juegas como ${names.h.trim()}` : 'Juegas como él';
+  $('#dayLbl').textContent = S.phase === 'done' ? 'Fin' : S.phase === 'ending' ? 'La última noche' : `Día ${S.day} de 5`;
+}
+function veil(text, ms, then) {
+  $('#veilText').textContent = text; $('#veil').classList.add('show');
+  setTimeout(() => { then(); setTimeout(() => $('#veil').classList.remove('show'), 150); }, RM ? 500 : ms);
+}
+const clampC = v => Math.min(.85, v);
+
+function startDay() {
+  Object.assign(S, { phase: 'morning', curtains: false, coffee: false, sat: false, mem: null, memStep: 0, rose: 0 });
+  setFocus('house'); labels();
+  story([{ t: DAY_INTRO[S.day - 1]() }, { t: '¿Qué haces por ella esta mañana?' }], [
+    { label: 'Abrir las cortinas', fn: () => morning('cortinas') },
+    { label: 'Hacerle un café', fn: () => morning('cafe') },
+    { label: 'Sentarte con ella', fn: () => morning('sentarte') },
+  ]);
+}
+function morning(a) {
+  const bad = S.day === 3; let txt, gain;
+  if (a === 'cortinas') {
+    if (bad) { txt = 'Abres las cortinas. Ella te pide, sin mirarte, que las cierres. Las cierras.'; gain = .01; }
+    else { S.curtains = true; txt = 'Abres las cortinas. Ella entrecierra los ojos, pero no te pide que las cierres.'; gain = .06; }
+  } else if (a === 'cafe') {
+    S.coffee = true;
+    if (bad) { txt = 'Le dejas un café en la mesa. No lo toca en toda la mañana.'; gain = .01; }
+    else { txt = 'Le dejas un café en la mesa. Al rato lo toma. Frío, pero lo toma.'; gain = .06; }
+  } else {
+    S.sat = true; gain = .04;
+    txt = bad ? 'Te sientas a su lado. No hablan. Ella no se mueve, pero tampoco te pide que te vayas.'
+              : 'Te sientas a su lado. No hablan. Después de un rato, ella apoya la cabeza en tu hombro.';
+  }
+  S.color = clampC(S.color + gain);
+  story([{ t: txt }], [{ label: `Ir al jardín de ${Hn()}`, fn: garden }]);
+}
+function garden() {
+  S.phase = 'garden'; setFocus('garden');
+  const L = BRO[S.day - 1], lines = [];
+  if (S.day === 1) lines.push({ t: `Ahora juegas como ${Hn()}. En su jardín, entre los dos mundos, sigue cumpliendo la promesa.` });
+  lines.push({ t: L[0], hand: true });
+  if (S.day === 1) lines.push({ t: 'Toca la rosa, o el botón, para cuidarla hasta que florezca.', cls: 'hint' });
+  story(lines, [{ label: 'Cuidar la rosa', fn: tend }]);
+}
+function tend() {
+  if (S.phase !== 'garden' || S.rose >= 1) return;
+  S.rose = Math.min(1, S.rose + .25); S.tendT = performance.now() / 1000;
+  const top = 258 - 18 - 64 * S.rose;
+  for (let i = 0; i < 12; i++) S.parts.push({ x: 238, y: top, vx: (Math.random() - .5) * 2.4, vy: -Math.random() * 2, life: 1 });
+  if (S.rose >= 1) story([{ t: BRO[S.day - 1][1], hand: true }], [{ label: `Enviar la rosa a ${Ms()}`, fn: sendRose }]);
+}
+function toScreen(cv, lx, ly) { const r = cv.getBoundingClientRect(); return { x: r.left + lx / W * r.width, y: r.top + ly / H * r.height }; }
+function sendRose() {
+  S.phase = 'sending'; document.querySelectorAll('#acts button').forEach(b => b.disabled = true);
+  setFocus('both');
+  requestAnimationFrame(() => {
+    const a = toScreen(gardenC, 238, 172), b = toScreen(houseC, 206, 162);
+    const cols = ['#d6456b', '#e0708f', '#c23a5f', '#f2b8c9'];
+    const base = RM ? 400 : 1700; let longest = 0;
+    for (let i = 0; i < 12; i++) {
+      const p = document.createElement('div'); p.className = 'petal'; p.style.background = cols[i % 4]; document.body.appendChild(p);
+      const mx = (a.x + b.x) / 2 + (Math.random() - .5) * 120, my = Math.min(a.y, b.y) - 60 - Math.random() * 80;
+      const dur = base + i * 60, delay = RM ? 0 : i * 70; longest = Math.max(longest, dur + delay);
+      p.animate([
+        { transform: `translate(${a.x}px,${a.y}px) rotate(0deg)`, opacity: 1 },
+        { transform: `translate(${mx}px,${my}px) rotate(200deg)`, opacity: 1, offset: .5 },
+        { transform: `translate(${b.x + (Math.random() - .5) * 16}px,${b.y}px) rotate(400deg)`, opacity: 0 },
+      ], { duration: dur, delay, easing: 'ease-in-out', fill: 'both' }).onfinish = () => p.remove();
+    }
+    S.rose = 0;
+    setTimeout(() => { S.roses++; memory(); }, longest);
+  });
+}
+function memory() {
+  S.phase = 'memory'; S.mem = MEM[S.day - 1]; S.memStep = 0; setFocus('house');
+  story([{ t: 'La rosa cruza. En la casa, algo cambia.' }, { t: S.mem.intro() },
+         ...(S.day === 1 ? [{ t: 'Toca lo que brilla en la casa, o usa el botón.', cls: 'hint' }] : [])],
+        [{ label: S.mem.pick, fn: pickMem }]);
+}
+function pickMem() {
+  if (S.phase !== 'memory' || S.memStep !== 0) return;
+  S.memStep = 1;
+  story([{ t: S.mem.picked }], [{ label: S.mem.share(), fn: shareMem }]);
+}
+function shareMem() {
+  if (S.phase !== 'memory' || S.memStep !== 1) return;
+  S.memStep = 2; S.color = clampC(S.color + S.mem.gain);
+  const last = S.day === 5;
+  story([{ t: S.mem.resp() }], [{ label: last ? 'Dormir' : 'Terminar el día', fn: last ? endStart : night }]);
+}
+function night() {
+  veil(`Día ${S.day + 1}`, 1400, () => { S.day++; startDay(); });
+}
+function endStart() {
+  veil('Esa noche', 1400, () => {
+    S.phase = 'ending'; S.endStep = 0; S.endT = performance.now() / 1000; setFocus('garden'); labels(); endStory();
+  });
+}
+const END = [
+  () => [{ t: `Esa noche, ${Mn()} sueña con un jardín. Hay rosas por todas partes. Y al fondo está ${Hn()}.` }],
+  () => [{ t: 'Hola, ma. Esta te la guardé.', hand: true }],
+  () => [{ t: 'Ella la toma. Lo abraza. Quiere quedarse ahí con él.' }],
+  () => [{ t: 'No, ma. Allá te están esperando. Yo te sigo mandando una todos los días.', hand: true }],
+];
+function endStory() {
+  story(END[S.endStep](), [{ label: 'Continuar', fn: () => {
+    S.endStep++;
+    if (S.endStep < END.length) endStory(); else finale();
+  } }]);
+}
+function finale() {
+  veil('Mañana', 1400, () => {
+    Object.assign(S, { phase: 'done', curtains: true, coffee: true, sat: true, mem: null, color: .92 });
+    setFocus('house'); labels();
+    story([{ t: `Al despertar, ${Mn()} abre las cortinas ella sola. En la mesa hay cinco rosas.` },
+           { t: 'Una parte de ella se fue con él. Pero el resto se quedó con nosotros.', cls: 'big' }],
+          [{ label: 'Jugar otra vez', fn: showIntro }]);
+  });
+}
+
+houseC.addEventListener('click', e => {
+  if (S.phase !== 'memory') return;
+  const r = houseC.getBoundingClientRect(), x = (e.clientX - r.left) / r.width * W, y = (e.clientY - r.top) / r.height * H;
+  const inR = o => x >= o.x && x <= o.x + o.w && y >= o.y && y <= o.y + o.h;
+  if (S.memStep === 0 && inR(S.mem.obj)) pickMem();
+  else if (S.memStep === 1 && inR(MOM_R)) shareMem();
+});
+gardenC.addEventListener('click', tend);
+
+function showIntro() {
+  S = fresh(); setFocus('both'); labels();
+  $('#nameH').value = names.h; $('#nameM').value = names.m;
+  story([{ t: 'La casa está en gris. El jardín espera.' }], []);
+  $('#intro').hidden = false; $('#nameH').focus();
+}
+$('#startBtn').onclick = () => {
+  names = { h: $('#nameH').value, m: $('#nameM').value };
+  try { localStorage.setItem('rosa-names', JSON.stringify(names)); } catch (e) {}
+  $('#intro').hidden = true; startDay();
+};
+showIntro();
+})();
+</script>
+</body></html>
