@@ -1,13 +1,13 @@
 # Assets
 
-## Generados con Higgsfield
-- Personajes: imágenes con GPT Image 2.5; animaciones con Kling 3.0 (idle, correr, saltar, caminar) sobre pantalla verde.
-- `brother.png` / `mother.png`: sprite sheets (una fila por animación) creados con `tools/make_sprites.py`
-  (extrae cuadros, quita el verde, elige el tramo que mejor hace loop, alinea los pies y mide el collider).
-  `brother.json` / `mother.json` son los atlas: tamaño de cuadro, ancla, altura del cuerpo y cuadros por animación
-  (el salto viene separado en `rise`, `fall` y `land`).
-- Fondos (`*_far.webp`, `*_mid.webp`), `house.webp`, `ground.webp`, `shadow.webp`: GPT Image 2.5.
-  `meta.json` guarda la posición de la ventana de la casa, detectada automáticamente.
+## Generados con Higgsfield (GPT Image 2.5 y Kling 3.0)
+- Personajes: imágenes realistas animadas con Kling 3.0 sobre pantalla verde, convertidas en sprite sheets con
+  `tools/make_sprites.py` y luego en siluetas estilo LIMBO (cuerpo negro, un ojo blanco, la rosa roja) con
+  `tools/limbo_sprites.py`. `brother.json` / `mother.json` son los atlas (el salto viene separado en `rise`, `fall`, `land`).
+- Fondos monocromos: `forest_far.webp`, `cave_far.webp`, `rain_far.webp`; capas `forest_mid.webp`, `cave_ceil.webp`;
+  borde de pasto `grass.png`; `house.png` (la ventana se detecta sola, ver `meta.json`); `shadow.webp`.
+- `props/`: árboles, raíces, rocas, estalactitas, trampas, caja, reja, palanca, placa, cuerda, cadena, farol.
+  Se generaron en hojas y se recortaron con `tools/slice_props.py`.
 
 ## CC0
 - `fog.png`: "Thick Fog", OpenGameArt, https://opengameart.org/content/thick-fog (CC0), vía https://github.com/Tiddybub/2d-assets
