@@ -209,7 +209,7 @@ function update(dt) {
     if (st.deathT > 3.4 && !st.shown) { st.shown = true; results(); }
     return;
   }
-  if (st.banners.length && !st.ev) { st.banners[0].t += dt; if (st.banners[0].t > 3) st.banners.shift(); }
+  if (st.banners.length && !st.ev && !st.beat) { st.banners[0].t += dt; if (st.banners[0].t > 3) st.banners.shift(); }
   if (st.ev) {
     st.ev.t += dt;
     const n = st.ev.e.o.length;
@@ -334,7 +334,7 @@ function family() {
     G.rrect(x + 22, y - 36, 10, 18, 5, '#8a5a2a'); eye(x + 34, y - 22, 5, 1, 0); G.rrect(x - 40, y - 20, 16, 6, 3, '#c08a4a');
   }
   if (st.flags.hija && a >= 32) person(RX + 70, GY, Math.min(a - 32, 40), { shirt: C.gold, skin: '#e8b48a', hair: '#7a4418', long: true, mood: 70, still: dead });
-  if (st.flags.pareja && a >= 17) person(RX - 75, GY, a, { shirt: st.partner === 'Lucía' ? C.teal : '#e07a5a', skin: '#d8a07a', hair: st.partner === 'Lucía' ? '#2a1a10' : '#b04a2a', long: true, mood: dead ? 20 : 65, glasses: a > 55, still: dead });
+  if (st.flags.pareja && a >= 17) person(RX - 88, GY, a, { shirt: st.partner === 'Lucía' ? C.teal : '#e07a5a', skin: '#d8a07a', hair: st.partner === 'Lucía' ? '#2a1a10' : '#b04a2a', long: true, mood: dead ? 20 : 65, glasses: a > 55, still: dead });
 }
 function drawBeat() {
   const b = st.beat;
@@ -370,10 +370,10 @@ function drawChoice() {
 }
 function drawBanner() {
   const b = st.banners[0];
-  if (!b || st.ev) return;
+  if (!b || st.ev || st.beat) return;
   const a = Math.min(1, b.t * 5, (3 - b.t) * 3);
   ctx.globalAlpha = clamp(a, 0, 1);
-  const y = S.y + (st.beat ? 220 : 90);
+  const y = S.y + 90;
   G.rrect(S.x + 20, y, S.w - 40, 120, 16, '#120d1ae0', b.col, 3);
   if (b.head) G.text(b.head, CX, y + 30, { size: 17, align: 'center', color: b.col, body: true, weight: 700 });
   wrap(b.text, CX, y + (b.head ? 72 : 60), S.w - 80, 22, { body: true, middle: true });

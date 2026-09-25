@@ -112,7 +112,7 @@ function judge(n, kind) {
   const lx = LX + n.lane * LW + LW / 2;
   if (kind === 'miss') {
     nM++; combo = 0; missRow++;
-    G.float('FALLO', lx, HIT - 70, C.pink, 22); G.shake(4, 0.12);
+    G.float('FALLO', lx, HIT - 60 - n.lane % 2 * 22, C.pink, 18); G.shake(4, 0.12);
     G.beep(98, 0.16, 'sawtooth', 0.05, -30);
     addApproval(-[6, 7, 8][si]);
     if (missRow === 4) talk(G.pick(['¿ESO ES MÚSICA?', '¡QUÉ HORROR!', 'MIS OREJAS... ¡ESPERA, NO TENGO!']));
@@ -125,7 +125,7 @@ function judge(n, kind) {
   addApproval(perf ? 2.2 : 0.8);
   G.beep(noteF(n.d, S.key) * 2, spb * 0.8, 'square', perf ? 0.06 : 0.045);
   G.beep(noteF(n.d, S.key) * 4, spb * 0.4, 'triangle', 0.03);
-  G.float(perf ? '¡PERFECTO!' : 'BIEN', lx, HIT - 70, perf ? C.lime : C.ink, perf ? 24 : 20);
+  G.float(perf ? '¡PERFECTO!' : 'BIEN', lx, HIT - 60 - n.lane % 2 * 22, perf ? C.lime : C.ink, perf ? 17 : 18);
   G.burst(lx, HIT, LANEC[n.lane], perf ? 16 : 8, perf ? 300 : 180, 5);
   if ([10, 25, 50, 80].includes(combo)) {
     talk(['¡ME GUSTA!', '¡SIGUE ASÍ!', '¡ESTO ES ARTE!', '¡LLORO DE EMOCIÓN!'][[10, 25, 50, 80].indexOf(combo)]);
@@ -150,7 +150,7 @@ function improTap(l) {
   if (off < 0.08 && !improUsed.has(k)) {
     improUsed.add(k); addApproval(1.8); combo++; maxCombo = Math.max(maxCombo, combo);
     score += 80 * (1 + Math.min(3, Math.floor(combo / 10)));
-    G.burst(lx, HIT, LANEC[l], 12, 260, 5); G.float('¡EN RITMO!', lx, HIT - 70, C.lime, 20);
+    G.burst(lx, HIT, LANEC[l], 12, 260, 5); G.float('¡EN RITMO!', lx, HIT - 60 - l % 2 * 22, C.lime, 16);
   } else G.float('fuera', lx, HIT - 70, C.dim, 18);
 }
 function boom() {
@@ -274,8 +274,8 @@ function drawHead(ctx) {
   ctx.fillStyle = '#ffffff22'; ctx.beginPath(); ctx.ellipse(cx - 40, cy - 60, 36, 18, -0.4, 0, 7); ctx.fill();
   // tercer ojo
   const blink3 = (G.t % 4) < 0.15;
-  G.circle(cx, cy - 66, 11, '#fff', '#1a1424', 2);
-  if (!blink3) G.circle(cx + (tx - cx) * 0.01, cy - 64, 5, anger > 0.5 ? '#c01030' : '#1a1424'); else { ctx.fillStyle = skin; ctx.fillRect(cx - 12, cy - 78, 24, 13); }
+  G.circle(cx, cy - 84, 11, '#fff', '#1a1424', 2);
+  if (!blink3) G.circle(cx + (tx - cx) * 0.01, cy - 82, 5, anger > 0.5 ? '#c01030' : '#1a1424'); else { ctx.fillStyle = skin; ctx.fillRect(cx - 12, cy - 96, 24, 13); }
   // ojos
   for (const [ex, ey] of eyes) {
     G.circle(ex, ey, 30, '#fff', '#1a1424', 3);

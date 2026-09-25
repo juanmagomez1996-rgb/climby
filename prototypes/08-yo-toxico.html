@@ -401,6 +401,14 @@ function draw() {
   for (const d of decor) { const y = OY + 690 - ((G.t * d.s + d.o) % 690); G.circle(d.x, y, d.r, '#ffffff0c'); }
   if (!grid) return;
   for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) { const ch = grid[r][c]; if (ch !== '.' && ch !== 'M') drawTile(ch, c, r); }
+  if (li === 0) { // la máquina del spa que os partió, de fondo
+    ctx.globalAlpha = 0.35; G.rrect(170, 200, 200, 260, 40, '#ffb23e22', C.gold, 4);
+    G.rrect(195, 230, 150, 110, 30, '#53d8c322', C.teal, 3);
+    for (let i = 0; i < 5; i++) G.circle(210 + i * 30, 380, 7, Math.sin(G.t * 4 + i) > 0 ? C.pink : C.lime);
+    G.text('SPA ZEN-O-MATIC', 270, 430, { size: 16, align: 'center', color: C.gold });
+    ctx.strokeStyle = C.pink; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(270, 232); ctx.lineTo(258, 270); ctx.lineTo(280, 290); ctx.lineTo(265, 338); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
   drawMachine();
   for (const cr of crates) drawCrate(cr);
   drawChar(sano); drawChar(tox);

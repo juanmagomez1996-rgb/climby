@@ -42,8 +42,8 @@ const RIDES = {
 };
 const EVENTS = {
   gripe: { name: '¡GRIPE!', tip: 'Aplasta los virus', dur: 18 },
-  indig: { name: '¡INDIGESTIÓN!', tip: 'El estómago se inunda', dur: 16 },
-  fiebre: { name: '¡FIEBRE!', tip: 'El calor avería atracciones', dur: 22 },
+  indig: { name: '¡INDIGESTIÓN!', tip: 'Estómago inundado', dur: 16 },
+  fiebre: { name: '¡FIEBRE!', tip: 'Todo se avería', dur: 22 },
 };
 const FEED = 60, ANTI = 50, CLOTH = 40, REPAIR = 40, UPKEEP = 6;
 const PILL = [['#FF5C7A', '#F2E9D8'], ['#6FA8FF', '#FFB23E'], ['#53D8C3', '#F2E9D8'], ['#B6E36A', '#FF5C7A'], ['#FFB23E', '#6FA8FF']];
@@ -115,6 +115,7 @@ function chooseNext(v, at) {
   if (v.state === 'leave') { return nextHop(at, 'ent'); }
   const opts = NB[at].filter(n => n !== 'ent' && n !== v.prev);
   const cand = opts.length ? opts : NB[at].filter(n => n !== 'ent');
+  if (!cand.length) return NB[at][0];
   const w = cand.map(n => { const z = S.z[n]; const work = z.rides.filter(r => !r.broken).length; return zoneOpen(n) ? 0.4 + work * 1.5 : 0.1; });
   let r = Math.random() * w.reduce((a, b) => a + b, 0);
   for (let i = 0; i < cand.length; i++) { r -= w[i]; if (r <= 0) return cand[i]; }
@@ -136,7 +137,7 @@ function arrive(v, at) {
       if (v.money >= R.price) {
         v.money -= R.price; S.money += R.price; v.state = 'ride'; v.rideT = 2.4; v.slot = i; v.rides++;
         v.happy = Math.min(100, v.happy + R.fun * (z.health < 30 ? 0.4 : 1));
-        if (R.price) { const Z = NODE[at]; G.float('+' + R.price + '€', Z.x + G.rand(-20, 20), Z.y - Z.r, C.gold, 16); }
+        z.earn = (z.earn || 0) + R.price;
         if (Math.random() < 0.3) G.beep(900 + Math.random() * 300, 0.04, 'triangle', 0.02);
         return;
       }
@@ -155,7 +156,7 @@ function update(dt) {
   const d = Math.floor(S.time / DAY) + 1;
   if (d > S.day) {
     S.day = d; const up = nRides() * UPKEEP; S.money -= up;
-    G.float('Día ' + Math.min(d, DAYS) + (up ? '  −' + up + '€ mantenimiento' : ''), 270, 330, C.teal, 24); G.beep(660, 0.15, 'sine', 0.05, 220);
+    G.float('Día ' + Math.min(d, DAYS), 270, 330, C.teal, 30); if (up) G.float('−' + up + '€ mantenimiento', 270, 360, C.pink, 18); G.beep(660, 0.15, 'sine', 0.05, 220);
   }
   if (S.time >= DAY * DAYS) return finish(true);
   // anfitrión
@@ -173,6 +174,8 @@ function update(dt) {
     if (z.closed && z.health >= 50) { z.closed = false; G.float('Reabre ' + Zd.name, Zd.x, Zd.y, C.lime, 20); }
   }
   if (hostHealth() < 18 || S.temp >= 42.5) return finish(false);
+  S.earnT = (S.earnT || 0) - dt;
+  if (S.earnT <= 0) { S.earnT = 1.2; for (const Z of ZD) { const z = S.z[Z.id]; if (z.earn) { G.float('+' + z.earn + '€', Z.x, Z.y - Z.r - 6, C.gold, 17); z.earn = 0; } } }
   // eventos
   if (S.ev) {
     S.evT -= dt; if (S.evT <= 0) endEvent();
@@ -247,9 +250,9 @@ function spawnVirus() {
   G.beep(260, 0.06, 'sawtooth', 0.025, 120);
 }
 const options = zid => [NODE[zid].spec, 'chuches', 'enfermeria'];
-function score() { return Math.max(0, Math.round(S.money + S.happySum / 4)); }
+function score() { return Math.max(0, Math.round((S.money + S.happySum / 4) * (S.dead ? 0.5 : 1))); }
 function finish(win) {
-  S.phase = 'over';
+  S.phase = 'over'; S.dead = !win;
   const sc = score(), b = G.best('parque-interno', sc);
   const avg = S.served ? Math.round(S.happySum / S.served) : 0;
   if (win) { G.burst(270, 400, C.gold, 60, 400, 7); G.beep(523, 0.15, 'triangle', 0.06); setTimeout(() => G.beep(784, 0.3, 'triangle', 0.06), 150); }
@@ -257,7 +260,7 @@ function finish(win) {
   setTimeout(() => G.screen({ sub: win ? 'Temporada completada' : 'Día ' + S.day + ' de ' + DAYS,
     title: win ? '¡Don Anselmo sigue vivo!' : 'Don Anselmo ha fallecido', big: sc + ' pts',
     html: `<ul><li>Dinero: <b>${Math.round(S.money)} €</b></li><li>Visitantes atendidos: <b>${S.served}</b> (felicidad media ${avg}%)</li>
-      <li>Puntos de felicidad: <b>+${Math.round(S.happySum / 4)}</b></li>${S.sad ? `<li>Se fueron tristes: ${S.sad}</li>` : ''}</ul>
+      <li>Puntos de felicidad: <b>+${Math.round(S.happySum / 4)}</b></li>${win ? '' : '<li>Anfitrión fallecido: <b>−50%</b></li>'}${S.sad ? `<li>Se fueron tristes: ${S.sad}</li>` : ''}</ul>
       <p>${win ? 'El parque cierra por temporada. El anfitrión, agotado pero entero.' : 'El parque ha cerrado. Para siempre. Los visitantes piden reembolso.'}</p><p>Récord: <b>${b}</b></p>`,
     button: 'Otra temporada', onClick: newGame }), win ? 400 : 900);
 }
@@ -380,8 +383,9 @@ function drawHUD() {
   vit.forEach(([l, f, c], i) => { const x = 20 + i * 172; G.text(l, x, 125, { size: 13, body: true, weight: 700, color: C.dim, shadow: false }); G.bar(x + (i ? 58 : 82), 116, i ? 104 : 80, 10, f, c); });
   if (S.ev) {
     const E = EVENTS[S.ev], a = 0.75 + Math.sin(G.t * 8) * 0.25;
-    ctx.globalAlpha = a; G.rrect(110, 146, 320, 30, 15, S.ev === 'fiebre' ? '#C0392B' : S.ev === 'gripe' ? '#3E7A2A' : '#8A6A1A'); ctx.globalAlpha = 1;
-    G.text(E.name + ' ' + E.tip + ' · ' + Math.ceil(S.evT) + 's', 270, 162, { size: 14, align: 'center', baseline: 'middle', body: true, weight: 700 });
+    ctx.globalAlpha = a; G.rrect(10, 148, 168, 54, 12, S.ev === 'fiebre' ? '#C0392B' : S.ev === 'gripe' ? '#3E7A2A' : '#8A6A1A'); ctx.globalAlpha = 1;
+    G.text(E.name + ' ' + Math.ceil(S.evT) + 's', 94, 170, { size: 16, align: 'center' });
+    G.text(E.tip, 94, 192, { size: 12, align: 'center', body: true, weight: 700 });
   }
 }
 function card(x, y, w, h, type, zid) {

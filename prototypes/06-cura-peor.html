@@ -7,10 +7,10 @@ const C = G.C, ctx = G.ctx, COLS = 8, ROWS = 11, CS = 60, OX = 30, OY = 124, MAX
 const MAP = ['HHH.HHHH', 'HPH.HHHH', 'HHH.HHPH', '........', 'HHHH.HHH', 'HWWH.HHH', 'HWWH.HPH', '........', 'HHH.HHHH', 'HPH.HHHH', 'HHH.HHHH'];
 const BLOB = '#C98BFF', FIRE = '#FF6B3D';
 const CARDS = {
-  mantis: { name: 'Antídoto mantis', col: C.lime, w: 3, eff: 'Cura a los enamorados en 3x3.', side: 'Al turno siguiente mutan a Mantis.' },
+  mantis: { name: 'Antídoto insecto', col: C.lime, w: 3, eff: 'Cura a los enamorados en 3x3.', side: 'Al turno siguiente se vuelven Insectos.' },
   wall: { name: 'Cortafuegos', col: C.gold, w: 3, eff: 'Bloquea el contagio en línea 3 turnos.', side: 'Al caer, arrasa lo de debajo.' },
   evac: { name: 'Evacuar', col: C.blue, w: 3, eff: 'Salva una casa sana para siempre.', side: '50%: el pánico contagia a un vecino.' },
-  adn: { name: 'Cura de ADN', col: C.teal, w: 3, eff: 'Cura enamorados y mantis en cruz.', side: '40%: nace un Cronenblob (crece 2/turno).' },
+  adn: { name: 'Cura de ADN', col: C.teal, w: 3, eff: 'Cura enamorados e insectos en cruz.', side: '40%: nace un Grumoblob (crece 2/turno).' },
   fire: { name: 'Lanzallamas', col: FIRE, w: 2, eff: 'Arrasa todo en cruz, blobs incluidos.', side: 'Las casas sanas también arden.' },
 };
 const DECK = Object.keys(CARDS).flatMap(k => Array(CARDS[k].w).fill(k));
@@ -80,7 +80,7 @@ function apply(c) {
     G.beep(440, 0.12, 'sine', 0.05, 440);
     if (conv.length && Math.random() < 0.4) {
       const b = G.pick(conv); b.s = 'blob'; b.fl = 1; blobsMade++;
-      setTimeout(() => { G.float('¡CRONENBLOB!', cpx(b), cpy(b) + 30, BLOB, 28); G.shake(12, 0.4); G.burst(cpx(b), cpy(b), BLOB, 30, 320, 7); G.beep(80, 0.5, 'sawtooth', 0.08, 60); }, 250);
+      setTimeout(() => { G.float('¡GRUMOBLOB!', cpx(b), cpy(b) + 30, BLOB, 28); G.shake(12, 0.4); G.burst(cpx(b), cpy(b), BLOB, 30, 320, 7); G.beep(80, 0.5, 'sawtooth', 0.08, 60); }, 250);
     }
   } else if (card === 'fire') {
     let n = 0; H.forEach(h => { if (h.s !== 'evac' && h.s !== 'ruin') { h.s = 'ruin'; h.fl = 1; n++; } });
@@ -112,7 +112,7 @@ function spread() {
     if (!isHouse(c) || snap[idx(c.x, c.y)] !== 'man' || c.bar) return;
     D4.forEach(([dx, dy]) => { const n = cell(c.x + dx, c.y + dy); if (isHouse(n) && !n.bar && n.s === 'ok' && Math.random() < 0.1) { mark(n, 'man'); nMan++; } });
   });
-  // Cronenblobs: cada masa crece 2 casillas
+  // Grumoblobs: cada masa crece 2 casillas
   const seen = new Set();
   cells.forEach(c => {
     if (!isHouse(c) || snap[idx(c.x, c.y)] !== 'blob' || seen.has(c)) return;
@@ -132,10 +132,10 @@ function spread() {
     const ok = cells.filter(c => isHouse(c) && c.s === 'ok' && !c.bar && !changed.has(c));
     if (ok.length) { const c = G.pick(ok); mark(c, 'inf'); G.float('¡Nuevo brote!', cpx(c), cpy(c), C.pink, 22); G.shake(6); }
   }
-  let y = 150;
-  const msg = (t, col) => { G.float(t, 270, (y += 0) + 330, col, 22); y += 30; };
+  let y = 470;
+  const msg = (t, col) => { G.float(t, 270, y, col, 24); y += 32; };
   if (nInf) msg(`+${nInf} enamorados`, C.pink);
-  if (nMan) msg(`+${nMan} mantis`, C.lime);
+  if (nMan) msg(`+${nMan} insectos`, C.lime);
   if (nBlob) msg(`+${nBlob} blob`, BLOB);
   if (nRuin) msg(`${nRuin} arrasadas`, C.dim);
   if (nInf + nBlob) G.beep(260, 0.18, 'sawtooth', 0.04, -120); else G.beep(700, 0.1, 'triangle', 0.04);
@@ -153,7 +153,7 @@ function showEnd() {
   let sc = p * 100, rows = [`<li>Población sana: <b>${p}%</b> → ${p * 100}</li>`];
   if (endKind === 'win') { sc *= 2; rows.push('<li>Victoria: <b>×2</b></li>'); }
   if (endKind === 'lose') { sc *= 0.5; rows.push('<li>Derrota: <b>×0,5</b></li>'); }
-  if (endKind !== 'lose' && !blobs) { sc *= 1.25; rows.push('<li>Sin Cronenblobs vivos: <b>×1,25</b></li>'); }
+  if (endKind !== 'lose' && !blobs) { sc *= 1.25; rows.push('<li>Sin Grumoblobs vivos: <b>×1,25</b></li>'); }
   if (endKind === 'quit') { sc += 500; rows.push('<li>Bonus de cinismo: <b>+500</b></li>'); }
   sc = Math.round(sc);
   const best = G.best('curapeor', sc);
@@ -186,7 +186,7 @@ function update(dt) {
       pending = -1; G.beep(500, 0.04);
     }
     if (c) {
-      if (sel < 0) { G.float('Elige antes una cura', 270, 790, C.gold, 18); }
+      if (sel < 0) { if (!G.floaters.some(f => f.text === 'Elige antes una cura')) G.float('Elige antes una cura', 270, 790, C.gold, 18); }
       else if (lastType === 'mouse' || pending === c) apply(c);
       else { pending = c; G.beep(800, 0.03); }
     }
@@ -288,9 +288,9 @@ function draw() {
   const hint = phase === 'spread' ? 'El contagio se extiende…' : sel < 0 ? 'Elige una cura (toca una carta o 1-2-3)'
     : lastType === 'mouse' ? `Clic en el mapa para aplicar${hand[sel] === 'wall' ? ' · R: girar' : ''}`
       : pending ? 'Toca otra vez la misma casilla para aplicar' : `Toca una casilla para ver el área${hand[sel] === 'wall' ? ' · carta otra vez: girar' : ''}`;
-  G.text(hint, 270, 800, { size: 13, body: true, weight: 700, align: 'center', color: phase === 'spread' ? C.pink : C.dim, shadow: false });
+  G.text(hint, 270, 797, { size: 13, body: true, weight: 700, align: 'center', color: phase === 'spread' ? C.pink : C.dim, shadow: false });
   hand.forEach((k, i) => {
-    const x = cardX(i), c = CARDS[k], on = i === sel, y = CY - (on ? 6 : 0);
+    const x = cardX(i), c = CARDS[k], on = i === sel, y = CY - (on ? 3 : 0);
     G.rrect(x, y, 164, CH, 12, on ? '#3d2f57' : C.panel, on ? c.col : '#ffffff18', on ? 3 : 1.5);
     G.rrect(x, y, 164, 6, 3, c.col);
     miniArea(k, x + 122, y + 14);
@@ -309,7 +309,7 @@ G.screen({
   <li>Toca una casilla para previsualizar y otra vez para aplicar (con ratón, clic directo).</li>
   <li>Tras tu jugada el contagio avanza. Aguanta 15 turnos con ≥30% sanos.</li>
   <li>Desde el turno 10 puedes abandonar esta dimensión.</li></ul>
-  <p style="font-size:13px">Sano · <b style="color:#FF5C7A">Enamorado</b> · <b style="color:#B6E36A">Mantis</b> · <b style="color:#C98BFF">Cronenblob</b> · <b style="color:#6FA8FF">Evacuado</b> · <b style="color:#FFB23E">Cortafuegos</b></p>`,
+  <p style="font-size:13px">Sano · <b style="color:#FF5C7A">Enamorado</b> · <b style="color:#B6E36A">Insecto</b> · <b style="color:#C98BFF">Grumoblob</b> · <b style="color:#6FA8FF">Evacuado</b> · <b style="color:#FFB23E">Cortafuegos</b></p>`,
   button: 'Jugar', onClick: newGame,
 });
 G.run(update, draw);
