@@ -1,0 +1,101 @@
+<title>Guía de Prototipos</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bowlby+One&family=VT323&display=swap">
+<style>
+  :root{
+    color-scheme:dark;
+    --bg:#1A1424; --bg2:#251C33; --panel:#2E2340; --line:#4A3B60;
+    --ink:#F2E9D8; --dim:#A99BB8; --gold:#FFB23E; --teal:#53D8C3; --pink:#FF5C7A;
+    --display:"Bowlby One","Arial Black",Impact,sans-serif;
+    --body:"Atkinson Hyperlegible","Segoe UI",system-ui,sans-serif;
+    --mono:"VT323",ui-monospace,Menlo,monospace;
+  }
+  html{background:var(--bg)}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 var(--body);padding-inline:16px;padding-block:28px 48px}
+  .wrap{max-width:860px;margin:0 auto;display:flex;flex-direction:column;gap:28px}
+  header{display:flex;flex-direction:column;gap:10px}
+  .eyebrow{font:22px/1 var(--mono);color:var(--teal);letter-spacing:.06em;margin:0}
+  h1{font:400 clamp(34px,7vw,58px)/1 var(--display);margin:0;color:var(--gold);text-wrap:balance}
+  .lede{margin:0;max-width:62ch;color:var(--ink)}
+  .note{margin:0;max-width:62ch;color:var(--dim);font-size:14px}
+  .guide{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;border-top:2px solid var(--line)}
+  .ch{display:grid;grid-template-columns:72px 1fr auto;gap:6px 16px;align-items:start;padding:18px 0;border-bottom:2px solid var(--line)}
+  .num{font:44px/.9 var(--mono);color:var(--teal);font-variant-numeric:tabular-nums}
+  .info{display:flex;flex-direction:column;gap:4px;min-width:0}
+  .info h2{font:400 22px/1.1 var(--display);margin:0;text-wrap:balance}
+  .meta{font:18px/1.1 var(--mono);color:var(--dim);letter-spacing:.03em}
+  .meta b{color:var(--pink);font-weight:400}
+  .hook{margin:0;max-width:62ch}
+  .side{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+  .play{font:400 17px var(--display);background:var(--gold);color:var(--bg);text-decoration:none;border-radius:10px;padding:10px 18px;white-space:nowrap}
+  .play:hover{background:#FFC468}
+  .play:focus-visible,.stars button:focus-visible{outline:2px solid var(--teal);outline-offset:3px}
+  .stars{display:flex;gap:2px}
+  .stars button{background:none;border:0;padding:2px;cursor:pointer;font-size:22px;line-height:1;color:var(--line)}
+  .stars button.on{color:var(--gold)}
+  footer{color:var(--dim);font-size:14px;max-width:62ch}
+  @media (max-width:560px){
+    .ch{grid-template-columns:52px 1fr}
+    .num{font-size:36px}
+    .side{grid-column:2;flex-direction:row;align-items:center;justify-content:space-between;flex-wrap:wrap}
+  }
+</style>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">GUÍA DE CANALES · 10 PROTOTIPOS</p>
+    <h1>Guía de Prototipos</h1>
+    <p class="lede">Diez ideas de juego convertidas en prototipos jugables de 1 a 5 minutos. Cada una parte de la premisa de un capítulo, pero con personajes y nombres propios para poder venderla en Steam. Funcionan en móvil (táctil) y en ordenador (ratón y teclado).</p>
+    <p class="note">Puntúa cada uno del 1 al 5 después de jugarlo. La nota se guarda solo en este navegador y sirve para ver cuál merece convertirse en juego completo.</p>
+  </header>
+
+  <ol class="guide" id="guide"></ol>
+
+  <footer>Prototipos hechos con canvas y un motor mínimo compartido (<code>proto.js</code>). Gráficos y sonido generados por código: son pruebas de mecánica, no arte final.</footer>
+</div>
+
+<script>
+  const GAMES = [
+    ['01','encurtido','Encurtido','Pickle Rick','Plataformas de escalada con físicas','Eres un pepinillo sin extremidades en el fondo de una alcantarilla. Lánzate con tirachinas y ponte piezas (patas, lengua, muelle) para escapar antes de que suba el agua.'],
+    ['02','ayudantes','Ayudantes Desechables','Meeseeks and Destroy','Puzles de gestión caótica','Invoca ayudantes que existen para una sola tarea. Si tardan demasiado se estresan, se vuelven locos y contagian a los demás.'],
+    ['03','zapping','Zapping Infinito','Rixty Minutes','Microjuegos','Cambia de canal en una tele de otra dimensión. Cada canal es un microjuego absurdo de cinco segundos.'],
+    ['04','quien-es-real','¿Quién Es Real?','Total Rickall','Deducción','Unos parásitos se hacen pasar por tu familia con recuerdos falsos. Lee los recuerdos y dispara solo a los impostores.'],
+    ['05','parque-interno','Parque Interno','Anatomy Park','Gestión (tycoon)','Construye atracciones dentro del cuerpo de Don Anselmo sin matarlo. Gripe, fiebre e indigestión complican el negocio.'],
+    ['06','cura-peor','Cura Peor','Rick Potion #9','Estrategia por turnos','Una plaga se extiende por el pueblo. Cada cura que aplicas tiene un efecto secundario que puede empeorarlo todo.'],
+    ['07','vida-20-min','Una Vida en 20 Minutos','Mortynight Run (Roy)','Simulador de vida','Vive una vida entera en una recreativa: decisiones que vuelven años después, minijuegos y un epitafio al final.'],
+    ['08','yo-toxico','Tu Yo Tóxico','Rest and Ricklaxation','Plataformas de puzles','Controlas a la vez a tu yo sano y a tu yo tóxico, que se mueve distinto y te sabotea. Los dos tienen que llegar a su puerta.'],
+    ['09','ciudadela-clones','Ciudadela de Clones','The Ricklantis Mixup','Plataformas con bucle temporal','Cada intento dura diez segundos y deja un clon que repite lo que hiciste. Úsalos como escaleras y para pulsar placas.'],
+    ['10','canta-o-muere','Canta o Muere','Get Schwifty','Ritmo','Una cabeza gigante exige una canción o destruye la Tierra. Toca las notas a tiempo para que le guste.'],
+  ];
+  const load = k => { try { return Number(localStorage.getItem('proto-rate-' + k)) || 0; } catch (e) { return 0; } };
+  const save = (k, v) => { try { localStorage.setItem('proto-rate-' + k, String(v)); } catch (e) {} };
+  const guide = document.getElementById('guide');
+  for (const [n, slug, name, ep, genre, hook] of GAMES) {
+    const li = document.createElement('li');
+    li.className = 'ch';
+    li.innerHTML = `
+      <div class="num">${n}</div>
+      <div class="info">
+        <h2>${name}</h2>
+        <div class="meta">${genre} · inspirado en <b>${ep}</b></div>
+        <p class="hook">${hook}</p>
+      </div>
+      <div class="side">
+        <a class="play" href="${n}-${slug}.html">Jugar</a>
+        <div>
+          <div class="stars" role="group" aria-label="Tu nota para ${name}"></div>
+        </div>
+      </div>`;
+    const stars = li.querySelector('.stars');
+    const paint = v => stars.querySelectorAll('button').forEach((b, i) => { b.classList.toggle('on', i < v); b.setAttribute('aria-pressed', i < v); });
+    for (let i = 1; i <= 5; i++) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.id = `rate-${n}-${i}`; b.textContent = '★'; b.setAttribute('aria-label', `${i} de 5`);
+      b.addEventListener('click', () => { const v = load(n) === i ? 0 : i; save(n, v); paint(v); });
+      stars.appendChild(b);
+    }
+    paint(load(n));
+    guide.appendChild(li);
+  }
+</script>
