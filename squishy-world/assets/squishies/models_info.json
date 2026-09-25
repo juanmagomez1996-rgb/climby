@@ -1,0 +1,146 @@
+{
+ "cat": {
+  "meshes": 13,
+  "vertices": 2319,
+  "triangles": 3672,
+  "bodyVertices": 1189,
+  "height": 1.78,
+  "width": 2.21
+ },
+ "bear": {
+  "meshes": 15,
+  "vertices": 4103,
+  "triangles": 6864,
+  "bodyVertices": 1189,
+  "height": 1.66,
+  "width": 2.3
+ },
+ "frog": {
+  "meshes": 10,
+  "vertices": 2570,
+  "triangles": 4336,
+  "bodyVertices": 1189,
+  "height": 1.46,
+  "width": 2.56
+ },
+ "bunny": {
+  "meshes": 13,
+  "vertices": 3473,
+  "triangles": 5824,
+  "bodyVertices": 1189,
+  "height": 2.66,
+  "width": 2.22
+ },
+ "blob": {
+  "meshes": 9,
+  "vertices": 2051,
+  "triangles": 3480,
+  "bodyVertices": 1189,
+  "height": 2.48,
+  "width": 2
+ },
+ "butter": {
+  "meshes": 11,
+  "vertices": 14182,
+  "triangles": 26024,
+  "bodyVertices": 4374,
+  "height": 1.58,
+  "width": 2.48
+ },
+ "toast": {
+  "meshes": 9,
+  "vertices": 9457,
+  "triangles": 17288,
+  "bodyVertices": 4374,
+  "height": 2.08,
+  "width": 2.4
+ },
+ "cheese": {
+  "meshes": 8,
+  "vertices": 5083,
+  "triangles": 9176,
+  "bodyVertices": 4374,
+  "height": 1.24,
+  "width": 2.14
+ },
+ "strawberry": {
+  "meshes": 16,
+  "vertices": 2567,
+  "triangles": 4198,
+  "bodyVertices": 1617,
+  "height": 2.46,
+  "width": 1.91
+ },
+ "icecube": {
+  "meshes": 14,
+  "vertices": 6973,
+  "triangles": 12296,
+  "bodyVertices": 4374,
+  "height": 1.9,
+  "width": 2.01
+ },
+ "egg": {
+  "meshes": 9,
+  "vertices": 3943,
+  "triangles": 7016,
+  "bodyVertices": 1617,
+  "height": 0.7,
+  "width": 2.82
+ },
+ "dumpling": {
+  "meshes": 12,
+  "vertices": 4582,
+  "triangles": 7832,
+  "bodyVertices": 2665,
+  "height": 1.56,
+  "width": 3.15
+ },
+ "dango": {
+  "meshes": 11,
+  "vertices": 5624,
+  "triangles": 10032,
+  "bodyVertices": 1617,
+  "height": 3.1,
+  "width": 1.16
+ },
+ "frogwell": {
+  "meshes": 35,
+  "vertices": 7795,
+  "triangles": 13328,
+  "bodyVertices": 1617,
+  "height": 1.9,
+  "width": 3.02
+ },
+ "donut": {
+  "meshes": 35,
+  "vertices": 3819,
+  "triangles": 5560,
+  "bodyVertices": 1035,
+  "height": 0.9,
+  "width": 2.47
+ },
+ "grapes": {
+  "meshes": 18,
+  "vertices": 7859,
+  "triangles": 13648,
+  "bodyVertices": 609,
+  "height": 2.51,
+  "width": 2.04
+ },
+ "burger": {
+  "meshes": 12,
+  "vertices": 11551,
+  "triangles": 21080,
+  "bodyVertices": 1617,
+  "height": 1.56,
+  "width": 3.25
+ },
+ "catpaw": {
+  "meshes": 6,
+  "vertices": 9702,
+  "triangles": 17856,
+  "bodyVertices": 1617,
+  "height": 1.19,
+  "width": 2.2
+ }
+}
