@@ -1,0 +1,418 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Ciudadela de Clones</title></head><body>
+<script src="proto.js"></script>
+<script>
+const G = Proto.create({ onRestart() { onRestartBar(); } });
+const C = G.C, ctx = G.ctx;
+const T = 30, OY = 96, COLS = 18, VIEW = 690, GRAV = 1800, SPD = 170, JV = 520, TICK = 1 / 60, LOOP = 600;
+const PW = 20, PH = 28;
+const WALL = '##################', E = '#................#', rep = (s, n) => Array(n).fill(s);
+const HUES = ['#6FA8FF', '#B6E36A', '#53D8C3', '#FF5C7A', '#C58BFF', '#FF9F5A', '#7FE0FF', '#F4E36A', '#FF8FD0', '#9CF0A8'];
+
+// Leyenda: # muro · D puerta (abierta si TODOS los botones están pisados) · p botón · E salida · S inicio · ^ pinchos
+const LEVELS = [
+  { name: 'Primer bucle', par: 1, hint: 'Pisa el botón y quédate. En el siguiente bucle, pasa tú.', map: [
+    WALL, E, E, '#.S....p.........#', '###########......#', ...rep(E, 12),
+    '########.........#', '#......D.........#', '#......D.........#', '#..E...D.........#', WALL, WALL] },
+  { name: 'Dos botones', par: 2, hint: 'Los dos botones a la vez abren la trampilla.', map: [
+    WALL, ...rep(E, 7), '#....S...........#', '#..#####..#####..#', ...rep(E, 6),
+    '#......#DD#......#', '#......#..#......#', '#......#..#......#', '#......#..#......#', '#p.....#E.#.....p#', WALL, WALL] },
+  { name: 'Escalera', par: 2, hint: 'Apila clones para llegar arriba.', map: [
+    WALL, ...rep(E, 15), '#..............E.#', '#...........######', '#...........######', '#...........######',
+    '#.S.........######', WALL, WALL] },
+  { name: 'Puerta alta', par: 3, hint: 'Uno en el botón y dos de escalera.', map: [
+    WALL, ...rep(E, 12), '#...........######', '#...........D....#', '#...........D....#', '#...........D...E#',
+    '#...........######', '#...........######', '#...........######', '#p..S.......######', WALL, WALL] },
+  { name: 'La Ciudadela', par: 4, hint: 'Tres botones a la vez y un empujón final.', map: [
+    WALL, E, '#####............#', '#...D............#', '#...D............#', '#.E.D............#', '#########........#',
+    E, E, '#........###.....#', E, '#............###.#', '#........p.......#', '#........###.....#', E,
+    '#............###.#', E, '#........###.....#', E, '#............###.#', '#p..S...^.......p#', WALL, WALL] },
+];
+LEVELS.forEach((l, i) => { if (l.map.length !== 23 || l.map.some(r => r.length !== COLS)) console.error('Nivel mal formado', i + 1); });
+function towerMap() {
+  const R = 70, m = rep(E, R).map(r => r.split(''));
+  m[0] = WALL.split(''); m[R - 1] = WALL.split('');
+  m[R - 2][8] = 'S';
+  let r = R - 1, a = 6, b = 11;
+  while (true) {
+    r -= G.pick([2, 2, 3, 3, 3, 4]);
+    if (r < 3) break;
+    const w = G.randi(2, 4);
+    let side = Math.random() < 0.5 ? -1 : 1;
+    let c = side > 0 ? b + 1 + G.randi(0, 1) : a - w - G.randi(0, 1);
+    if (c < 1 || c + w > 17) c = side > 0 ? a - w - G.randi(0, 1) : b + 1 + G.randi(0, 1);
+    c = G.clamp(c, 1, 17 - w);
+    for (let i = 0; i < w; i++) m[r][c + i] = '#';
+    a = c; b = c + w - 1;
+  }
+  return m.map(r => r.join(''));
+}
+
+let exitBox = null, mode = 'levels', li = 0, grid, ROWS = 23, plates = [], doorsOpen = false, doorAnim = 0, spawn = { x: 0, y: 0 };
+let player, clones = [], rec = [], tick = 0, acc = 0, cap = 5, state = 'menu', stT = 0, nextId = 0;
+let totalStars = 0, totalClones = 0, levelStars = [], camY = 0, bestH = 0, runH = 0, loopsRun = 0, winInfo = null;
+
+// ---------- Entrada multitáctil ----------
+const ptrs = new Map();
+function loc(e) { const r = G.canvas.getBoundingClientRect(); return { x: (e.clientX - r.left) * G.W / r.width, y: (e.clientY - r.top) * G.H / r.height }; }
+G.canvas.addEventListener('pointerdown', e => ptrs.set(e.pointerId, loc(e)));
+G.canvas.addEventListener('pointermove', e => { if (ptrs.has(e.pointerId)) ptrs.set(e.pointerId, loc(e)); });
+['pointerup', 'pointercancel'].forEach(ev => G.canvas.addEventListener(ev, e => ptrs.delete(e.pointerId)));
+const BL = { x: 12, y: 836, w: 96, h: 100 }, BR = { x: 114, y: 836, w: 96, h: 100 };
+const BDEL = { x: 218, y: 836, w: 112, h: 47 }, BEND = { x: 218, y: 889, w: 112, h: 47 }, BJ = { x: 338, y: 836, w: 190, h: 100 };
+const held = b => { for (const p of ptrs.values()) if (G.inRect(p.x, p.y, b.x, b.y, b.w, b.h)) return true; return false; };
+const prevHeld = {};
+const tapped = (name, b) => { const h = held(b), r = h && !prevHeld[name]; prevHeld[name] = h; return r; };
+let jumpQueued = false;
+
+// ---------- Mapa y colisiones ----------
+const cell = (c, r) => (c < 0 || c >= COLS || r < 0) ? '#' : (r >= ROWS ? '.' : grid[r][c]);
+const solidCh = ch => ch === '#' || (ch === 'D' && !doorsOpen);
+const overlap = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+function cellsOf(b, f) {
+  const c0 = Math.floor(b.x / T), c1 = Math.floor((b.x + b.w - 0.001) / T);
+  const r0 = Math.floor((b.y - OY) / T), r1 = Math.floor((b.y + b.h - 0.001 - OY) / T);
+  for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) f(cell(c, r), c, r);
+}
+function hitsTiles(b) { let h = false; cellsOf(b, ch => { if (solidCh(ch)) h = true; }); return h; }
+const activeClone = c => !c.gone && c.glitch <= 0;
+function loadMap(map) {
+  grid = map.map(r => r.split('')); ROWS = grid.length; plates = []; exitBox = null;
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+    if (grid[r][c] === 'S') { spawn = { x: c * T + (T - PW) / 2, y: r * T + OY + T - PH }; grid[r][c] = '.'; }
+    if (grid[r][c] === 'p') plates.push({ c, r, on: false });
+    if (grid[r][c] === 'E') exitBox = { x: c * T + 6, y: r * T + OY - T + 6, w: T - 12, h: 2 * T - 8 };
+  }
+}
+function loadLevel(i) {
+  mode = 'levels'; li = i; cap = 5; loadMap(LEVELS[i].map);
+  clones = []; loopsRun = 0; camY = 0; startLoop(); state = 'play';
+  G.float((i + 1) + ' · ' + LEVELS[i].name, 270, 380, C.gold, 30);
+}
+function startTower() {
+  mode = 'tower'; cap = 10; loadMap(towerMap());
+  clones = []; loopsRun = 0; bestH = 0; startLoop(); camY = ROWS * T - VIEW; state = 'play';
+  G.float('TORRE', 270, 380, C.gold, 36);
+}
+function startLoop() {
+  tick = 0; acc = 0; rec = []; runH = 0; doorsOpen = false;
+  player = { x: spawn.x, y: spawn.y, w: PW, h: PH, vx: 0, vy: 0, ground: false, coy: 0, buf: 0, face: 1, sq: 0 };
+  for (const c of clones) { c.gone = false; c.glitch = 0; c.x = c.rec[0].x; c.y = c.rec[0].y; }
+}
+
+// ---------- Simulación (paso fijo, para grabar y reproducir) ----------
+function updatePlates() {
+  const bodies = [player, ...clones.filter(activeClone)];
+  for (const p of plates) {
+    const px = p.c * T, bot = p.r * T + OY + T;
+    const was = p.on;
+    p.on = bodies.some(b => b.x < px + 26 && b.x + b.w > px + 4 && b.y + b.h > bot - 12 && b.y + b.h <= bot + 1);
+    if (p.on && !was) G.beep(700, 0.06, 'square', 0.04);
+  }
+  const want = plates.length > 0 && plates.every(p => p.on);
+  if (want !== doorsOpen) {
+    if (!want) {
+      let blocked = false;
+      for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) if (grid[r][c] === 'D') {
+        const box = { x: c * T, y: r * T + OY, w: T, h: T };
+        if ([player, ...clones.filter(activeClone)].some(b => overlap(b, box))) blocked = true;
+      }
+      if (blocked) return;
+    }
+    doorsOpen = want; G.beep(want ? 520 : 200, 0.15, 'triangle', 0.06, want ? 300 : -80);
+  }
+}
+function paradox(c) {
+  c.glitch = 1; G.shake(10, 0.3);
+  G.float('¡PARADOJA!', c.x + PW / 2, c.y - 10, C.pink, 26);
+  G.beep(1200, 0.35, 'sawtooth', 0.06, -1000); G.burst(c.x + PW / 2, c.y + PH / 2, C.pink, 10, 200, 4);
+}
+function supported(box, self) {
+  const probe = { x: box.x, y: box.y + box.h, w: box.w, h: 2 };
+  if (hitsTiles(probe)) return true;
+  return clones.some(o => o !== self && activeClone(o) && overlap(probe, o));
+}
+function advanceClone(c) {
+  if (c.gone) return;
+  if (c.glitch > 0) {
+    c.glitch -= TICK;
+    if (c.glitch <= 0) { c.gone = true; c.erased = true; G.burst(c.x + PW / 2, c.y + PH / 2, C.pink, 24, 300, 5); G.beep(90, 0.3, 'sawtooth', 0.06); }
+    return;
+  }
+  const f = c.rec[tick];
+  if (!f) { if (c.died && !c.gone) { c.gone = true; G.burst(c.x + PW / 2, c.y + PH / 2, c.color, 12, 180, 4); } return; }
+  const prev = { x: c.x, y: c.y, w: PW, h: PH }, box = { x: f.x, y: f.y, w: PW, h: PH };
+  if (hitsTiles(box)) return paradox(c);
+  for (const o of clones) if (o !== c && activeClone(o) && overlap(box, o) && !overlap(prev, o)) return paradox(c);
+  if (overlap(box, player) && !overlap(prev, player)) {
+    if (player.y + player.h <= prev.y + 6) { player.y = box.y - player.h; if (player.vy > 0) player.vy = 0; }
+    else return paradox(c);
+  }
+  if (f.g && !supported(box, c)) return paradox(c);
+  c.x = f.x; c.y = f.y; c.face = f.f; c.g = f.g;
+}
+function stepX(b, d, ignore) {
+  if (!d) return;
+  b.x += d;
+  let lim = null;
+  const take = e => { lim = lim === null ? e : (d > 0 ? Math.min(lim, e) : Math.max(lim, e)); };
+  cellsOf(b, (ch, c) => { if (solidCh(ch)) take(d > 0 ? c * T : c * T + T); });
+  for (const o of clones) if (activeClone(o) && !ignore.has(o) && overlap(b, o)) take(d > 0 ? o.x : o.x + o.w);
+  if (lim !== null) b.x = d > 0 ? lim - b.w : lim;
+}
+function stepY(b, d, ignore) {
+  if (!d) return;
+  b.y += d;
+  let lim = null;
+  const take = e => { lim = lim === null ? e : (d > 0 ? Math.min(lim, e) : Math.max(lim, e)); };
+  cellsOf(b, (ch, c, r) => { if (solidCh(ch)) take(d > 0 ? r * T + OY : r * T + OY + T); });
+  for (const o of clones) if (activeClone(o) && !ignore.has(o) && overlap(b, o)) take(d > 0 ? o.y : o.y + o.h);
+  if (lim !== null) { if (d > 0) { b.y = lim - b.h; b.ground = true; } else b.y = lim; b.vy = 0; }
+}
+function simTick(dir) {
+  updatePlates();
+  const p = player;
+  const riding = p.ground ? clones.find(c => activeClone(c) && Math.abs(p.y + p.h - c.y) < 1.5 && p.x < c.x + PW && p.x + PW > c.x) : null;
+  const rx0 = riding ? riding.x : 0;
+  for (const c of clones) advanceClone(c);
+  const ignore = new Set(clones.filter(c => activeClone(c) && overlap(p, c)));
+  if (riding && activeClone(riding)) stepX(p, riding.x - rx0, ignore);
+  p.vx = dir * SPD; if (dir) p.face = dir;
+  p.vy = Math.min(p.vy + GRAV * TICK, 900);
+  p.coy = p.ground ? 0.09 : p.coy - TICK; p.buf -= TICK;
+  if (p.buf > 0 && p.coy > 0) { p.vy = -JV; p.buf = 0; p.coy = 0; p.sq = -0.5; G.beep(480, 0.08, 'square', 0.035, 300); }
+  const vy0 = p.vy; p.ground = false;
+  stepX(p, p.vx * TICK, ignore); stepY(p, p.vy * TICK, ignore);
+  if (p.ground && vy0 > 380) { p.sq = 0.45; G.burst(p.x + PW / 2, p.y + PH, '#ffffff55', 4, 80, 3); }
+  p.sq *= 0.85;
+  rec.push({ x: p.x, y: p.y, g: p.ground, f: p.face });
+  tick++;
+  if (clones.some(c => c.erased)) clones = clones.filter(c => !c.erased);
+}
+function touches(b, ch) { let h = false; cellsOf({ x: b.x + 4, y: b.y + 6, w: b.w - 8, h: b.h - 6 }, (k, c, r) => { if (k === ch && (ch !== '^' || b.y + b.h > r * T + OY + 14)) h = true; }); return h; }
+
+// ---------- Bucles ----------
+function endLoop(died) {
+  loopsRun++;
+  if (clones.length < cap && rec.length > 5) {
+    const c = { id: ++nextId, w: PW, h: PH, rec, died, color: HUES[clones.length % HUES.length], x: rec[0].x, y: rec[0].y, face: 1, glitch: 0, gone: false };
+    clones.push(c);
+    G.float(`Clon ${clones.length} grabado`, 270, 420, c.color, 24);
+    G.beep(330, 0.1, 'triangle', 0.06, 200); setTimeout(() => G.beep(660, 0.12, 'triangle', 0.06), 90);
+  } else if (mode === 'tower') return finishTower();
+  else G.float('Máximo de clones: borra uno', 270, 420, C.pink, 22);
+  if (mode === 'tower' && clones.length >= cap) G.float('¡Último intento!', 270, 460, C.gold, 26);
+  startLoop();
+}
+function deleteLast() {
+  const c = clones.pop();
+  if (!c) return G.float('No hay clones', 270, 420, C.dim, 22);
+  G.burst(c.x + PW / 2, c.y + PH / 2, c.color, 20, 260, 5); G.beep(220, 0.2, 'sawtooth', 0.05, -150);
+  G.float('Clon borrado', 270, 420, C.dim, 22);
+}
+function stars(used, par) { return used <= par ? 3 : used <= par + 1 ? 2 : 1; }
+function winLevel() {
+  const used = clones.filter(c => !c.erased).length, s = stars(used, LEVELS[li].par);
+  levelStars[li] = s; totalStars += s; totalClones += used;
+  winInfo = { s, used }; state = 'win'; stT = 1.8;
+  G.burst(player.x + PW / 2, player.y + PH / 2, C.gold, 40, 360, 6); G.shake(8, 0.3);
+  [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => G.beep(f, 0.14, 'triangle', 0.07), i * 100));
+}
+function finishLevels() {
+  state = 'over';
+  try { localStorage.setItem('proto-clones-torre', '1'); } catch (e) { }
+  const score = totalStars * 100 - totalClones * 10;
+  const prev = G.best('clones'), best = G.best('clones', score);
+  const rows = LEVELS.map((l, i) => `<li>${i + 1}. ${l.name}: ${'★'.repeat(levelStars[i] || 0)}${'☆'.repeat(3 - (levelStars[i] || 0))}</li>`).join('');
+  G.screen({ sub: 'Ciudadela superada', title: `${totalStars}/15 estrellas`, big: score + ' pts',
+    html: `<ul>${rows}</ul><p>Clones usados: ${totalClones} · Mejor: ${best} pts${prev === null || score > prev ? ' · ¡récord!' : ''}</p>
+    <p style="color:${C.teal}"><b>¡Modo Torre desbloqueado!</b> Sube todo lo que puedas con 10 clones.</p><button type="button" id="b-torre">Jugar Torre</button>`,
+    button: 'Otra vez', onClick: startRun });
+  hookTower();
+}
+function finishTower() {
+  state = 'over';
+  const h = Math.round(bestH * 10) / 10, prev = G.best('clones-torre'), best = G.best('clones-torre', h);
+  G.screen({ sub: 'Modo Torre', title: '¡Se acabaron los clones!', big: h.toFixed(1) + ' m',
+    html: `<p>Altura máxima con ${clones.length} clones apilados.</p><p>Récord: ${best.toFixed(1)} m${prev === null || h > prev ? ' · ¡nuevo!' : ''}</p>
+    <button type="button" id="b-lv">Volver a los niveles</button>`, button: 'Otra torre', onClick: startTower });
+  const b = document.getElementById('b-lv'); if (b) b.onclick = () => { G.hideScreen(); startRun(); };
+}
+function hookTower() { const b = document.getElementById('b-torre'); if (b) b.onclick = () => { G.hideScreen(); startTower(); }; }
+function startRun() { totalStars = 0; totalClones = 0; levelStars = []; loadLevel(0); }
+function onRestartBar() {
+  if (state === 'over' || state === 'menu') { G.hideScreen(); mode === 'tower' ? startTower() : startRun(); return; }
+  if (mode === 'tower') startTower(); else { clones = []; loadLevel(li); }
+}
+
+// ---------- Update ----------
+function update(dt) {
+  let dir = 0;
+  if (G.key('ArrowLeft') || G.key('a') || G.key('A') || held(BL)) dir -= 1;
+  if (G.key('ArrowRight') || G.key('d') || G.key('D') || held(BR)) dir += 1;
+  if (G.keyPressed(' ') || G.keyPressed('ArrowUp') || G.keyPressed('w') || G.keyPressed('W') || tapped('j', BJ)) jumpQueued = true;
+  const del = G.keyPressed('x') || G.keyPressed('X') || G.keyPressed('Backspace') || tapped('del', BDEL);
+  const end = G.keyPressed('Enter') || G.keyPressed('e') || G.keyPressed('E') || tapped('end', BEND);
+  for (const c of clones) if (c.glitch > 0) c.jit = G.rand(-3, 3);
+  if (state === 'play') {
+    if (G.keyPressed('r') || G.keyPressed('R')) return onRestartBar();
+    if (del) deleteLast();
+    if (end) return endLoop(false);
+    if (jumpQueued) { player.buf = 0.12; jumpQueued = false; }
+    acc += dt;
+    while (acc >= TICK && state === 'play') {
+      acc -= TICK; simTick(dir);
+      const p = player;
+      if (touches(p, '^') || p.y > OY + ROWS * T) {
+        G.burst(p.x + PW / 2, p.y + PH / 2, C.gold, 24, 300, 5); G.shake(10, 0.3); G.beep(150, 0.3, 'sawtooth', 0.07, -100);
+        G.float('¡Au!', p.x + PW / 2, p.y - 10, C.pink, 24);
+        return endLoop(true);
+      }
+      if (mode === 'levels' && exitBox && overlap(p, exitBox)) return winLevel();
+      if (mode === 'tower') {
+        runH = Math.max(runH, ((ROWS - 1) * T + OY - (p.y + p.h)) / T);
+        if (runH > bestH + 0.05 && runH > 1) { if (Math.floor(runH) > Math.floor(bestH)) G.beep(600 + runH * 20, 0.06, 'triangle', 0.04); bestH = runH; }
+      }
+      if (tick >= LOOP) return endLoop(false);
+    }
+  } else if (state === 'win') {
+    stT -= dt;
+    if (stT <= 0) { if (li < LEVELS.length - 1) loadLevel(li + 1); else finishLevels(); }
+  }
+  if (mode === 'tower' && player) {
+    const target = G.clamp(player.y - OY - 400, 0, ROWS * T - VIEW);
+    camY = G.lerp(camY, target, 1 - Math.exp(-6 * dt));
+  }
+}
+
+// ---------- Dibujo ----------
+function drawGuy(b, col, alpha, label, glitch) {
+  const w = PW * (1 + (b.sq || 0) * 0.35) + 4, h = PH * (1 - (b.sq || 0) * 0.35);
+  ctx.save(); ctx.globalAlpha = alpha;
+  ctx.translate(b.x + PW / 2 + (glitch ? b.jit || 0 : 0), b.y + PH);
+  if (glitch) { ctx.globalAlpha = 0.5; G.rrect(-w / 2 - 4, -h, w, h, 9, '#00e5ff'); G.rrect(-w / 2 + 4, -h, w, h, 9, '#ff2050'); ctx.globalAlpha = 0.9; }
+  const body = glitch ? '#ff2050' : col;
+  ctx.strokeStyle = body; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0, -h); ctx.lineTo(b.face * 3, -h - 8); ctx.stroke();
+  G.circle(b.face * 3, -h - 9, 3.5, body);
+  G.rrect(-w / 2, -h, w, h, 10, body, '#00000055', 2);
+  G.circle(b.face * 2, -h * 0.64, 7, '#fff');
+  G.circle(b.face * 4, -h * 0.64 + (b.vy > 100 ? 1.5 : 0), 3.3, C.bg);
+  if (label) G.text(label, 0, -5, { size: 11, align: 'center', color: C.bg, shadow: false, body: true, weight: 700 });
+  ctx.restore();
+}
+function drawWorld() {
+  const r0 = Math.max(0, Math.floor(camY / T) - 1), r1 = Math.min(ROWS - 1, Math.ceil((camY + VIEW) / T) + 1);
+  for (let r = r0; r <= r1; r++) for (let c = 0; c < COLS; c++) {
+    const ch = grid[r][c], x = c * T, y = r * T + OY;
+    if (ch === '#') {
+      ctx.fillStyle = '#34294a'; ctx.fillRect(x, y, T, T);
+      if (cell(c, r - 1) !== '#' && r > 0) { G.rrect(x, y, T, 7, 3, '#6a5a8c'); ctx.fillStyle = '#ffb23e22'; ctx.fillRect(x + 4, y + 12, 22, 3); }
+    } else if (ch === 'D') {
+      const open = doorAnim;
+      ctx.fillStyle = C.blue + '33'; ctx.fillRect(x + 2, y, T - 4, T);
+      ctx.fillStyle = C.blue;
+      const horiz = cell(c - 1, r) === 'D' || cell(c + 1, r) === 'D';
+      if (horiz) for (let i = 0; i < 3; i++) ctx.fillRect(x, y + 4 + i * 9, T * (1 - open), 4);
+      else for (let i = 0; i < 3; i++) ctx.fillRect(x + 4 + i * 9, y, 4, T * (1 - open));
+    } else if (ch === 'p') {
+      const p = plates.find(q => q.c === c && q.r === r), on = p && p.on;
+      G.rrect(x + 2, y + T - (on ? 5 : 10), T - 4, on ? 5 : 10, 4, on ? C.lime : C.gold);
+      G.circle(x + 15, y + T - (on ? 20 : 25), 4, on ? C.lime : '#ffb23e55');
+    } else if (ch === 'E') {
+      ctx.beginPath(); ctx.roundRect(x + 2, y - T + 4, T - 4, 2 * T - 4, [13, 13, 2, 2]);
+      ctx.fillStyle = C.lime + '55'; ctx.fill(); ctx.strokeStyle = C.lime; ctx.lineWidth = 3; ctx.stroke();
+      G.text('SALIDA', x + 15, y - T - 4, { size: 11, align: 'center', color: C.lime, body: true, weight: 700 });
+      G.circle(x + 15, y - 10 + Math.sin(G.t * 3) * 3, 4, C.lime);
+    } else if (ch === '^') {
+      ctx.fillStyle = '#d8cfe6';
+      for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(x + i * 10, y + T); ctx.lineTo(x + i * 10 + 5, y + 14); ctx.lineTo(x + i * 10 + 10, y + T); ctx.fill(); }
+    }
+  }
+  if (mode === 'tower') {
+    ctx.strokeStyle = '#ffffff14'; ctx.lineWidth = 1;
+    for (let m = 5; m < ROWS; m += 5) { const y = (ROWS - 1 - m) * T + OY; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(540, y); ctx.stroke(); G.text(m + ' m', 34, y - 4, { size: 12, color: C.dim, body: true, weight: 700 }); }
+    const by = (ROWS - 1) * T + OY - bestH * T;
+    ctx.strokeStyle = C.gold; ctx.setLineDash([8, 6]); ctx.beginPath(); ctx.moveTo(30, by); ctx.lineTo(510, by); ctx.stroke(); ctx.setLineDash([]);
+    G.text('récord ' + bestH.toFixed(1) + ' m', 506, by - 5, { size: 12, align: 'right', color: C.gold, body: true, weight: 700 });
+  }
+  clones.forEach((c, i) => { if (!c.gone) drawGuy(c, c.color, c.glitch > 0 ? (Math.sin(G.t * 40) > 0 ? 0.95 : 0.4) : 0.6, String(i + 1), c.glitch > 0); });
+  drawGuy(player, C.gold, 1, 'TÚ', false);
+}
+function drawButton(b, label, active, col, size = 24) {
+  G.rrect(b.x, b.y + (active ? 3 : 0), b.w, b.h, 16, active ? col : col + '44', col, 3);
+  const cx = b.x + b.w / 2, cy = b.y + b.h / 2 + (active ? 3 : 0);
+  ctx.fillStyle = active ? C.bg : C.ink;
+  if (label === 'L' || label === 'R') {
+    const s = label === 'L' ? -1 : 1;
+    ctx.beginPath(); ctx.moveTo(cx + s * 20, cy); ctx.lineTo(cx - s * 14, cy - 22); ctx.lineTo(cx - s * 14, cy + 22); ctx.fill();
+  } else G.text(label, cx, cy, { size, align: 'center', baseline: 'middle', color: active ? C.bg : C.ink, shadow: false, body: size < 20, weight: 700 });
+}
+function drawStar(x, y, r, fill) {
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * 0.45 : r; ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); }
+  ctx.closePath(); ctx.fillStyle = fill; ctx.fill(); ctx.strokeStyle = C.bg; ctx.lineWidth = 2; ctx.stroke();
+}
+function draw() {
+  ctx.fillStyle = C.bg2; ctx.fillRect(0, 0, G.W, G.H);
+  if (!grid) return;
+  doorAnim = G.lerp(doorAnim, doorsOpen ? 1 : 0, 0.25);
+  // Horizonte de la ciudadela
+  ctx.save(); ctx.beginPath(); ctx.rect(0, OY, G.W, VIEW); ctx.clip();
+  ctx.fillStyle = '#ffffff07';
+  for (let i = 0; i < 9; i++) { const h = 120 + ((i * 97) % 200); ctx.fillRect(i * 62 + 6, OY + VIEW - h + (camY * 0.1) % 40, 44, h); G.circle(i * 62 + 28, OY + VIEW - h + (camY * 0.1) % 40, 22, '#ffffff07'); }
+  ctx.translate(0, -camY);
+  drawWorld();
+  ctx.restore();
+  // HUD
+  if (mode === 'levels') {
+    G.text(`${li + 1}/5 · ${LEVELS[li].name}`, 14, 76, { size: 18, color: C.gold });
+    G.text(`par ${LEVELS[li].par} clon${LEVELS[li].par > 1 ? 'es' : ''}`, 526, 76, { size: 15, align: 'right', body: true, weight: 700 });
+    G.text(LEVELS[li].hint, 270, 92, { size: 13, align: 'center', body: true, weight: 700, color: C.dim });
+  } else {
+    G.text('TORRE', 14, 76, { size: 18, color: C.gold });
+    G.text(`altura ${runH.toFixed(1)} m · récord ${bestH.toFixed(1)} m`, 526, 76, { size: 15, align: 'right', body: true, weight: 700 });
+    G.text('Apila tus 10 clones y sube lo más alto posible.', 270, 92, { size: 13, align: 'center', body: true, weight: 700, color: C.dim });
+  }
+  // Línea temporal de bucles
+  ctx.fillStyle = '#00000055'; ctx.fillRect(0, OY + VIEW, G.W, G.H - OY - VIEW);
+  const frac = tick / LOOP;
+  G.bar(16, 794, 508, 10, frac, frac > 0.8 ? C.pink : C.gold);
+  G.text((10 - tick / 60).toFixed(1) + ' s', 524, 790, { size: 12, align: 'right', body: true, weight: 700, color: C.dim });
+  G.text(`Bucle ${loopsRun + 1} · clones ${clones.length}/${cap}`, 16, 790, { size: 12, body: true, weight: 700, color: C.dim });
+  const sw = (508 - (cap - 1) * 5) / cap;
+  for (let i = 0; i < cap; i++) {
+    const x = 16 + i * (sw + 5), c = clones[i];
+    if (c) G.rrect(x, 810, sw, 20, 6, c.glitch > 0 ? C.pink : c.color, null);
+    else if (i === clones.length) G.rrect(x, 810, sw, 20, 6, '#ffb23e33', C.gold, 2);
+    else G.rrect(x, 810, sw, 20, 6, '#ffffff10', null);
+    G.text(c ? String(i + 1) : i === clones.length ? 'TÚ' : '', x + sw / 2, 821, { size: 11, align: 'center', baseline: 'middle', body: true, weight: 700, color: C.bg, shadow: false });
+  }
+  const kl = G.key('ArrowLeft') || G.key('a') || G.key('A'), kr = G.key('ArrowRight') || G.key('d') || G.key('D');
+  drawButton(BL, 'L', held(BL) || kl, C.ink);
+  drawButton(BR, 'R', held(BR) || kr, C.ink);
+  drawButton(BDEL, 'BORRAR CLON', held(BDEL), C.pink, 13);
+  drawButton(BEND, 'FIN BUCLE', held(BEND), C.teal, 13);
+  drawButton(BJ, 'SALTAR', held(BJ) || G.key(' '), C.gold, 26);
+  G.text('X: borrar · Enter: fin bucle · R: reiniciar', 270, 952, { size: 11, align: 'center', body: true, weight: 700, color: C.dim });
+  if (state === 'win' && winInfo) {
+    G.rrect(110, 330, 320, 170, 18, C.panel, C.gold, 3);
+    G.text('¡Fuera!', 270, 375, { size: 30, align: 'center', color: C.gold });
+    for (let i = 0; i < 3; i++) drawStar(210 + i * 60, 420, 22, i < winInfo.s ? C.gold : '#ffffff22');
+    G.text(`${winInfo.used} clon${winInfo.used === 1 ? '' : 'es'} · par ${LEVELS[li].par}`, 270, 475, { size: 16, align: 'center', body: true, weight: 700 });
+  }
+}
+
+G.run(update, draw);
+loadLevel(0); state = 'menu';
+let unlocked = false; try { unlocked = localStorage.getItem('proto-clones-torre') === '1'; } catch (e) { }
+G.screen({
+  sub: 'Prototipo 09 · plataformas de bucle', title: 'Ciudadela de Clones',
+  html: `<p>Cada intento dura <b>10 segundos</b>. Al acabar, se repite como un clon a tu lado.</p>
+  <ul><li>◀ ▶ (o flechas / A-D) para mover, SALTAR (o espacio) para saltar.</li>
+  <li>Los clones son sólidos: súbete encima y deja que pisen botones.</li>
+  <li>Si estorbas a un clon, entra en <b style="color:${C.pink}">PARADOJA</b> y se borra.</li>
+  <li>BORRAR CLON (X) quita el último. FIN BUCLE (Enter) graba ya.</li></ul>
+  <p style="color:${C.dim}">Menos clones = más estrellas.</p>${unlocked ? '<button type="button" id="b-torre">Modo Torre</button>' : ''}`,
+  button: 'Empezar', onClick: startRun,
+});
+hookTower();
+</script></body></html>
