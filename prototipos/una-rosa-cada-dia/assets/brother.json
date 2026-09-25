@@ -1,0 +1,39 @@
+{
+ "frameW": 124,
+ "frameH": 200,
+ "anchorX": 62.0,
+ "anchorY": 196,
+ "bodyH": 170,
+ "bodyW": 20,
+ "anims": {
+  "idle": {
+   "row": 0,
+   "frames": 24,
+   "fps": 8
+  },
+  "run": {
+   "row": 1,
+   "frames": 17,
+   "fps": 16
+  },
+  "jump": {
+   "row": 2,
+   "frames": 30,
+   "fps": 14,
+   "rise": [
+    17,
+    18
+   ],
+   "fall": [
+    19,
+    20,
+    21
+   ],
+   "land": [
+    22,
+    23,
+    24
+   ]
+  }
+ }
+}

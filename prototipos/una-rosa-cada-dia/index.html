@@ -61,10 +61,10 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--warm);outline-o
     <div id="hud"><span id="hDay">Día 1</span><span id="hWorld">Mundo: <b>de ella</b></span><button id="snd" type="button">Sonido: sí</button></div>
   </header>
   <div class="stage">
-    <canvas id="game" aria-label="Juego de plataformas en siluetas. Una sombra te persigue desde la izquierda."></canvas>
+    <canvas id="game" aria-label="Juego de plataformas. Una sombra te persigue desde la izquierda."></canvas>
     <div id="toast"></div>
   </div>
-  <p class="help"><kbd>←</kbd> <kbd>→</kbd> moverte · <kbd>↑</kbd> o <kbd>Espacio</kbd> saltar · <kbd>Shift</kbd> o <kbd>X</kbd> cambiar de mundo (también en el aire)</p>
+  <p class="help"><kbd>←</kbd> <kbd>→</kbd> moverte · <kbd>↑</kbd> o <kbd>Espacio</kbd> saltar · <kbd>Shift</kbd> o <kbd>X</kbd> cambiar de mundo (también en el aire) · <kbd>C</kbd> ver colisiones</p>
   <div class="pad">
     <div><button data-k="l" aria-label="Izquierda">◀</button><button data-k="r" aria-label="Derecha">▶</button></div>
     <div><button class="wide" data-k="m">Mundo</button><button class="wide jump" data-k="j">Saltar</button></div>
@@ -101,26 +101,22 @@ const Mn = () => names.m.trim() || 'tu mamá';
 const Ms = () => names.m.trim() || 'mamá';
 const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
 
-const S = { state: 'load', level: 0, t: 0, world: 'A', wf: 0, shX: -999, shOn: false, timer: 0, roses: 0, endStep: 0, resp: null, ripple: 0, blocked: 0, shake: 0, hinted: false };
+const S = { state: 'load', level: 0, t: 0, world: 'A', wf: 0, shX: -999, shOn: false, timer: 0, roses: 0, endStep: 0, resp: null, ripple: 0, blocked: 0, shake: 0, hinted: false, debug: false };
 let L = null, P = null, cam = 0;
 
-/* ---------- assets (CC0, recolored as silhouettes) ---------- */
-const SRC = { fog: 'assets/fog.png', mountains: 'assets/mountains.png', hills: 'assets/hills.png', treeDead: 'assets/treeDead.png',
-  treeLong: 'assets/treeLong.png', fence: 'assets/fenceIron.png', treePine: 'assets/treePine.png', tree: 'assets/tree.png',
-  bush: 'assets/bushAlt1.png', moon: 'assets/moonFull.png' };
-const IMG = {};
+/* ---------- assets (generated with Higgsfield; fog is CC0) ---------- */
+const SRC = {
+  brother: 'assets/brother.png', mother: 'assets/mother.png',
+  forestA_far: 'assets/forestA_far.webp', forestA_mid: 'assets/forestA_mid.webp',
+  gardenB_far: 'assets/gardenB_far.webp', gardenB_mid: 'assets/gardenB_mid.webp',
+  cave_far: 'assets/cave_far.webp', cave_mid: 'assets/cave_mid.webp', rain_far: 'assets/rain_far.webp',
+  ground: 'assets/ground.webp', house: 'assets/house.webp', shadow: 'assets/shadow.webp', fog: 'assets/fog.png',
+};
+const IMG = {}, ATLAS = {}; let META = {};
 function loadAll() {
-  return Promise.all(Object.entries(SRC).map(([k, s]) => new Promise(r => {
-    const i = new Image(); i.onload = () => { IMG[k] = i; r(); }; i.onerror = () => r(); i.src = s;
-  })));
-}
-const silCache = new Map();
-function sil(key, color) {
-  const id = key + color; if (silCache.has(id)) return silCache.get(id);
-  const src = key === 'fogA' ? fogAlpha : IMG[key]; if (!src) return null;
-  const c = document.createElement('canvas'); c.width = src.width; c.height = src.height;
-  const x = c.getContext('2d'); x.drawImage(src, 0, 0); x.globalCompositeOperation = 'source-in'; x.fillStyle = color; x.fillRect(0, 0, c.width, c.height);
-  silCache.set(id, c); return c;
+  const imgs = Object.entries(SRC).map(([k, s]) => new Promise(r => { const i = new Image(); i.onload = () => { IMG[k] = i; r(); }; i.onerror = () => r(); i.src = s; }));
+  const js = ['brother', 'mother', 'meta'].map(k => fetch(`assets/${k}.json`).then(r => r.json()).then(d => { if (k === 'meta') META = d; else ATLAS[k] = d; }).catch(() => {}));
+  return Promise.all([...imgs, ...js]);
 }
 let fogAlpha = null;
 function makeFog() {
@@ -129,9 +125,20 @@ function makeFog() {
     const c = document.createElement('canvas'); c.width = IMG.fog.width; c.height = IMG.fog.height;
     const x = c.getContext('2d'); x.drawImage(IMG.fog, 0, 0);
     const d = x.getImageData(0, 0, c.width, c.height), p = d.data;
-    for (let i = 0; i < p.length; i += 4) { p[i + 3] = (p[i] + p[i + 1] + p[i + 2]) / 3; p[i] = p[i + 1] = p[i + 2] = 255; }
+    const W = c.width, H = c.height;
+    for (let i = 0; i < p.length; i += 4) {
+      const y = (i / 4 / W | 0) / H, edge = Math.pow(Math.sin(Math.PI * y), 3), xx = (i / 4 % W) / W, side = Math.min(1, Math.sin(Math.PI * xx) * 4 + .6);
+      p[i + 3] = (p[i] + p[i + 1] + p[i + 2]) / 3 * edge * Math.min(1, side); p[i] = p[i + 1] = p[i + 2] = 255;
+    }
     x.putImageData(d, 0, 0); fogAlpha = c;
   } catch (e) { fogAlpha = null; }
+}
+const tintCache = new Map();
+function tinted(src, color, key) {
+  if (!src) return null; const id = key + color; if (tintCache.has(id)) return tintCache.get(id);
+  const c = document.createElement('canvas'); c.width = src.width; c.height = src.height;
+  const x = c.getContext('2d'); x.drawImage(src, 0, 0); x.globalCompositeOperation = 'source-in'; x.fillStyle = color; x.fillRect(0, 0, c.width, c.height);
+  tintCache.set(id, c); return c;
 }
 const grain = document.createElement('canvas'); grain.width = grain.height = 96;
 { const g = grain.getContext('2d'), d = g.createImageData(96, 96); for (let i = 0; i < d.data.length; i += 4) { const v = Math.random() * 255; d.data[i] = d.data[i + 1] = d.data[i + 2] = v; d.data[i + 3] = 255; } g.putImageData(d, 0, 0); }
@@ -151,7 +158,7 @@ const LEVELS = [
     ledge(L, 41, 13, 4, '1'); ground(L, 45, 60); check(L, 47);
     ledge(L, 62, 13, 3, '2'); ledge(L, 66, 11, 3, '1'); ledge(L, 70, 13, 3, '2');
     ground(L, 74, 90); block(L, 80, 80, 11, 14, 'b'); ledge(L, 93, 12, 2); ground(L, 96, 129); check(L, 98);
-    L.goalCol = 114;
+    L.goalCol = 112;
     say(L, 3, 'h', 'Te lo prometí, ma. Una rosa todos los días.');
     say(L, 15, 'n', 'Hay caminos que solo existen en su mundo, y otros solo en el de él. Cambia con Shift o X.');
     say(L, 50, 'h', 'Cuando me cantabas para dormir…');
@@ -166,7 +173,7 @@ const LEVELS = [
     ground(L, 66, 80, 13); block(L, 72, 72, 9, 12, 'b'); check(L, 68);
     ground(L, 81, 95); block(L, 85, 92, 0, 11);
     ground(L, 96, 104, 15, 'b'); ground(L, 105, 139); check(L, 107);
-    L.goalCol = 124;
+    L.goalCol = 122;
     say(L, 2, 'h', 'Aquí abajo no se ve nada. Pero la rosa alumbra.');
     say(L, 30, 'h', 'Suena el agua. Como tu cocina de noche.');
     say(L, 70, 'h', 'Me acuerdo de tus manos oliendo a jabón.');
@@ -180,7 +187,7 @@ const LEVELS = [
     ground(L, 57, 72); check(L, 59); ground(L, 73, 78, 15, 'b');
     ground(L, 79, 92); block(L, 84, 84, 9, 14, 'a'); block(L, 88, 88, 9, 14, 'b'); check(L, 81);
     ledge(L, 95, 12, 2); ledge(L, 98, 11, 2, '2'); ground(L, 101, 149); check(L, 103);
-    L.goalCol = 134;
+    L.goalCol = 132;
     say(L, 2, 'h', 'Hoy está difícil, ¿verdad? Igual te la llevo.');
     say(L, 38, 'h', '«Te quiero hasta el cielo», me decías.');
     say(L, 104, 'h', 'Aunque hoy no la veas, te llega.');
@@ -197,7 +204,7 @@ const INTRO = [
   { title: 'Día 1 · El bosque', lines: [
     { t: () => `${cap(Mn())} sigue viva, pero una parte de ella se fue contigo. Detrás de ti viene la tristeza, y no se detiene.` },
     { hand: 'Te lo prometí, ma. Una rosa todos los días.' },
-    { hint: 'Hay dos mundos: el de ella, frío, y el de él, tibio. Algunos caminos solo existen en uno. En el mundo de él, la sombra avanza más despacio. La ventana de ella solo está en su mundo.' }] },
+    { hint: 'Hay dos mundos: el de ella, frío, y el de él, un jardín tibio. Algunos caminos solo existen en uno. En el mundo de él, la sombra avanza más despacio. La ventana de ella solo está en su mundo.' }] },
   { title: 'Día 2 · La cueva', lines: [{ t: 'Hoy el camino baja. Hace frío y gotea.' }, { hand: 'No te preocupes, ma. Conozco el camino.' }] },
   { title: 'Día 3 · La lluvia', lines: [{ t: 'Hoy es un día malo. La sombra viene más rápido.' }, { hand: 'Hoy está difícil, ¿verdad? Igual te la llevo.' }] },
   { title: 'La última noche', lines: [{ t: () => `Esa noche, ${Mn()} sueña. Esta vez juegas como ella, y la sombra ya no la sigue.` }, { hint: 'Camina hacia la luz.' }] },
@@ -231,8 +238,8 @@ function audioStart() {
     for (const fr of freqs) for (const d of [-detune, detune]) { const o = AC.createOscillator(); o.type = type; o.frequency.value = fr; o.detune.value = d; o.connect(f); o.start(); }
     return g;
   };
-  AU.A = pad([55, 65.41, 82.41], 'sawtooth', 260, 7);   // her world: cold A minor drone
-  AU.B = pad([110, 138.59, 164.81], 'triangle', 900, 4); // his world: warm
+  AU.A = pad([55, 65.41, 82.41], 'sawtooth', 260, 7);
+  AU.B = pad([110, 138.59, 164.81], 'triangle', 900, 4);
   const nb = AC.createBuffer(1, AC.sampleRate * 2, AC.sampleRate), nd = nb.getChannelData(0);
   for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
   const ns = AC.createBufferSource(); ns.buffer = nb; ns.loop = true;
@@ -248,6 +255,7 @@ function tone(freq, dur, vol, type = 'sine', slide) {
   g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(vol, t0 + .01); g.gain.exponentialRampToValueAtTime(.0001, t0 + dur);
   o.connect(g); g.connect(AU.m); g.connect(AU.verb); o.start(t0); o.stop(t0 + dur + .05);
 }
+function step_sound() { if (!AC || !soundOn) return; tone(90 + Math.random() * 30, .08, .05, 'triangle', 60); }
 const NOTES = [220, 261.63, 293.66, 329.63, 392, 440, 523.25];
 let nextNote = 2, nextDrip = 1;
 function audioTick(dt) {
@@ -278,47 +286,55 @@ function roseHead(c, x, y, r) {
 const hash = i => { const s = Math.sin(i * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); };
 const smooth = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
-// silhouette figure: black body, white eye, only the rose has color
-function figure(c, o) {
-  const u = o.h / 100, f = o.face || 1, s = o.step || 0, la = o.air ? 5 : Math.sin(s) * 7, K = o.col || '#040405';
-  c.save(); c.translate(o.x, o.base); c.scale(f * u, u);
-  if (o.rose) { const g = c.createRadialGradient(22, -95, 2, 22, -95, 60); g.addColorStop(0, 'rgba(200,50,80,.45)'); g.addColorStop(1, 'rgba(200,50,80,0)'); c.fillStyle = g; c.fillRect(-40, -160, 130, 130); }
-  if (o.halo) { const g = c.createRadialGradient(0, -60, 5, 0, -60, 90); g.addColorStop(0, 'rgba(240,200,150,.28)'); g.addColorStop(1, 'rgba(240,200,150,0)'); c.fillStyle = g; c.fillRect(-100, -160, 200, 180); }
-  c.fillStyle = K;
-  rr(c, -9 + la, -40, 8, o.air ? 32 : 40, 3); c.fill(); rr(c, 1 - la, -40, 8, 40, 3); c.fill();
-  rr(c, -12, -76, 24, 42, 9); c.fill();
-  if (o.skirt) { c.beginPath(); c.moveTo(-12, -42); c.lineTo(12, -42); c.lineTo(19, -10); c.lineTo(-19, -10); c.closePath(); c.fill(); }
-  const hy = -90;
-  circ(c, 0, hy, 14, K); if (o.bun) circ(c, -13, hy - 9, 7, K);
-  if (o.spiky) { c.beginPath(); c.moveTo(-12, hy - 6); c.lineTo(-8, hy - 22); c.lineTo(-2, hy - 12); c.lineTo(3, hy - 24); c.lineTo(7, hy - 12); c.lineTo(13, hy - 19); c.lineTo(13, hy - 4); c.closePath(); c.fill(); }
-  circ(c, 7, hy - 1, 2.6, '#f2eee8');
-  c.save(); c.translate(3, -70); c.rotate(-.15 - (o.arm || 0) * 1.2);
-  c.fillStyle = K; rr(c, -4, 0, 8, 30, 4); c.fill(); circ(c, 0, 31, 4.5, K);
-  if (o.rose) { c.strokeStyle = K; c.lineWidth = 3; c.beginPath(); c.moveTo(0, 31); c.lineTo(0, 46); c.stroke(); roseHead(c, 0, 50, 10); }
-  c.restore();
+/* ---------- characters: sprite sheets + colliders from the atlas ---------- */
+const CHAR = {
+  brother: { visH: 40, hitW: 10, hitH: 36 },
+  mother: { visH: 43, hitW: 11, hitH: 39 },
+};
+function drawSprite(c, sheet, anim, frame, x, base, face, alpha = 1) {
+  const A = ATLAS[sheet], im = IMG[sheet]; if (!A || !im) return;
+  const m = A.anims[anim], s = CHAR[sheet].visH / A.bodyH, f = Math.max(0, Math.min(m.frames - 1, frame | 0));
+  c.save(); c.globalAlpha = alpha; c.translate(x, base); c.scale(face * s, s);
+  c.drawImage(im, f * A.frameW, m.row * A.frameH, A.frameW, A.frameH, -A.anchorX, -A.anchorY, A.frameW, A.frameH);
   c.restore();
 }
+// which frame of which animation the player shows right now
+function pose() {
+  const sheet = L.dream ? 'mother' : 'brother', A = ATLAS[sheet]; if (!A) return null;
+  if (L.dream) {
+    if (P.on && Math.abs(P.vx) > .2) return { sheet, anim: 'walk', f: Math.floor(P.animT * A.anims.walk.fps * (Math.abs(P.vx) / 1.4)) % A.anims.walk.frames };
+    return { sheet, anim: 'idle', f: Math.floor(P.animT * A.anims.idle.fps) % A.anims.idle.frames };
+  }
+  const J = A.anims.jump;
+  if (!P.on) {
+    const seq = P.vy < 0 ? J.rise : J.fall;
+    const k = P.vy < 0 ? Math.min(seq.length - 1, Math.floor((1 + P.vy / 6.3) * seq.length)) : Math.min(seq.length - 1, Math.floor(P.airT * 10) % (seq.length + 1));
+    return { sheet, anim: 'jump', f: seq[Math.max(0, Math.min(seq.length - 1, k))] };
+  }
+  if (P.landT > 0 && J.land.length) return { sheet, anim: 'jump', f: J.land[Math.min(J.land.length - 1, Math.floor((1 - P.landT / .18) * J.land.length))] };
+  if (Math.abs(P.vx) > .25) return { sheet, anim: 'run', f: Math.floor(P.animT * A.anims.run.fps * Math.max(.6, Math.abs(P.vx) / 2.1)) % A.anims.run.frames };
+  return { sheet, anim: 'idle', f: Math.floor(P.animT * A.anims.idle.fps) % A.anims.idle.frames };
+}
 
-/* ---------- level start ---------- */
+/* ---------- tiles ---------- */
 const tile = (cx, cy) => (cy < 0 || cy >= ROWS || cx < 0 || cx >= L.w) ? '.' : L.g[cy][cx];
 const solidIn = (t, w) => t === '#' || (t === 'a' && w === 'A') || (t === 'b' && w === 'B');
 const ledgeIn = (t, w) => t === '=' || (t === '1' && w === 'A') || (t === '2' && w === 'B');
 function topOf(col, w = 'A') { for (let y = 0; y < ROWS; y++) { const t = tile(col, y); if (solidIn(t, w) && !solidIn(tile(col, y - 1), w)) { if (y > 12 || !solidIn(tile(col, 0), w)) return y; } } return ROWS; }
 
+/* ---------- flow ---------- */
 function startLevel(i) {
   S.level = i; L = LEVELS[i]();
   L.goalX = L.goalCol * T;
-  P = { x: 2 * T + 3, y: 0, w: 10, h: 22, vx: 0, vy: 0, on: false, co: 0, buf: 0, face: 1, step: 0 };
+  const C = CHAR[L.dream ? 'mother' : 'brother'];
+  P = { x: 2 * T + 3, y: 0, w: C.hitW, h: C.hitH, vx: 0, vy: 0, on: false, co: 0, buf: 0, face: 1, animT: 0, airT: 0, landT: 0, stepT: 0 };
   S.resp = { x: P.x, y: topOf(2) * T - P.h };
   S.world = 'A'; S.wf = 0; S.shOn = false; S.delivered = false; S.endStep = 0; S.hinted = false;
   respawn(); cam = 0; hud();
   const d = INTRO[i];
   card({ title: d.title, lines: d.lines, btn: 'Continuar', next: () => { S.state = 'play'; } });
 }
-function respawn() {
-  P.x = S.resp.x; P.y = S.resp.y; P.vx = P.vy = 0;
-  S.shX = P.x - 330;
-}
+function respawn() { P.x = S.resp.x; P.y = S.resp.y; P.vx = P.vy = 0; S.shX = P.x - 330; if (overlaps(S.world)) { S.world = 'A'; hud(); } }
 function hud() {
   $('#hDay').textContent = S.level === 3 ? 'La última noche' : `Día ${S.level + 1}`;
   $('#hWorld').innerHTML = ''; $('#hWorld').append('Mundo: '); const b = document.createElement('b');
@@ -331,8 +347,6 @@ function toast(who, text) {
   el.appendChild(document.createTextNode(text));
   el.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('show'), 4200);
 }
-
-/* ---------- cards ---------- */
 function card(o) {
   S.state = 'card';
   $('#cTitle').textContent = o.title || ''; $('#cTitle').hidden = !o.title;
@@ -346,16 +360,16 @@ function card(o) {
     box.appendChild(p);
   }
   $('#cNames').hidden = !o.names; $('#card').classList.toggle('soft', !!o.soft);
-  const b = $('#cBtn'); b.textContent = o.btn;
+  const b = $('#cBtn'); b.textContent = o.btn; b.disabled = !!o.wait;
   b.onclick = () => { $('#card').hidden = true; audioStart(); o.next(); };
   $('#card').hidden = false;
   (o.names ? $('#nameH') : b).focus();
 }
-function introCard() {
+function introCard(loading) {
   S.roses = 0; $('#nameH').value = names.h; $('#nameM').value = names.m;
-  card({ title: 'Una rosa cada día', names: true, btn: 'Empezar', lines: [
+  card({ title: 'Una rosa cada día', names: true, btn: loading ? 'Cargando…' : 'Empezar', wait: loading, lines: [
     { hand: 'Mamá, cuando tú mueras yo me voy contigo. Si no, todos los días te llevaré una rosa.' },
-    { hint: 'Un juego de sombras. Lleva la rosa hasta su ventana antes de que te alcance la tristeza. Se recomienda jugar con sonido.' }],
+    { hint: 'Lleva la rosa hasta su ventana antes de que te alcance la tristeza. Se recomienda jugar con sonido.' }],
     next: () => {
       names = { h: $('#nameH').value, m: $('#nameM').value };
       try { localStorage.setItem('rosa-names', JSON.stringify(names)); } catch (e) {}
@@ -379,6 +393,7 @@ const K = { l: false, r: false, j: false, m: false }; let jPrev = false, mPrev =
 const KEYMAP = { ArrowLeft: 'l', KeyA: 'l', ArrowRight: 'r', KeyD: 'r', ArrowUp: 'j', KeyW: 'j', Space: 'j', ShiftLeft: 'm', ShiftRight: 'm', KeyX: 'm', KeyK: 'm' };
 addEventListener('keydown', e => {
   if (!$('#card').hidden) { if (e.key === 'Enter' && document.activeElement.tagName !== 'BUTTON') { e.preventDefault(); $('#cBtn').click(); } return; }
+  if (e.code === 'KeyC') { S.debug = !S.debug; return; }
   const k = KEYMAP[e.code]; if (k) { K[k] = true; e.preventDefault(); }
 });
 addEventListener('keyup', e => { const k = KEYMAP[e.code]; if (k) K[k] = false; });
@@ -390,11 +405,41 @@ document.querySelectorAll('.pad button').forEach(b => {
   b.addEventListener('pointerdown', on); b.addEventListener('pointerup', off); b.addEventListener('pointercancel', off); b.addEventListener('lostpointercapture', off);
 });
 
-/* ---------- physics ---------- */
-function overlaps(w) {
-  const l = Math.floor(P.x / T), r = Math.floor((P.x + P.w - .01) / T), t = Math.floor(P.y / T), b = Math.floor((P.y + P.h - .01) / T);
-  for (let cy = t; cy <= b; cy++) for (let cx = l; cx <= r; cx++) if (solidIn(tile(cx, cy), w)) return true;
+/* ---------- physics: axis-separated AABB with sub-steps ---------- */
+function rectHits(x, y, w, h, wld) {
+  const l = Math.floor(x / T), r = Math.floor((x + w - .001) / T), t = Math.floor(y / T), b = Math.floor((y + h - .001) / T);
+  for (let cy = t; cy <= b; cy++) for (let cx = l; cx <= r; cx++) if (solidIn(tile(cx, cy), wld)) return true;
   return false;
+}
+const overlaps = w => rectHits(P.x, P.y, P.w, P.h, w);
+function moveX(dx) {
+  const n = Math.ceil(Math.abs(dx) / 4), s = dx / (n || 1);
+  for (let i = 0; i < n; i++) {
+    if (rectHits(P.x + s, P.y, P.w, P.h, S.world)) {
+      // step up tiny lips (≤3px) instead of stopping dead
+      if (P.on && !rectHits(P.x + s, P.y - 3, P.w, P.h, S.world)) { P.y -= 3; P.x += s; continue; }
+      P.x = s > 0 ? Math.floor((P.x + P.w + s) / T) * T - P.w - .001 : Math.floor((P.x + s) / T + 1) * T + .001; P.vx = 0; return;
+    }
+    P.x += s;
+  }
+}
+function moveY(dy) {
+  const n = Math.ceil(Math.abs(dy) / 4), s = dy / (n || 1);
+  for (let i = 0; i < n; i++) {
+    const prevB = P.y + P.h, ny = P.y + s;
+    if (s > 0) {
+      const cy = Math.floor((ny + P.h) / T), l = Math.floor(P.x / T), r = Math.floor((P.x + P.w - .001) / T);
+      let land = false;
+      for (let cx = l; cx <= r; cx++) { const t = tile(cx, cy); if (solidIn(t, S.world) || (ledgeIn(t, S.world) && prevB <= cy * T + .01)) land = true; }
+      if (land) { P.y = cy * T - P.h; if (!P.on && P.vy > 3) { P.landT = .18; step_sound(); } P.vy = 0; P.on = true; return; }
+    } else if (rectHits(P.x, ny, P.w, P.h, S.world)) {
+      // corner correction: nudge sideways if the head only clips an edge
+      for (const nudge of [1, -1, 2, -2, 3, -3, 4, -4]) if (!rectHits(P.x + nudge, ny, P.w, P.h, S.world)) { P.x += nudge; P.y = ny; break; }
+      if (P.y !== ny) { P.y = Math.floor(ny / T + 1) * T + .001; P.vy = 0; return; }
+      continue;
+    }
+    P.y = ny;
+  }
 }
 function switchWorld() {
   if (L.dream) return;
@@ -410,57 +455,35 @@ function step() {
   if (L.dream) S.wf = smooth(.3, .8, (P.x + P.w / 2) / (L.w * T));
   else S.wf += ((S.world === 'B' ? 1 : 0) - S.wf) * .18;
   audioTick(dt);
-  if (S.state === 'deliver') {
-    S.shX -= 6;
-    if (++S.timer > 80) { S.roses++; goalCard(); }
-    return;
-  }
+  P.animT += dt; P.landT = Math.max(0, P.landT - dt);
+  if (S.state === 'deliver') { S.shX -= 6; if (++S.timer > 80) { S.roses++; goalCard(); } return; }
   if (S.state === 'meet') { if (++S.timer > 50) endCard(); return; }
-  if (S.state === 'caught') {
-    S.timer++;
-    if (S.timer === 40) respawn();
-    if (S.timer > 80) S.state = 'play';
-    return;
-  }
+  if (S.state === 'caught') { S.timer++; if (S.timer === 40) respawn(); if (S.timer > 80) S.state = 'play'; return; }
   if (S.state !== 'play') return;
   const WX = L.w * T;
 
-  // input
   const dir = (K.r ? 1 : 0) - (K.l ? 1 : 0);
-  const acc = P.on ? .38 : .27;
+  const acc = P.on ? .36 : .26, maxv = L.dream ? 1.4 : 2.1;
   if (dir) { P.vx += dir * acc; P.face = dir; } else if (P.on) P.vx *= .7; else P.vx *= .95;
-  const maxv = L.dream ? 1.4 : 2.1;
+  if (Math.abs(P.vx) < .05) P.vx = 0;
   P.vx = Math.max(-maxv, Math.min(maxv, P.vx));
   if (K.j && !jPrev && !L.dream) P.buf = 7;
   jPrev = K.j;
   if (K.m && !mPrev) switchWorld();
   mPrev = K.m;
   P.co = P.on ? 6 : P.co - 1;
-  if (P.buf > 0 && P.co > 0) { P.vy = -6.3; P.buf = 0; P.co = 0; P.on = false; }
+  if (P.buf > 0 && P.co > 0) { P.vy = -6.3; P.buf = 0; P.co = 0; P.on = false; P.airT = 0; tone(140, .12, .04, 'triangle', 220); }
   P.buf--;
   if (!K.j && P.vy < -2.8) P.vy = -2.8;
   P.vy = Math.min(7, P.vy + .36);
 
-  const w = S.world;
-  P.x += P.vx;
-  let top = Math.floor(P.y / T), bot = Math.floor((P.y + P.h - .01) / T);
-  if (P.vx > 0) { const cx = Math.floor((P.x + P.w) / T); for (let cy = top; cy <= bot; cy++) if (solidIn(tile(cx, cy), w)) { P.x = cx * T - P.w; P.vx = 0; break; } }
-  else if (P.vx < 0) { const cx = Math.floor(P.x / T); for (let cy = top; cy <= bot; cy++) if (solidIn(tile(cx, cy), w)) { P.x = (cx + 1) * T; P.vx = 0; break; } }
-  P.x = Math.max(0, Math.min(WX - P.w, P.x));
-  const prevB = P.y + P.h; P.y += P.vy; P.on = false;
-  const l = Math.floor(P.x / T), r = Math.floor((P.x + P.w - .01) / T);
-  if (P.vy > 0) {
-    const cy = Math.floor((P.y + P.h) / T);
-    for (let cx = l; cx <= r; cx++) { const t = tile(cx, cy); if (solidIn(t, w) || (ledgeIn(t, w) && prevB <= cy * T + .01)) { P.y = cy * T - P.h; P.vy = 0; P.on = true; break; } }
-  } else if (P.vy < 0) {
-    const cy = Math.floor(P.y / T);
-    for (let cx = l; cx <= r; cx++) if (solidIn(tile(cx, cy), w)) { P.y = (cy + 1) * T; P.vy = 0; break; }
-  }
-  P.step = P.on && Math.abs(P.vx) > .3 ? P.step + Math.abs(P.vx) * .12 : 0;
-
+  const wasOn = P.on; P.on = false;
+  moveX(P.vx); P.x = Math.max(0, Math.min(WX - P.w, P.x));
+  moveY(P.vy);
+  if (!P.on) P.airT += dt;
+  if (P.on && Math.abs(P.vx) > .5) { P.stepT += Math.abs(P.vx) * dt; if (P.stepT > .55) { P.stepT = 0; step_sound(); } }
   if (P.y > ROWS * T + 30) { caught(); return; }
 
-  // the shadow
   if (!L.dream) {
     if (!S.shOn && P.x > S.resp.x + 30) S.shOn = true;
     if (S.shOn) {
@@ -471,205 +494,190 @@ function step() {
       if (d < 2) { caught(); return; }
     }
   }
-  // whispers
   for (const s of L.says) if (!s.done && P.x > s.x) { s.done = true; toast(s.who, s.text); }
-  // flowers that remember where you were
-  for (const c of L.checks) if (!c.on && P.x + P.w > c.x - 4) {
-    c.on = true; S.resp = { x: c.x - P.w / 2, y: topOf(c.col) * T - P.h }; tone(784, 1.6, .05, 'triangle');
-  }
-  // goal
-  if (!L.dream && P.x + P.w > L.goalX + 40) {
-    if (S.world === 'A') { S.state = 'deliver'; S.delivered = true; S.timer = 0; P.vx = 0; P.face = 1; S.from = { x: P.x + 12, y: P.y - 4 }; tone(523, 2.5, .08, 'triangle'); tone(659, 2.5, .06, 'triangle'); }
+  for (const c of L.checks) if (!c.on && P.x + P.w > c.x - 4) { c.on = true; S.resp = { x: c.x - P.w / 2, y: topOf(c.col) * T - P.h }; tone(784, 1.6, .05, 'triangle'); }
+  const hs = houseRect();
+  if (!L.dream && P.x + P.w > hs.winX) {
+    if (S.world === 'A') { S.state = 'deliver'; S.delivered = true; S.timer = 0; P.vx = 0; P.face = 1; S.from = { x: P.x + 8, y: P.y + 16 }; tone(523, 2.5, .08, 'triangle'); tone(659, 2.5, .06, 'triangle'); }
     else if (!S.hinted) { S.hinted = true; toast('n', 'Su ventana solo existe en su mundo.'); }
   }
-  if (L.dream && P.x + P.w > L.goalX - 18) { S.state = 'meet'; S.timer = 0; P.vx = 0; }
+  if (L.dream && P.x + P.w > L.goalX - 16) { S.state = 'meet'; S.timer = 0; P.vx = 0; }
 
   const target = P.x + P.w / 2 - VW / 2 + P.face * 50;
   cam += (target - cam) * .07; cam = Math.max(0, Math.min(WX - VW, cam));
 }
-function caught() {
-  S.state = 'caught'; S.timer = 0; tone(60, 1.8, .25, 'sawtooth', 40);
-}
+function caught() { S.state = 'caught'; S.timer = 0; tone(60, 1.8, .25, 'sawtooth', 40); }
 
 /* ---------- render ---------- */
 function fit() {
-  const d = window.devicePixelRatio || 1, w = Math.round(cv.clientWidth * d), h = Math.round(cv.clientHeight * d);
+  const d = Math.min(3, window.devicePixelRatio || 1), w = Math.round(cv.clientWidth * d), h = Math.round(cv.clientHeight * d);
   if (!w) return 0;
   if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
   return w / VW;
 }
-function strip(c, key, color, par, bottom, height, alpha = 1, gap = 0) {
-  const im = sil(key, color); if (!im) return;
-  const w = im.width * height / im.height, span = w + gap, off = ((cam * par) % span + span) % span;
-  c.globalAlpha = alpha;
-  for (let x = -off; x < VW; x += span) c.drawImage(im, x, bottom - height, w, height);
-  c.globalAlpha = 1;
-}
-function props(c, list, color, par, bottom, spacing, seed, scale) {
-  const i0 = Math.floor(cam * par / spacing) - 1;
-  for (let i = i0; i < i0 + Math.ceil(VW / spacing) + 3; i++) {
-    const hsh = hash(i + seed); if (hsh < .25) continue;
-    const key = list[Math.floor(hsh * 997) % list.length], im = sil(key, color); if (!im) continue;
-    const s = scale * (.7 + hash(i * 3 + seed) * .6), w = im.width * s, h = im.height * s;
-    c.drawImage(im, i * spacing - cam * par + hash(i * 7 + seed) * spacing * .5, bottom - h, w, h);
+// a wide painted layer repeated sideways; every other copy is mirrored so the seam never shows
+function layer(c, im, par, bottom, height, alpha = 1) {
+  if (!im || alpha <= 0) return;
+  const w = im.width * height / im.height, off = ((cam * par) % (2 * w) + 2 * w) % (2 * w);
+  c.save(); c.globalAlpha = alpha;
+  for (let k = -1, x = -off - w; x < VW; x += w, k++) {
+    const flip = ((Math.round((x + off) / w) % 2) + 2) % 2 === 1;
+    if (flip) { c.save(); c.translate(x + w, 0); c.scale(-1, 1); c.drawImage(im, 0, bottom - height, w, height); c.restore(); }
+    else c.drawImage(im, x, bottom - height, w, height);
   }
-}
-function background(c, world, a, t) {
-  if (a <= 0) return;
-  c.save(); c.globalAlpha = a;
-  const th = L.theme, her = world === 'A';
-  const sky = c.createLinearGradient(0, 0, 0, VH);
-  if (th === 'cave') { sky.addColorStop(0, her ? '#050607' : '#0d0806'); sky.addColorStop(.7, her ? '#2a3036' : '#4a3122'); sky.addColorStop(1, her ? '#3b434a' : '#6a4630'); }
-  else if (th === 'rain') { sky.addColorStop(0, her ? '#3a3f45' : '#5c4636'); sky.addColorStop(1, her ? '#7a8189' : '#b38a62'); }
-  else { sky.addColorStop(0, her ? '#23282e' : '#3b261d'); sky.addColorStop(.75, her ? '#8a939c' : '#c99b6d'); sky.addColorStop(1, her ? '#a7aeb5' : '#e0b27a'); }
-  c.fillStyle = sky; c.fillRect(0, 0, VW, VH);
-  if (th !== 'cave') {
-    const mk = sil('moon', her ? '#d8dde2' : '#f3d6a6');
-    if (mk) { c.globalAlpha = a * (her ? .55 : .8); c.drawImage(mk, 360, 34, 46, 46); c.globalAlpha = a; }
-    if (!her) { const g = c.createRadialGradient(383, 57, 10, 383, 57, 120); g.addColorStop(0, 'rgba(255,210,150,.35)'); g.addColorStop(1, 'rgba(255,210,150,0)'); c.fillStyle = g; c.fillRect(250, 0, 230, 190); }
-  } else {
-    // light falling from a crack above
-    const g = c.createLinearGradient(300, 0, 250, 240); g.addColorStop(0, her ? 'rgba(200,215,225,.22)' : 'rgba(255,200,140,.28)'); g.addColorStop(1, 'rgba(0,0,0,0)');
-    c.fillStyle = g; c.beginPath(); c.moveTo(((330 - cam * .15) % 700 + 700) % 700 - 100, 0); c.lineTo(((380 - cam * .15) % 700 + 700) % 700 - 100, 0); c.lineTo(((340 - cam * .15) % 700 + 700) % 700 - 30, 250); c.lineTo(((230 - cam * .15) % 700 + 700) % 700 - 30, 250); c.closePath(); c.fill();
-  }
-  c.globalAlpha = a;
-  const dark = th === 'cave';
-  strip(c, 'mountains', her ? (dark ? '#1c2024' : '#555d66') : (dark ? '#2a1c15' : '#7a5642'), .08, 250, 150, a);
-  if (!her || th !== 'cave') strip(c, 'fogA', her ? '#c9d0d6' : '#ffd8a8', .15, 240, 110, a * .25);
-  strip(c, 'hills', her ? (dark ? '#111315' : '#2f353b') : (dark ? '#1b120e' : '#4a3226'), .22, 262, 130, a);
-  if (her) props(c, th === 'cave' ? ['treeDead'] : ['treeDead', 'treeLong', 'fence', 'treeDead'], dark ? '#0b0c0e' : '#16191c', .5, 256, 90, 3, .42);
-  else props(c, ['treePine', 'tree', 'bush', 'treePine'], dark ? '#120b09' : '#24170f', .5, 256, 80, 9, .42);
-  if (!her) { // his garden: dim red roses in the dark
-    const i0 = Math.floor(cam * .5 / 37) - 1;
-    for (let i = i0; i < i0 + 16; i++) if (hash(i + 5) > .45) { const x = i * 37 - cam * .5, y = 236 + hash(i) * 14; c.strokeStyle = '#150d0a'; c.lineWidth = 1; c.beginPath(); c.moveTo(x, y + 18); c.lineTo(x, y); c.stroke(); circ(c, x, y, 2.6, '#6e1a2a'); }
-  }
-  strip(c, 'fogA', her ? '#aab3bb' : '#f0c08a', .35, 250, 90, a * (dark ? .18 : .3));
   c.restore();
+}
+function fogStrip(c, color, par, bottom, height, alpha) {
+  const im = tinted(fogAlpha, color, 'fog'); if (!im) return; layer(c, im, par, bottom, height, alpha);
+}
+function world(c, which, a) {
+  if (a <= 0) return;
+  const th = L.theme, her = which === 'A';
+  c.save(); c.globalAlpha = a;
+  const far = her ? (th === 'cave' ? IMG.cave_far : th === 'rain' ? IMG.rain_far : IMG.forestA_far) : IMG.gardenB_far;
+  const mid = her ? (th === 'cave' ? IMG.cave_mid : IMG.forestA_mid) : IMG.gardenB_mid;
+  layer(c, far, .12, VH, VH, a);
+  fogStrip(c, her ? '#b9c2ca' : '#ffd6a0', .2, 238, 90, a * .22);
+  if (th === 'rain' && her) layer(c, mid, .38, 246, 120, a * .8);
+  else layer(c, mid, .38, 248, her ? 150 : 128, a);
+  fogStrip(c, her ? '#9aa3ab' : '#f0c08a', .5, 262, 70, a * .25);
+  if (her && th === 'cave') { c.fillStyle = `rgba(0,0,0,${.25 * a})`; c.fillRect(0, 0, VW, VH); }
+  c.restore();
+}
+function houseRect() {
+  const hm = META.house || { size: [640, 407], window: [197, 141, 281, 264] }, h = 108, s = h / hm.size[1];
+  const x = L.goalX, gy = topOf(L.goalCol) * T;
+  return { x, y: gy - h + 2, w: hm.size[0] * s, h, s, winX: x + hm.window[0] * s, winY: gy - h + 2 + hm.window[1] * s, winW: (hm.window[2] - hm.window[0]) * s, sillY: gy - h + 2 + hm.window[3] * s };
 }
 function drawHouse(c) {
-  const x = L.goalX, gy = topOf(L.goalCol) * T, a = 1 - S.wf;
-  c.save();
-  c.fillStyle = '#040405';
-  c.fillRect(x, gy - 100, 110, 100);
-  c.beginPath(); c.moveTo(x - 10, gy - 98); c.lineTo(x + 55, gy - 140); c.lineTo(x + 120, gy - 98); c.closePath(); c.fill();
-  c.fillRect(x + 78, gy - 160, 12, 40);
-  // smoke
-  for (let k = 0; k < 4; k++) { const tt = (S.t * .25 + k * .25) % 1; circ(c, x + 84 + Math.sin(tt * 6 + k) * 6, gy - 165 - tt * 50, 5 + tt * 8, `rgba(120,125,130,${.25 * (1 - tt) * a})`); }
-  const wx = x + 18, wy = gy - 76;
-  c.globalAlpha = a;
-  const g = c.createRadialGradient(wx + 20, wy + 18, 4, wx + 20, wy + 18, 70); g.addColorStop(0, L.closed ? 'rgba(200,150,90,.25)' : 'rgba(240,180,100,.45)'); g.addColorStop(1, 'rgba(240,180,100,0)');
-  c.fillStyle = g; c.fillRect(wx - 60, wy - 60, 160, 150);
-  c.fillStyle = L.closed ? '#6d5236' : '#d9a15e'; c.fillRect(wx, wy, 40, 34);
-  if (!L.closed) { // her, a shadow in the light
-    const lift = S.level * .3 + (S.delivered ? .3 : 0), drop = Math.max(0, 7 - lift * 6);
-    c.fillStyle = '#060506'; circ(c, wx + 22, wy + 17 + drop, 7.5, '#060506'); circ(c, wx + 28, wy + 12 + drop, 4, '#060506');
-    rr(c, wx + 11, wy + 25 + drop * .5, 22, 12, 6); c.fill();
-  } else { c.fillStyle = 'rgba(0,0,0,.35)'; c.fillRect(wx, wy, 20, 34); c.fillRect(wx + 21, wy, 19, 34); }
-  c.fillStyle = '#040405'; c.fillRect(wx + 19, wy, 2, 34); c.fillRect(wx, wy + 16, 40, 2); c.fillRect(wx - 5, wy + 34, 50, 4);
-  c.globalAlpha = 1;
-  for (let i = 0; i < S.roses; i++) { const rx = wx + 4 + i * 12; c.strokeStyle = '#040405'; c.lineWidth = 1.4; c.beginPath(); c.moveTo(rx, wy + 34); c.lineTo(rx, wy + 26); c.stroke(); roseHead(c, rx, wy + 25, 3.4); }
-  c.restore();
+  const r = houseRect(), a = 1 - S.wf;
+  if (IMG.house) { c.save(); c.globalAlpha = .35 + .65 * a; c.drawImage(IMG.house, r.x, r.y, r.w, r.h); c.restore(); }
+  const flick = .8 + Math.sin(S.t * 3) * .05 + Math.sin(S.t * 7.3) * .03;
+  const g = c.createRadialGradient(r.winX + r.winW / 2, r.winY + 12, 3, r.winX + r.winW / 2, r.winY + 12, 80);
+  g.addColorStop(0, `rgba(255,190,110,${(L.closed ? .12 : .3) * flick * a})`); g.addColorStop(1, 'rgba(255,190,110,0)');
+  c.fillStyle = g; c.fillRect(r.winX - 80, r.winY - 70, r.winW + 160, 170);
+  if (L.closed) { c.fillStyle = `rgba(20,24,30,${.55 * a})`; c.fillRect(r.winX + 2, r.winY + 2, r.winW - 4, r.sillY - r.winY - 6); }
+  for (let i = 0; i < S.roses; i++) { const rx = r.winX + 5 + i * 7; c.strokeStyle = '#1d2a1a'; c.lineWidth = 1; c.beginPath(); c.moveTo(rx, r.sillY); c.lineTo(rx, r.sillY - 7); c.stroke(); roseHead(c, rx, r.sillY - 8, 2.6); }
 }
-function drawShadow(c, t) {
-  if (L.dream || (!S.shOn && S.state !== 'caught')) return;
-  const x = S.shX, lft = cam - 20;
-  if (x < lft - 60) return;
-  const g = c.createLinearGradient(x - 10, 0, x + 110, 0); g.addColorStop(0, 'rgba(0,0,0,.65)'); g.addColorStop(1, 'rgba(0,0,0,0)');
-  c.fillStyle = g; c.fillRect(x - 10, 0, 120, VH);
-  c.fillStyle = '#000'; c.fillRect(lft, 0, Math.max(0, x - lft - 8), VH);
-  for (let i = 0; i < 16; i++) { const y = i * 18, r = 18 + Math.sin(t * 2.3 + i * 1.7) * 6; circ(c, x - 8 + Math.sin(t * 1.6 + i) * 8, y, r, '#000'); }
-  c.strokeStyle = '#000'; c.lineCap = 'round';
-  for (let i = 0; i < 7; i++) {
-    const y0 = 30 + i * 34, len = 40 + Math.sin(t * 1.2 + i * 2) * 25;
-    c.lineWidth = 3.5 - i % 3;
-    c.beginPath(); c.moveTo(x, y0); c.bezierCurveTo(x + len * .4, y0 + Math.sin(t * 2 + i) * 14, x + len * .7, y0 - Math.sin(t * 1.7 + i) * 12, x + len, y0 + Math.sin(t * 3 + i) * 6); c.stroke();
-  }
-  for (let i = 0; i < 26; i++) { const y = hash(i * 5) * VH, r = 6 + hash(i * 9) * 10; circ(c, x + 14 + hash(i) * 18 + Math.sin(t * 2 + i) * 6, y + Math.sin(t + i) * 8, r, 'rgba(0,0,0,.85)'); }
-}
-function render() {
-  const sc = fit(); if (!sc || !L) return;
-  const c = ctx, t = S.t, WX = L.w * T;
-  const sx = RM ? 0 : (Math.random() - .5) * S.shake, sy = RM ? 0 : (Math.random() - .5) * S.shake;
-  c.setTransform(sc, 0, 0, sc, sx * sc, sy * sc);
-  background(c, 'A', 1, t);
-  background(c, 'B', S.wf, t);
-
-  strip(c, 'fogA', S.wf > .5 ? '#e8b98a' : '#9aa3ab', .7, VH - 10, 70, .16);
-  c.save(); c.translate(-cam, 0);
-  if (L.theme === 'cave') { // ceiling and stalactites
-    c.fillStyle = '#030304'; c.fillRect(cam - 10, 0, VW + 20, 14);
-    const i0 = Math.floor(cam / 22) - 1;
-    for (let i = i0; i < i0 + 26; i++) { const x = i * 22 + hash(i) * 10, h = 14 + hash(i * 3) * 42; c.beginPath(); c.moveTo(x - 9, 12); c.lineTo(x + 9, 12); c.lineTo(x + hash(i * 5) * 4, 12 + h); c.closePath(); c.fill(); }
-  }
-  if (!L.dream) drawHouse(c);
-
-  // ground and platforms
-  const c0 = Math.max(0, Math.floor(cam / T) - 1), c1 = Math.min(L.w - 1, c0 + 32);
+function drawTiles(c) {
+  const c0 = Math.max(0, Math.floor(cam / T) - 1), c1 = Math.min(L.w - 1, c0 + 32), G = IMG.ground;
   for (let cx = c0; cx <= c1; cx++) for (let cy = 0; cy < ROWS; cy++) {
     const tt = L.g[cy][cx]; if (tt === '.') continue;
     const x = cx * T, y = cy * T;
     const her = tt === 'a' || tt === '1', his = tt === 'b' || tt === '2', led = tt === '=' || tt === '1' || tt === '2';
     const vis = her ? 1 - S.wf : his ? S.wf : 1;
     if (vis > .02) {
-      c.globalAlpha = vis; c.fillStyle = '#040405';
-      if (led) { rr(c, x, y, T, 6, 2); c.fill(); }
-      else {
-        c.fillRect(x, y, T, T);
-        const above = tile(cx, cy - 1);
-        if (!(above === tt || above === '#')) { c.beginPath(); for (let k = 0; k < 4; k++) { const bx = x + k * 4 + hash(cx * 9 + k) * 3; c.moveTo(bx, y + 1); c.lineTo(bx + 1, y - 2 - hash(cx + k * 13) * 4); c.lineTo(bx + 2.5, y + 1); } c.fill(); }
-      }
-      c.globalAlpha = 1;
+      c.save(); c.globalAlpha = vis;
+      const above = tile(cx, cy - 1), exposed = !(above === tt || above === '#' || (tt === '#' && (above === 'a' || above === 'b')));
+      if (G) {
+        if (led) c.drawImage(G, (cx * 37) % 192, 0, 64, 26, x, y, T, 7);
+        else if (exposed) c.drawImage(G, (cx * 37) % 192, 0, 64, 64, x, y - 2, T, T + 2);
+        else c.drawImage(G, (cx * 53) % 192, 80 + (cy * 29) % 112, 64, 64, x, y, T, T);
+      } else { c.fillStyle = '#111'; c.fillRect(x, y, T, led ? 7 : T); }
+      if (her) { c.fillStyle = 'rgba(120,150,190,.28)'; c.fillRect(x, y, T, led ? 7 : T); }
+      if (his) { c.fillStyle = 'rgba(240,170,90,.25)'; c.fillRect(x, y, T, led ? 7 : T); }
+      if (!exposed && !led) { c.fillStyle = 'rgba(0,0,0,.35)'; c.fillRect(x, y, T, T); }
+      c.restore();
     }
-    if ((her || his) && vis < .98) { // ghost of the other world
-      c.globalAlpha = (1 - vis) * .5; c.strokeStyle = her ? '#c9d2da' : '#f3c58f'; c.lineWidth = 1; c.setLineDash([2, 3]);
-      c.strokeRect(x + .5, y + .5, T - 1, led ? 5 : T - 1); c.setLineDash([]); c.globalAlpha = 1;
+    if ((her || his) && vis < .98) {
+      c.globalAlpha = (1 - vis) * .55; c.strokeStyle = her ? '#c9d2da' : '#f3c58f'; c.lineWidth = 1; c.setLineDash([2, 3]);
+      c.strokeRect(x + .5, y + .5, T - 1, led ? 6 : T - 1); c.setLineDash([]); c.globalAlpha = 1;
     }
   }
-  // flowers that mark where you come back
+}
+function drawShadow(c, t) {
+  if (L.dream || (!S.shOn && S.state !== 'caught')) return;
+  const x = S.shX, lft = cam - 20;
+  if (x < lft - 80) return;
+  const g = c.createLinearGradient(x - 60, 0, x + 120, 0); g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(.35, 'rgba(0,0,0,.6)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+  c.fillStyle = g; c.fillRect(x - 61, 0, 181, VH);
+  c.fillStyle = '#000'; c.fillRect(lft, 0, Math.max(0, x - lft - 60), VH);
+  const im = IMG.shadow;
+  if (im) {
+    const h = 300, w = im.width * h / im.height;
+    for (let k = 0; k < 3; k++) {
+      const sway = Math.sin(t * (1.2 + k * .3) + k) * 8, y = -40 + k * 10 + Math.sin(t * .8 + k) * 6;
+      c.save(); c.globalAlpha = k === 2 ? 1 : .8; c.translate(x - w * .75 + sway - k * 30, y);
+      c.drawImage(im, 0, 0, w, h); c.restore();
+    }
+  }
+}
+function render() {
+  const sc = fit(); if (!sc || !L) return;
+  const c = ctx, t = S.t;
+  const sx = RM ? 0 : (Math.random() - .5) * S.shake, sy = RM ? 0 : (Math.random() - .5) * S.shake;
+  c.setTransform(sc, 0, 0, sc, sx * sc, sy * sc);
+  c.imageSmoothingQuality = 'high';
+  c.fillStyle = '#000'; c.fillRect(0, 0, VW, VH);
+  world(c, 'A', 1);
+  world(c, 'B', S.wf);
+
+  c.save(); c.translate(-cam, 0);
+  if (L.theme === 'cave') {
+    c.fillStyle = '#030304'; c.fillRect(cam - 10, 0, VW + 20, 10);
+    const i0 = Math.floor(cam / 22) - 1;
+    for (let i = i0; i < i0 + 26; i++) { const x = i * 22 + hash(i) * 10, h = 10 + hash(i * 3) * 34; c.beginPath(); c.moveTo(x - 8, 8); c.lineTo(x + 8, 8); c.lineTo(x + hash(i * 5) * 4, 8 + h); c.closePath(); c.fill(); }
+  }
+  if (!L.dream) drawHouse(c);
+  drawTiles(c);
   for (const ck of L.checks) {
     const gy = topOf(ck.col) * T;
-    c.strokeStyle = '#040405'; c.lineWidth = 1.5; c.beginPath(); c.moveTo(ck.x, gy); c.quadraticCurveTo(ck.x - 4, gy - 10, ck.x, gy - 18); c.stroke();
+    c.strokeStyle = '#1d2a1a'; c.lineWidth = 1.5; c.beginPath(); c.moveTo(ck.x, gy); c.quadraticCurveTo(ck.x - 4, gy - 10, ck.x, gy - 18); c.stroke();
     if (ck.on) { const g = c.createRadialGradient(ck.x, gy - 19, 1, ck.x, gy - 19, 16); g.addColorStop(0, 'rgba(200,50,80,.5)'); g.addColorStop(1, 'rgba(200,50,80,0)'); c.fillStyle = g; c.fillRect(ck.x - 16, gy - 35, 32, 32); roseHead(c, ck.x, gy - 19, 3.8); }
-    else { c.fillStyle = '#040405'; c.beginPath(); c.ellipse(ck.x, gy - 20, 2.4, 4, 0, 0, 7); c.fill(); }
+    else { c.fillStyle = '#2a3a26'; c.beginPath(); c.ellipse(ck.x, gy - 20, 2.4, 4, 0, 0, 7); c.fill(); }
   }
-  // the brother waiting (last night)
   if (L.dream) {
-    const gy = topOf(L.goalCol) * T;
-    figure(c, { x: L.goalX, base: gy, h: 24, face: -1, spiky: true, halo: true, arm: S.endStep < 1 ? .9 : 0, rose: S.endStep < 1 });
+    const gy = topOf(L.goalCol) * T, g = c.createRadialGradient(L.goalX, gy - 20, 4, L.goalX, gy - 20, 60);
+    g.addColorStop(0, 'rgba(255,215,160,.35)'); g.addColorStop(1, 'rgba(255,215,160,0)'); c.fillStyle = g; c.fillRect(L.goalX - 60, gy - 80, 120, 90);
+    drawSprite(c, 'brother', 'idle', Math.floor(t * 8) % (ATLAS.brother ? ATLAS.brother.anims.idle.frames : 1), L.goalX, gy, -1);
   }
   // player
   if (!(S.state === 'caught' && S.timer > 20 && S.timer < 40)) {
-    const air = !P.on && S.state === 'play';
-    if (L.dream) figure(c, { x: P.x + P.w / 2, base: P.y + P.h, h: 27, face: P.face, step: P.step, air, bun: true, skirt: true, arm: S.endStep >= 1 ? .7 : 0, rose: S.endStep >= 1 });
-    else figure(c, { x: P.x + P.w / 2, base: P.y + P.h, h: 24, face: P.face, step: P.step, air, spiky: true, arm: S.delivered ? 0 : .9, rose: !S.delivered });
+    const p = pose();
+    if (p) {
+      const cx = P.x + P.w / 2, base = P.y + P.h;
+      // soft contact shadow on the ground
+      if (P.on) { c.fillStyle = 'rgba(0,0,0,.35)'; c.beginPath(); c.ellipse(cx, base, 9, 2, 0, 0, 7); c.fill(); }
+      if (!L.dream) { const g = c.createRadialGradient(cx + P.face * 6, base - 14, 1, cx + P.face * 6, base - 14, 22); g.addColorStop(0, `rgba(200,40,70,${S.delivered ? 0 : .22})`); g.addColorStop(1, 'rgba(200,40,70,0)'); c.fillStyle = g; c.fillRect(cx - 30, base - 40, 60, 50); }
+      drawSprite(c, p.sheet, p.anim, p.f, cx, base, P.face);
+    }
   }
   if (S.state === 'deliver') {
-    const k = Math.min(1, S.timer / 60), e = k * k * (3 - 2 * k);
-    const tx = L.goalX + 22 + S.roses * 12, ty = topOf(L.goalCol) * T - 76 + 25;
+    const r = houseRect(), k = Math.min(1, S.timer / 60), e = k * k * (3 - 2 * k);
+    const tx = r.winX + 5 + S.roses * 7, ty = r.sillY - 8;
     const x = S.from.x + (tx - S.from.x) * e, y = S.from.y + (ty - S.from.y) * e - Math.sin(e * Math.PI) * 30;
     const g = c.createRadialGradient(x, y, 1, x, y, 14); g.addColorStop(0, 'rgba(200,50,80,.55)'); g.addColorStop(1, 'rgba(200,50,80,0)'); c.fillStyle = g; c.fillRect(x - 14, y - 14, 28, 28);
-    roseHead(c, x, y, 3.4 + (1 - e) * 1.5);
+    roseHead(c, x, y, 2.6 + (1 - e) * 1.2);
   }
-  if (S.ripple > 0) { c.strokeStyle = S.world === 'B' ? `rgba(243,197,143,${S.ripple})` : `rgba(201,210,218,${S.ripple})`; c.lineWidth = 2; c.beginPath(); c.arc(P.x + P.w / 2, P.y + 8, (1 - S.ripple) * 160, 0, 7); c.stroke(); }
+  if (S.ripple > 0) { c.strokeStyle = S.world === 'B' ? `rgba(243,197,143,${S.ripple})` : `rgba(201,210,218,${S.ripple})`; c.lineWidth = 2; c.beginPath(); c.arc(P.x + P.w / 2, P.y + 14, (1 - S.ripple) * 160, 0, 7); c.stroke(); }
   if (S.blocked > 0) { c.strokeStyle = `rgba(180,40,60,${S.blocked})`; c.lineWidth = 2; c.strokeRect(P.x - 3, P.y - 3, P.w + 6, P.h + 6); }
   drawShadow(c, t);
+  if (S.debug) {
+    c.lineWidth = 1;
+    const c0 = Math.max(0, Math.floor(cam / T) - 1), c1 = Math.min(L.w - 1, c0 + 32);
+    for (let cx = c0; cx <= c1; cx++) for (let cy = 0; cy < ROWS; cy++) {
+      const tt = L.g[cy][cx];
+      if (solidIn(tt, S.world)) { c.strokeStyle = 'rgba(80,255,120,.8)'; c.strokeRect(cx * T + .5, cy * T + .5, T - 1, T - 1); }
+      else if (ledgeIn(tt, S.world)) { c.strokeStyle = 'rgba(80,200,255,.9)'; c.beginPath(); c.moveTo(cx * T, cy * T + .5); c.lineTo(cx * T + T, cy * T + .5); c.stroke(); }
+    }
+    c.strokeStyle = P.on ? '#ff0' : '#f80'; c.strokeRect(P.x + .5, P.y + .5, P.w - 1, P.h - 1);
+    if (!L.dream) { const r = houseRect(); c.strokeStyle = '#f0f'; c.beginPath(); c.moveTo(r.winX, 0); c.lineTo(r.winX, VH); c.stroke(); }
+    if (S.shOn) { c.strokeStyle = '#f44'; c.beginPath(); c.moveTo(S.shX, 0); c.lineTo(S.shX, VH); c.stroke(); }
+  }
   c.restore();
 
-  // weather
   if (L.theme === 'rain') {
     c.strokeStyle = `rgba(190,200,210,${.35 * (1 - S.wf * .6)})`; c.lineWidth = 1; c.beginPath();
     for (let i = 0; i < 110; i++) { const x = (hash(i) * 560 - (t * 90 + i * 13) % 560 + 560) % 560 - 40, y = (hash(i * 3) * VH + t * 420) % (VH + 20) - 10; c.moveTo(x, y); c.lineTo(x - 3, y + 9); }
     c.stroke();
   }
-  if (L.theme === 'cave') for (let i = 0; i < 6; i++) { const x = ((hash(i) * 900 - cam) % 520 + 520) % 520 - 20, y = ((t * 160 + hash(i * 7) * 400) % 300) - 20; if (y > 20) circ(c, x, y, 1.2, `rgba(${S.wf > .5 ? '240,200,150' : '190,205,215'},.6)`); }
-  // floating dust
+  if (L.theme === 'cave') for (let i = 0; i < 6; i++) { const x = ((hash(i) * 900 - cam) % 520 + 520) % 520 - 20, y = ((t * 160 + hash(i * 7) * 400) % 300) - 20; if (y > 20) circ(c, x, y, 1.2, 'rgba(200,210,220,.6)'); }
   for (let i = 0; i < 20; i++) { const x = (hash(i * 11) * VW + Math.sin(t * .3 + i) * 20 - cam * .9 % VW + VW * 2) % VW, y = hash(i * 17) * VH + Math.sin(t * .5 + i * 2) * 10; circ(c, x, y, .9, S.wf > .5 ? 'rgba(255,215,160,.45)' : 'rgba(210,215,220,.3)'); }
 
-  // vignette and grain
   const vg = c.createRadialGradient(VW / 2, VH / 2, VH * .35, VW / 2, VH / 2, VW * .7);
-  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.75)');
+  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.7)');
   c.fillStyle = vg; c.fillRect(-10, -10, VW + 20, VH + 20);
-  c.globalAlpha = .07; c.globalCompositeOperation = 'overlay';
+  c.globalAlpha = .06; c.globalCompositeOperation = 'overlay';
   const gx = Math.floor(Math.random() * 96), gy2 = Math.floor(Math.random() * 96);
   for (let x = -gx; x < VW; x += 96) for (let y = -gy2; y < VH; y += 96) c.drawImage(grain, x, y);
   c.globalCompositeOperation = 'source-over'; c.globalAlpha = 1;
@@ -684,10 +692,11 @@ function frame(now) {
   render();
   requestAnimationFrame(frame);
 }
+introCard(true);
 loadAll().then(() => {
   makeFog();
   L = LEVELS[0](); L.goalX = L.goalCol * T;
-  P = { x: 3 * T, y: 218, w: 10, h: 22, vx: 0, vy: 0, on: true, face: 1, step: 0 };
+  P = { x: 3 * T, y: topOf(3) * T - 36, w: 10, h: 36, vx: 0, vy: 0, on: true, face: 1, animT: 0, airT: 0, landT: 0, stepT: 0 };
   introCard();
   requestAnimationFrame(frame);
 });
