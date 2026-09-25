@@ -130,7 +130,9 @@ function Companion.init()
 					local moving = (target - e.pos).Magnitude > 0.4
 					e.pos = Damp.vector(e.pos, target, LERP, dt)
 					local _, ry, _ = root.CFrame:ToOrientation()
-					e.yaw = Damp.number(e.yaw, ry, 6, dt)
+					-- girar por el camino corto (ToOrientation salta en ±π)
+					local diff = (ry - e.yaw + math.pi) % (2 * math.pi) - math.pi
+					e.yaw += diff * (1 - math.exp(-6 * dt))
 					local hop = if moving then math.abs(math.sin(e.t * 9)) * 0.45 else 0
 					local breathe = 1 + math.sin(e.t * 2.4) * 0.03
 					e.model:PivotTo(

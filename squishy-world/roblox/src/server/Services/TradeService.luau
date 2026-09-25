@@ -38,6 +38,29 @@ local NPC_RANGE = 24
 local P2P_MAX = 6
 local REQUEST_TTL = 25
 
+--- Lista de ids limpia: solo strings, sin repetidos, que existan, no equipados, máximo `max`.
+--- (No confiar en #ids: una tabla con claves de texto tiene # = 0 pero igual se recorre.)
+local function cleanIds(d: Types.PlayerData, ids: any, max: number): { string }?
+	if type(ids) ~= "table" then
+		return nil
+	end
+	local n = 0
+	for _ in ids do
+		n += 1
+		if n > max then
+			return nil
+		end
+	end
+	local clean = {}
+	for i = 1, n do
+		local id = ids[i]
+		if type(id) == "string" and id ~= d.equipped and Profile.find(d, id) and not table.find(clean, id) then
+			table.insert(clean, id)
+		end
+	end
+	return clean
+end
+
 local npcDefByName: { [string]: any } = {}
 for _, n in Config.NpcDefs do
 	npcDefByName[n.name] = n
@@ -145,15 +168,9 @@ local function npcTrade(player: Player, payload: { [string]: any }): { [string]:
 		return { ok = false, err = "no_session" }
 	end
 	if op == "set" then
-		local ids = payload.ids
-		if type(ids) ~= "table" or #ids > 3 then
+		local clean = cleanIds(d, payload.ids, 3)
+		if not clean then
 			return { ok = false }
-		end
-		local clean = {}
-		for _, id in ids do
-			if type(id) == "string" and id ~= d.equipped and Profile.find(d, id) and not table.find(clean, id) then
-				table.insert(clean, id)
-			end
 		end
 		sess.mine = clean
 		npcOffer(d, sess)
@@ -391,15 +408,9 @@ local function p2p(player: Player, payload: { [string]: any }): { [string]: any 
 	end
 	local me, them = sideOf(room, player)
 	if op == "set" then
-		local ids = payload.ids
-		if type(ids) ~= "table" or #ids > P2P_MAX then
+		local clean = cleanIds(d, payload.ids, P2P_MAX)
+		if not clean then
 			return { ok = false }
-		end
-		local clean = {}
-		for _, id in ids do
-			if type(id) == "string" and id ~= d.equipped and Profile.find(d, id) and not table.find(clean, id) then
-				table.insert(clean, id)
-			end
 		end
 		me.items = clean
 		resetConfirms(room)

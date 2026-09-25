@@ -1749,6 +1749,7 @@ type Entry = {
 	dirty: boolean,
 	syncQueued: boolean,
 	offline: boolean,
+	savedReceipts: { [string]: boolean }, -- recibos que YA están en el DataStore
 }
 
 local entries: { [Player]: Entry } = {}
@@ -1811,6 +1812,11 @@ local function loadRaw(player: Player): (boolean, any, boolean)
 		end
 		if not ok then
 			warn("[DataService] error cargando", player.Name, res)
+			if RunService:IsStudio() then
+				-- lugar publicado pero sin "Studio Access to API Services": jugar sin guardar
+				warn("[DataService] Studio sin acceso a DataStore: se juega sin guardar")
+				return true, nil, true
+			end
 		end
 		if attempt == 6 and blocked then
 			-- último intento: robar el candado (el otro servidor probablemente murió)
@@ -1840,10 +1846,14 @@ local function saveRaw(player: Player, e: Entry, release: boolean): boolean
 	while #data.receipts > MAX_RECEIPTS do
 		table.remove(data.receipts, 1)
 	end
+	local rejected = false
+	local snapshot = table.clone(data.receipts)
 	local ok, err = retry(function()
+		rejected = false
 		return s:UpdateAsync(key(player), function(old: any)
 			old = old or {}
-			if old.lock and old.lock.job ~= jobId then
+			if old.lock and old.lock.job ~= jobId and os.time() - (old.lock.t or 0) < LOCK_EXPIRE then
+				rejected = true
 				return nil -- otro servidor se lo quedó: no pisar sus datos
 			end
 			old.data = data
@@ -1853,10 +1863,17 @@ local function saveRaw(player: Player, e: Entry, release: boolean): boolean
 	end, 3)
 	if not ok then
 		warn("[DataService] no se pudo guardar", player.Name, err)
-	else
-		e.dirty = false
+		return false
 	end
-	return ok
+	if rejected then
+		warn("[DataService] otro servidor tiene el candado de", player.Name, "— no se guardó")
+		return false
+	end
+	e.dirty = false
+	for _, r in snapshot do
+		e.savedReceipts[r] = true
+	end
+	return true
 end
 
 local function buildView(player: Player, e: Entry): { [string]: any }
@@ -1908,6 +1925,15 @@ function DataService.waitFor(player: Player, timeout: number?): Types.PlayerData
 		task.wait(0.1)
 	end
 	return nil
+end
+
+--- ¿Este recibo ya quedó guardado en el DataStore? (offline = siempre sí)
+function DataService.receiptSaved(player: Player, purchaseId: string): boolean
+	local e = entries[player]
+	if not e then
+		return false
+	end
+	return e.offline or store == nil or e.savedReceipts[purchaseId] == true
 end
 
 --- Guarda ya (se usa después de una compra con Robux antes de confirmar el recibo).
@@ -1966,7 +1992,11 @@ local function onPlayerAdded(player: Player)
 		dirty = false,
 		syncQueued = false,
 		offline = offline,
+		savedReceipts = {},
 	}
+	for _, r in e.data.receipts do
+		e.savedReceipts[r] = true
+	end
 	entries[player] = e
 	for _, fn in loadedCallbacks do
 		task.spawn(fn, player, e.data)
@@ -1998,7 +2028,8 @@ function DataService.init()
 		while true do
 			task.wait(AUTOSAVE_EVERY)
 			for p, e in entries do
-				if e.loaded and e.dirty then
+				-- se guarda en cada pasada (aunque no haya cambios) para renovar el candado de sesión
+				if e.loaded then
 					task.spawn(saveRaw, p, e, false)
 				end
 			end
@@ -2216,7 +2247,10 @@ local Net = require(script.Parent.Net)
 
 local FILL = Config.Game.FILL
 local MACHINE_RANGE = 28 -- studs desde la máquina (margen sobre INTERACT_DIST por lag)
-local LATENCY_TOL = 0.08 -- ±80 ms (ROBLOX_ARCHITECTURE §2)
+-- Tolerancia por lag: se acepta el tiempo del cliente solo si está MUY cerca del medido aquí.
+-- Debe ser bastante menor que la ventana PERFECTO (~0.12 s a velocidad 6) para que no se pueda
+-- "elegir" el resultado con un cliente modificado.
+local LATENCY_TOL = 0.04
 
 type Session = {
 	machine: any,
@@ -2334,7 +2368,7 @@ local function release(player: Player, payload: { [string]: any }): { [string]: 
 	local held = serverHeld
 	local clientHeld = payload.held
 	if type(clientHeld) == "number" and clientHeld == clientHeld then
-		local tol = LATENCY_TOL + math.min(0.25, player:GetNetworkPing())
+		local tol = LATENCY_TOL + math.min(0.03, player:GetNetworkPing() * 0.25)
 		if math.abs(clientHeld - serverHeld) <= tol then
 			held = clientHeld
 		end
@@ -2861,7 +2895,11 @@ local function processReceipt(info: { [string]: any }): Enum.ProductPurchaseDeci
 	end
 	local purchaseId = tostring(info.PurchaseId)
 	if table.find(d.receipts, purchaseId) then
-		return Enum.ProductPurchaseDecision.PurchaseGranted -- ya se había entregado
+		-- ya se entregó en este servidor; confirmar solo cuando esté guardado de verdad
+		if DataService.receiptSaved(player, purchaseId) or DataService.saveNow(player) then
+			return Enum.ProductPurchaseDecision.PurchaseGranted
+		end
+		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
 	local msg = applyProduct(player, d, product)
 	table.insert(d.receipts, purchaseId)
@@ -3413,6 +3451,29 @@ local NPC_RANGE = 24
 local P2P_MAX = 6
 local REQUEST_TTL = 25
 
+--- Lista de ids limpia: solo strings, sin repetidos, que existan, no equipados, máximo `max`.
+--- (No confiar en #ids: una tabla con claves de texto tiene # = 0 pero igual se recorre.)
+local function cleanIds(d: Types.PlayerData, ids: any, max: number): { string }?
+	if type(ids) ~= "table" then
+		return nil
+	end
+	local n = 0
+	for _ in ids do
+		n += 1
+		if n > max then
+			return nil
+		end
+	end
+	local clean = {}
+	for i = 1, n do
+		local id = ids[i]
+		if type(id) == "string" and id ~= d.equipped and Profile.find(d, id) and not table.find(clean, id) then
+			table.insert(clean, id)
+		end
+	end
+	return clean
+end
+
 local npcDefByName: { [string]: any } = {}
 for _, n in Config.NpcDefs do
 	npcDefByName[n.name] = n
@@ -3520,15 +3581,9 @@ local function npcTrade(player: Player, payload: { [string]: any }): { [string]:
 		return { ok = false, err = "no_session" }
 	end
 	if op == "set" then
-		local ids = payload.ids
-		if type(ids) ~= "table" or #ids > 3 then
+		local clean = cleanIds(d, payload.ids, 3)
+		if not clean then
 			return { ok = false }
-		end
-		local clean = {}
-		for _, id in ids do
-			if type(id) == "string" and id ~= d.equipped and Profile.find(d, id) and not table.find(clean, id) then
-				table.insert(clean, id)
-			end
 		end
 		sess.mine = clean
 		npcOffer(d, sess)
@@ -3766,15 +3821,9 @@ local function p2p(player: Player, payload: { [string]: any }): { [string]: any 
 	end
 	local me, them = sideOf(room, player)
 	if op == "set" then
-		local ids = payload.ids
-		if type(ids) ~= "table" or #ids > P2P_MAX then
+		local clean = cleanIds(d, payload.ids, P2P_MAX)
+		if not clean then
 			return { ok = false }
-		end
-		local clean = {}
-		for _, id in ids do
-			if type(id) == "string" and id ~= d.equipped and Profile.find(d, id) and not table.find(clean, id) then
-				table.insert(clean, id)
-			end
 		end
 		me.items = clean
 		resetConfirms(room)
@@ -4043,6 +4092,11 @@ function WorldBuilder.build()
 		warn(
 			"[WorldBuilder] No hay Workspace.Map: construyo el mapa provisional (importa mapa_completo.glb cuando puedas)"
 		)
+		-- el Baseplate queda al mismo nivel del suelo y parpadea (z-fighting)
+		local bp = Workspace:FindFirstChild("Baseplate")
+		if bp then
+			bp:Destroy()
+		end
 		map = buildPlaceholder()
 	else
 		for _, d in map:GetDescendants() do
@@ -4052,7 +4106,18 @@ function WorldBuilder.build()
 		end
 	end
 
-	-- spawn
+	-- spawn: el Baseplate de Studio trae uno en (0,0,0) = encima de la fuente/estatua → moverlo
+	for _, d in Workspace:GetDescendants() do
+		if d:IsA("SpawnLocation") then
+			d.Position = L.spawn + Vector3.new(0, 0.2, 0)
+			d.Transparency = 1
+			d.CanCollide = false
+			local decal = d:FindFirstChildOfClass("Decal")
+			if decal then
+				decal:Destroy()
+			end
+		end
+	end
 	if not Workspace:FindFirstChildWhichIsA("SpawnLocation", true) then
 		local sp = Instance.new("SpawnLocation")
 		sp.Anchored = true
@@ -4506,7 +4571,9 @@ function Companion.init()
 					local moving = (target - e.pos).Magnitude > 0.4
 					e.pos = Damp.vector(e.pos, target, LERP, dt)
 					local _, ry, _ = root.CFrame:ToOrientation()
-					e.yaw = Damp.number(e.yaw, ry, 6, dt)
+					-- girar por el camino corto (ToOrientation salta en ±π)
+					local diff = (ry - e.yaw + math.pi) % (2 * math.pi) - math.pi
+					e.yaw += diff * (1 - math.exp(-6 * dt))
 					local hop = if moving then math.abs(math.sin(e.t * 9)) * 0.45 else 0
 					local breathe = 1 + math.sin(e.t * 2.4) * 0.03
 					e.model:PivotTo(
@@ -4988,6 +5055,7 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local Kit = require(script.Parent.Parent.UI.Kit)
 local Modal = require(script.Parent.Parent.UI.Modal)
 local Theme = require(script.Parent.Parent.UI.Theme)
+local Toast = require(script.Parent.Parent.UI.Toast)
 local Router = require(script.Parent.Router)
 local State = require(script.Parent.State)
 
@@ -4997,6 +5065,11 @@ function Interact.init()
 	ProximityPromptService.PromptTriggered:Connect(function(prompt)
 		local kind = prompt:GetAttribute("Kind") or (prompt.Parent and prompt.Parent:GetAttribute("Kind"))
 		local id = prompt:GetAttribute("Id") or (prompt.Parent and prompt.Parent:GetAttribute("Id"))
+		local why = Modal.blocked()
+		if why then
+			Toast.show(why)
+			return
+		end
 		if Modal.current then
 			Modal.close()
 		end
@@ -5019,11 +5092,27 @@ function Interact.init()
 
 	-- letreros de nivel en máquinas bloqueadas
 	local signs: { [string]: BillboardGui } = {}
-	local interact = Workspace:WaitForChild("Interact", 30)
+	local interact = Workspace:WaitForChild("Interact", 60)
+	local function applyLocks()
+		local d = State.data
+		if not d then
+			return
+		end
+		for _, m in Config.WorldLayout.machines do
+			local s = signs[m.id]
+			if s then
+				s.Enabled = d.level < m.level
+			end
+		end
+	end
 	for _, m in Config.WorldLayout.machines do
-		local anchor = interact and interact:FindFirstChild("machine_" .. m.id)
-		if anchor and anchor:IsA("BasePart") then
-			local bb: BillboardGui = Kit.new("BillboardGui", {
+		task.spawn(function()
+			-- con StreamingEnabled el ancla puede llegar después
+			local anchor = interact and interact:WaitForChild("machine_" .. m.id, 120)
+			if not anchor or not anchor:IsA("BasePart") then
+				return
+			end
+			signs[m.id] = Kit.new("BillboardGui", {
 				Size = UDim2.fromOffset(150, 40),
 				StudsOffsetWorldSpace = Vector3.new(0, 7.5, 3),
 				MaxDistance = 90,
@@ -5039,17 +5128,10 @@ function Interact.init()
 					Size = UDim2.fromScale(1, 1),
 				}),
 			})
-			signs[m.id] = bb
-		end
+			applyLocks()
+		end)
 	end
-	State.onChange(function(d)
-		for _, m in Config.WorldLayout.machines do
-			local s = signs[m.id]
-			if s then
-				s.Enabled = d.level < m.level
-			end
-		end
-	end)
+	State.onChange(applyLocks)
 end
 
 return Interact
@@ -6003,6 +6085,12 @@ function Machine.reopen()
 end
 
 function Machine.init()
+	Modal.addGuard(function()
+		if Modal.current == "machine" and (Fill.state == "filling" or Fill.state == "processing") then
+			return "Termina de llenar primero"
+		end
+		return nil
+	end)
 	Router.register("machine", function(id)
 		open(tostring(id))
 	end)
@@ -6276,7 +6364,12 @@ return Reveal
               <string name="Name">Router</string>
               <string name="Source"><![CDATA[--!strict
 -- Abre pantallas por nombre sin que los controladores se requieran entre sí (evita ciclos).
+local Modal = require(script.Parent.Parent.UI.Modal)
+local Toast = require(script.Parent.Parent.UI.Toast)
+
 local Router = {}
+-- estas se pueden abrir aunque haya algo en curso (no reemplazan la ventana actual)
+local OVERLAYS = { reveal = true, confirm = true, tutorialEquip = true }
 local routes: { [string]: (any?) -> () } = {}
 
 function Router.register(name: string, fn: (any?) -> ())
@@ -6285,6 +6378,13 @@ end
 
 function Router.open(name: string, arg: any?)
 	local fn = routes[name]
+	if not OVERLAYS[name] then
+		local why = Modal.blocked()
+		if why then
+			Toast.show(why)
+			return
+		end
+	end
 	if fn then
 		fn(arg)
 	else
@@ -6652,6 +6752,7 @@ type Target = {
 	model: Model,
 	offsets: { [BasePart]: { cf: CFrame, size: Vector3 } },
 	pivotToBottom: number,
+	basePivot: CFrame, -- pivote al empezar (Body se mueve al aplastar; no releer GetPivot)
 	f: number, -- fase rápida
 	s: number, -- fase lenta
 	target: number,
@@ -6683,6 +6784,7 @@ local function capture(model: Model): Target
 		model = model,
 		offsets = offsets,
 		pivotToBottom = pivot.Y - (cf.Y - size.Y / 2),
+		basePivot = pivot,
 		f = 0,
 		s = 0,
 		target = 0,
@@ -6696,7 +6798,7 @@ local function apply(t: Target)
 	local k = t.f + t.s
 	local sy = 1 - k
 	local sxz = 1 + k * 0.62
-	local pivot = t.model:GetPivot()
+	local pivot = t.basePivot
 	local scale = Vector3.new(sxz, sy, sxz)
 	for p, o in t.offsets do
 		if p.Parent then
@@ -6710,7 +6812,7 @@ local function apply(t: Target)
 end
 
 local function restore(t: Target)
-	local pivot = t.model:GetPivot()
+	local pivot = t.basePivot
 	for p, o in t.offsets do
 		if p.Parent then
 			p.CFrame = pivot * o.cf
@@ -7315,6 +7417,9 @@ local function incomingRequest(from: number, name: string)
 end
 
 function Trade.init()
+	Modal.addGuard(function()
+		return if room then "Termina o cancela el intercambio primero" else nil
+	end)
 	Router.register("npcTrade", openNpc)
 	Router.register("tradePlayers", openPlayers)
 	Remotes.event("TradeEvent").OnClientEvent:Connect(function(ev)
@@ -7568,23 +7673,28 @@ local function templateFor(speciesId: string): Model?
 	return nil
 end
 
+-- Esfera que SÍ se puede estirar en un eje (Part.Ball siempre queda redonda)
+local function ball(name: string, size: Vector3): Part
+	local p = Instance.new("Part")
+	p.Name = name
+	p.Size = size
+	p.TopSurface = Enum.SurfaceType.Smooth
+	p.BottomSurface = Enum.SurfaceType.Smooth
+	local mesh = Instance.new("SpecialMesh")
+	mesh.MeshType = Enum.MeshType.Sphere
+	mesh.Parent = p
+	return p
+end
+
 local function placeholder(speciesId: string): Model
 	local model = Instance.new("Model")
 	model.Name = speciesId
 	local sp = Catalog.SP[speciesId] or {}
-	local body = Instance.new("Part")
-	body.Name = "Body"
-	body.Shape = Enum.PartType.Ball
-	body.Size = if sp.famous then Vector3.new(2.3, 1.6, 2.3) else Vector3.new(2.2, 1.8, 2.2)
-	body.TopSurface = Enum.SurfaceType.Smooth
-	body.BottomSurface = Enum.SurfaceType.Smooth
+	local body = ball("Body", if sp.famous then Vector3.new(2.3, 1.6, 2.3) else Vector3.new(2.2, 1.8, 2.2))
 	body.Parent = model
 	-- carita kawaii
 	for _, x in { -0.38, 0.38 } do
-		local eye = Instance.new("Part")
-		eye.Name = "Part_eye"
-		eye.Shape = Enum.PartType.Ball
-		eye.Size = Vector3.new(0.22, 0.26, 0.22)
+		local eye = ball("Part_eye", Vector3.new(0.22, 0.26, 0.22))
 		eye.Color = Color3.fromHex("#282D3A")
 		eye.CFrame = body.CFrame * CFrame.new(x, 0.12, -body.Size.Z / 2 + 0.12)
 		eye.Parent = model
@@ -7598,10 +7708,10 @@ local function placeholder(speciesId: string): Model
 	-- orejitas para los animales
 	if speciesId == "cat" or speciesId == "bear" or speciesId == "bunny" then
 		for _, x in { -0.6, 0.6 } do
-			local ear = Instance.new("Part")
-			ear.Name = "Part_ear"
-			ear.Shape = Enum.PartType.Ball
-			ear.Size = if speciesId == "bunny" then Vector3.new(0.4, 1.1, 0.3) else Vector3.new(0.55, 0.55, 0.4)
+			local ear = ball(
+				"Part_ear",
+				if speciesId == "bunny" then Vector3.new(0.4, 1.1, 0.3) else Vector3.new(0.55, 0.55, 0.4)
+			)
 			ear.CFrame = body.CFrame * CFrame.new(x, body.Size.Y / 2, 0)
 			ear.Parent = model
 			ear:SetAttribute("TintWithBody", true)
@@ -8050,6 +8160,7 @@ local Modal = {}
 Modal.current = nil :: string?
 
 local frame: Frame? = nil
+local fitConn: RBXScriptConnection? = nil
 local onCloseFn: (() -> ())? = nil
 local changed: { (string?) -> () } = {}
 
@@ -8057,7 +8168,26 @@ function Modal.onChange(fn: (string?) -> ())
 	table.insert(changed, fn)
 end
 
+--- Si algo en curso no se puede interrumpir (un intercambio, un llenado), devuelve el motivo.
+local guards: { () -> string? } = {}
+function Modal.addGuard(fn: () -> string?)
+	table.insert(guards, fn)
+end
+function Modal.blocked(): string?
+	for _, g in guards do
+		local why = g()
+		if why then
+			return why
+		end
+	end
+	return nil
+end
+
 function Modal.close()
+	if fitConn then
+		fitConn:Disconnect()
+		fitConn = nil
+	end
 	if frame then
 		frame:Destroy()
 		frame = nil
@@ -8102,7 +8232,7 @@ function Modal.open(key: string, title: string, opts: Opts?): (Frame, TextLabel)
 	end
 	fit()
 	if workspace.CurrentCamera then
-		workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(fit)
+		fitConn = workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(fit)
 	end
 
 	local titleLabel: TextLabel = Kit.text(title, 28, {

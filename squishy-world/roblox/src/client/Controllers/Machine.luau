@@ -626,6 +626,12 @@ function Machine.reopen()
 end
 
 function Machine.init()
+	Modal.addGuard(function()
+		if Modal.current == "machine" and (Fill.state == "filling" or Fill.state == "processing") then
+			return "Termina de llenar primero"
+		end
+		return nil
+	end)
 	Router.register("machine", function(id)
 		open(tostring(id))
 	end)

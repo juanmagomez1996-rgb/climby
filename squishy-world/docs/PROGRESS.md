@@ -51,7 +51,7 @@
   la encuadraba). Se puede agregar en el pulido.
 - Apachurrar: por ahora squash & stretch del modelo (Opción C); la espuma real llega en la Fase 7.
 - Manos: en vez de las manitos kawaii (`hand_mitten.glb`) se usan los brazos del avatar de Roblox
-  con IKControl (pedido de Yeison). Si te lejos, el personaje camina hasta el squishy. R6: sin brazos.
+  con IKControl (pedido de Yeison). Si está lejos, el personaje camina hasta el squishy. R6: sin brazos.
   Por ahora el IK solo lo ve quien apachurra (los demás ven el squishy aplastarse cuando llegue SquishBroadcast).
 - Chat con NPCs: respuestas predefinidas (sin IA) hasta tener el proxy.
 - Misiones: `quest.i` es 1-based en Luau (el prototipo usa 0-based).
@@ -61,6 +61,19 @@
 
 ## Bugs conocidos
 - (ninguno reportado todavía — falta la primera prueba en Studio)
+
+## Revisión de código (2026-09-25) — ya corregido
+- Apachurrar hundía el squishy en el piso (pivote releído cada frame) → pivote fijo al empezar.
+- Bolitas provisionales no se aplastaban (Part.Ball es siempre redonda) → Block + SpecialMesh esfera.
+- Tolerancia del llenado permitía elegir PERFECTO con un cliente modificado → 40 ms (+ poco ping).
+- Guardado "exitoso" aunque otro servidor tuviera el candado; recibos confirmados sin estar
+  guardados → se detecta el rechazo y solo se confirma un recibo ya guardado.
+- Candado de sesión vencía con jugadores quietos → se renueva en cada autoguardado (60 s).
+- Studio con lugar publicado sin acceso a API expulsaba al jugador → juega sin guardar.
+- Spawn del Baseplate encima de la estatua + z-fighting → se mueve el spawn y se quita el Baseplate.
+- Letreros de nivel con StreamingEnabled, compañeros girando 360°, fuga de conexiones en ventanas,
+  límite de ítems saltable con tablas raras, y abrir otra ventana cancelaba intercambios/llenados
+  (ahora se bloquea con un aviso).
 
 ## Decisiones
 - Deformación: Opción A (EditableMesh) con fallback B/C — confirmar con Yeison si ya tiene la verificación 13+/ID.

@@ -27,6 +27,7 @@ type Target = {
 	model: Model,
 	offsets: { [BasePart]: { cf: CFrame, size: Vector3 } },
 	pivotToBottom: number,
+	basePivot: CFrame, -- pivote al empezar (Body se mueve al aplastar; no releer GetPivot)
 	f: number, -- fase rápida
 	s: number, -- fase lenta
 	target: number,
@@ -58,6 +59,7 @@ local function capture(model: Model): Target
 		model = model,
 		offsets = offsets,
 		pivotToBottom = pivot.Y - (cf.Y - size.Y / 2),
+		basePivot = pivot,
 		f = 0,
 		s = 0,
 		target = 0,
@@ -71,7 +73,7 @@ local function apply(t: Target)
 	local k = t.f + t.s
 	local sy = 1 - k
 	local sxz = 1 + k * 0.62
-	local pivot = t.model:GetPivot()
+	local pivot = t.basePivot
 	local scale = Vector3.new(sxz, sy, sxz)
 	for p, o in t.offsets do
 		if p.Parent then
@@ -85,7 +87,7 @@ local function apply(t: Target)
 end
 
 local function restore(t: Target)
-	local pivot = t.model:GetPivot()
+	local pivot = t.basePivot
 	for p, o in t.offsets do
 		if p.Parent then
 			p.CFrame = pivot * o.cf

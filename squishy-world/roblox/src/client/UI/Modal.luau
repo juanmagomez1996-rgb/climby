@@ -7,6 +7,7 @@ local Modal = {}
 Modal.current = nil :: string?
 
 local frame: Frame? = nil
+local fitConn: RBXScriptConnection? = nil
 local onCloseFn: (() -> ())? = nil
 local changed: { (string?) -> () } = {}
 
@@ -14,7 +15,26 @@ function Modal.onChange(fn: (string?) -> ())
 	table.insert(changed, fn)
 end
 
+--- Si algo en curso no se puede interrumpir (un intercambio, un llenado), devuelve el motivo.
+local guards: { () -> string? } = {}
+function Modal.addGuard(fn: () -> string?)
+	table.insert(guards, fn)
+end
+function Modal.blocked(): string?
+	for _, g in guards do
+		local why = g()
+		if why then
+			return why
+		end
+	end
+	return nil
+end
+
 function Modal.close()
+	if fitConn then
+		fitConn:Disconnect()
+		fitConn = nil
+	end
 	if frame then
 		frame:Destroy()
 		frame = nil
@@ -59,7 +79,7 @@ function Modal.open(key: string, title: string, opts: Opts?): (Frame, TextLabel)
 	end
 	fit()
 	if workspace.CurrentCamera then
-		workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(fit)
+		fitConn = workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(fit)
 	end
 
 	local titleLabel: TextLabel = Kit.text(title, 28, {

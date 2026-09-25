@@ -207,6 +207,11 @@ function WorldBuilder.build()
 		warn(
 			"[WorldBuilder] No hay Workspace.Map: construyo el mapa provisional (importa mapa_completo.glb cuando puedas)"
 		)
+		-- el Baseplate queda al mismo nivel del suelo y parpadea (z-fighting)
+		local bp = Workspace:FindFirstChild("Baseplate")
+		if bp then
+			bp:Destroy()
+		end
 		map = buildPlaceholder()
 	else
 		for _, d in map:GetDescendants() do
@@ -216,7 +221,18 @@ function WorldBuilder.build()
 		end
 	end
 
-	-- spawn
+	-- spawn: el Baseplate de Studio trae uno en (0,0,0) = encima de la fuente/estatua → moverlo
+	for _, d in Workspace:GetDescendants() do
+		if d:IsA("SpawnLocation") then
+			d.Position = L.spawn + Vector3.new(0, 0.2, 0)
+			d.Transparency = 1
+			d.CanCollide = false
+			local decal = d:FindFirstChildOfClass("Decal")
+			if decal then
+				decal:Destroy()
+			end
+		end
+	end
 	if not Workspace:FindFirstChildWhichIsA("SpawnLocation", true) then
 		local sp = Instance.new("SpawnLocation")
 		sp.Anchored = true

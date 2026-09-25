@@ -73,23 +73,28 @@ local function templateFor(speciesId: string): Model?
 	return nil
 end
 
+-- Esfera que SÍ se puede estirar en un eje (Part.Ball siempre queda redonda)
+local function ball(name: string, size: Vector3): Part
+	local p = Instance.new("Part")
+	p.Name = name
+	p.Size = size
+	p.TopSurface = Enum.SurfaceType.Smooth
+	p.BottomSurface = Enum.SurfaceType.Smooth
+	local mesh = Instance.new("SpecialMesh")
+	mesh.MeshType = Enum.MeshType.Sphere
+	mesh.Parent = p
+	return p
+end
+
 local function placeholder(speciesId: string): Model
 	local model = Instance.new("Model")
 	model.Name = speciesId
 	local sp = Catalog.SP[speciesId] or {}
-	local body = Instance.new("Part")
-	body.Name = "Body"
-	body.Shape = Enum.PartType.Ball
-	body.Size = if sp.famous then Vector3.new(2.3, 1.6, 2.3) else Vector3.new(2.2, 1.8, 2.2)
-	body.TopSurface = Enum.SurfaceType.Smooth
-	body.BottomSurface = Enum.SurfaceType.Smooth
+	local body = ball("Body", if sp.famous then Vector3.new(2.3, 1.6, 2.3) else Vector3.new(2.2, 1.8, 2.2))
 	body.Parent = model
 	-- carita kawaii
 	for _, x in { -0.38, 0.38 } do
-		local eye = Instance.new("Part")
-		eye.Name = "Part_eye"
-		eye.Shape = Enum.PartType.Ball
-		eye.Size = Vector3.new(0.22, 0.26, 0.22)
+		local eye = ball("Part_eye", Vector3.new(0.22, 0.26, 0.22))
 		eye.Color = Color3.fromHex("#282D3A")
 		eye.CFrame = body.CFrame * CFrame.new(x, 0.12, -body.Size.Z / 2 + 0.12)
 		eye.Parent = model
@@ -103,10 +108,10 @@ local function placeholder(speciesId: string): Model
 	-- orejitas para los animales
 	if speciesId == "cat" or speciesId == "bear" or speciesId == "bunny" then
 		for _, x in { -0.6, 0.6 } do
-			local ear = Instance.new("Part")
-			ear.Name = "Part_ear"
-			ear.Shape = Enum.PartType.Ball
-			ear.Size = if speciesId == "bunny" then Vector3.new(0.4, 1.1, 0.3) else Vector3.new(0.55, 0.55, 0.4)
+			local ear = ball(
+				"Part_ear",
+				if speciesId == "bunny" then Vector3.new(0.4, 1.1, 0.3) else Vector3.new(0.55, 0.55, 0.4)
+			)
 			ear.CFrame = body.CFrame * CFrame.new(x, body.Size.Y / 2, 0)
 			ear.Parent = model
 			ear:SetAttribute("TintWithBody", true)

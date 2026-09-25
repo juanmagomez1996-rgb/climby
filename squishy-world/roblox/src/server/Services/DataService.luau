@@ -26,6 +26,7 @@ type Entry = {
 	dirty: boolean,
 	syncQueued: boolean,
 	offline: boolean,
+	savedReceipts: { [string]: boolean }, -- recibos que YA están en el DataStore
 }
 
 local entries: { [Player]: Entry } = {}
@@ -88,6 +89,11 @@ local function loadRaw(player: Player): (boolean, any, boolean)
 		end
 		if not ok then
 			warn("[DataService] error cargando", player.Name, res)
+			if RunService:IsStudio() then
+				-- lugar publicado pero sin "Studio Access to API Services": jugar sin guardar
+				warn("[DataService] Studio sin acceso a DataStore: se juega sin guardar")
+				return true, nil, true
+			end
 		end
 		if attempt == 6 and blocked then
 			-- último intento: robar el candado (el otro servidor probablemente murió)
@@ -117,10 +123,14 @@ local function saveRaw(player: Player, e: Entry, release: boolean): boolean
 	while #data.receipts > MAX_RECEIPTS do
 		table.remove(data.receipts, 1)
 	end
+	local rejected = false
+	local snapshot = table.clone(data.receipts)
 	local ok, err = retry(function()
+		rejected = false
 		return s:UpdateAsync(key(player), function(old: any)
 			old = old or {}
-			if old.lock and old.lock.job ~= jobId then
+			if old.lock and old.lock.job ~= jobId and os.time() - (old.lock.t or 0) < LOCK_EXPIRE then
+				rejected = true
 				return nil -- otro servidor se lo quedó: no pisar sus datos
 			end
 			old.data = data
@@ -130,10 +140,17 @@ local function saveRaw(player: Player, e: Entry, release: boolean): boolean
 	end, 3)
 	if not ok then
 		warn("[DataService] no se pudo guardar", player.Name, err)
-	else
-		e.dirty = false
+		return false
 	end
-	return ok
+	if rejected then
+		warn("[DataService] otro servidor tiene el candado de", player.Name, "— no se guardó")
+		return false
+	end
+	e.dirty = false
+	for _, r in snapshot do
+		e.savedReceipts[r] = true
+	end
+	return true
 end
 
 local function buildView(player: Player, e: Entry): { [string]: any }
@@ -185,6 +202,15 @@ function DataService.waitFor(player: Player, timeout: number?): Types.PlayerData
 		task.wait(0.1)
 	end
 	return nil
+end
+
+--- ¿Este recibo ya quedó guardado en el DataStore? (offline = siempre sí)
+function DataService.receiptSaved(player: Player, purchaseId: string): boolean
+	local e = entries[player]
+	if not e then
+		return false
+	end
+	return e.offline or store == nil or e.savedReceipts[purchaseId] == true
 end
 
 --- Guarda ya (se usa después de una compra con Robux antes de confirmar el recibo).
@@ -243,7 +269,11 @@ local function onPlayerAdded(player: Player)
 		dirty = false,
 		syncQueued = false,
 		offline = offline,
+		savedReceipts = {},
 	}
+	for _, r in e.data.receipts do
+		e.savedReceipts[r] = true
+	end
 	entries[player] = e
 	for _, fn in loadedCallbacks do
 		task.spawn(fn, player, e.data)
@@ -275,7 +305,8 @@ function DataService.init()
 		while true do
 			task.wait(AUTOSAVE_EVERY)
 			for p, e in entries do
-				if e.loaded and e.dirty then
+				-- se guarda en cada pasada (aunque no haya cambios) para renovar el candado de sesión
+				if e.loaded then
 					task.spawn(saveRaw, p, e, false)
 				end
 			end

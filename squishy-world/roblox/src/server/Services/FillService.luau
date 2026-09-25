@@ -20,7 +20,10 @@ local Net = require(script.Parent.Net)
 
 local FILL = Config.Game.FILL
 local MACHINE_RANGE = 28 -- studs desde la máquina (margen sobre INTERACT_DIST por lag)
-local LATENCY_TOL = 0.08 -- ±80 ms (ROBLOX_ARCHITECTURE §2)
+-- Tolerancia por lag: se acepta el tiempo del cliente solo si está MUY cerca del medido aquí.
+-- Debe ser bastante menor que la ventana PERFECTO (~0.12 s a velocidad 6) para que no se pueda
+-- "elegir" el resultado con un cliente modificado.
+local LATENCY_TOL = 0.04
 
 type Session = {
 	machine: any,
@@ -138,7 +141,7 @@ local function release(player: Player, payload: { [string]: any }): { [string]: 
 	local held = serverHeld
 	local clientHeld = payload.held
 	if type(clientHeld) == "number" and clientHeld == clientHeld then
-		local tol = LATENCY_TOL + math.min(0.25, player:GetNetworkPing())
+		local tol = LATENCY_TOL + math.min(0.03, player:GetNetworkPing() * 0.25)
 		if math.abs(clientHeld - serverHeld) <= tol then
 			held = clientHeld
 		end

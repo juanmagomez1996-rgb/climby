@@ -405,6 +405,9 @@ local function incomingRequest(from: number, name: string)
 end
 
 function Trade.init()
+	Modal.addGuard(function()
+		return if room then "Termina o cancela el intercambio primero" else nil
+	end)
 	Router.register("npcTrade", openNpc)
 	Router.register("tradePlayers", openPlayers)
 	Remotes.event("TradeEvent").OnClientEvent:Connect(function(ev)

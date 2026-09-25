@@ -90,7 +90,11 @@ local function processReceipt(info: { [string]: any }): Enum.ProductPurchaseDeci
 	end
 	local purchaseId = tostring(info.PurchaseId)
 	if table.find(d.receipts, purchaseId) then
-		return Enum.ProductPurchaseDecision.PurchaseGranted -- ya se había entregado
+		-- ya se entregó en este servidor; confirmar solo cuando esté guardado de verdad
+		if DataService.receiptSaved(player, purchaseId) or DataService.saveNow(player) then
+			return Enum.ProductPurchaseDecision.PurchaseGranted
+		end
+		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
 	local msg = applyProduct(player, d, product)
 	table.insert(d.receipts, purchaseId)
