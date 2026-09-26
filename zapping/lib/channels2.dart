@@ -2,17 +2,19 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'channels.dart';
+import 'channels3.dart';
 import 'game.dart';
 import 'gfx.dart';
 import 'sfx.dart';
 
-/// Los 30 canales: los 12 originales y los 18 nuevos.
+/// Todos los canales: los 12 originales, los 18 de la segunda tanda y los extra (31–60).
 final List<ChannelFactory> allChannels = [
   ...channelFactories,
   KungFu.new, Slingshot.new, Signature.new, Karaoke.new, CountUfos.new,
   CakeStack.new, BubbleGum.new, OddClone.new, Moles.new, Sushi.new,
   Balance.new, UfoParking.new, Disco.new, Doorman.new, Vault.new,
   WashMonster.new, Lasso.new, PingPong.new,
+  ...extraChannels,
 ];
 
 // Canales 13–30. Cada uno usa una mecánica distinta (deslizar, apuntar, trazar, memoria…).

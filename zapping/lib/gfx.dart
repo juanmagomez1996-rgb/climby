@@ -60,6 +60,16 @@ const anims = <String, AnimInfo>{
   'dancer': AnimInfo(196, 256),
   'cow': AnimInfo(256, 227),
   'opponent': AnimInfo(256, 190),
+  // canales 31–60
+  'detective': AnimInfo(300, 285),
+  'nonna': AnimInfo(284, 300),
+  'grandma': AnimInfo(257, 300),
+  'chicken': AnimInfo(300, 231),
+  'octopus': AnimInfo(300, 220),
+  'washer': AnimInfo(259, 300),
+  'dogchef': AnimInfo(226, 300),
+  'pigcop': AnimInfo(300, 278),
+  'shepherd': AnimInfo(253, 300),
 };
 
 const spriteNames = [
@@ -88,6 +98,11 @@ const spriteNames = [
   'font', 'bar_track', 'bar_gold', 'bar_pink', 'life_off', 'mark_ok', 'mark_no',
   'ico_pause', 'ico_sound', 'ico_mute', 'ico_vibe', 'ico_novibe', 'ico_help',
   'panel_dark', 'panel_cream', 'note', 'hook',
+  // canales 31–60
+  'bg_party', 'bg_balcony', 'bg_street', 'bg_kitchen2', 'bg_trile', 'bg_laundry',
+  'bg_russian', 'bg_sausage', 'bg_cross', 'bg_clouds',
+  'thief', 'lens', 'meatball2', 'boot', 'plate', 'cat', 'gnome', 'trashcan', 'fork', 'cup',
+  'sock_a', 'sock_b', 'sock_c', 'matryoshka', 'cheese', 'sausage', 'snailcar', 'fence', 'sheep',
 ];
 
 class Gfx {
@@ -118,11 +133,12 @@ class Gfx {
       double ax = .5,
       double ay = .5,
       Rect? src,
-      Offset? drop}) {
+      Offset? drop,
+      Color? tint}) {
     final im = img[name]!;
     final s = src ?? Rect.fromLTWH(0, 0, im.width.toDouble(), im.height.toDouble());
     if (drop != null) _silhouette(c, im, s, x + drop.dx, y + drop.dy, h, rot, sx, sy, flip, ax, ay);
-    _draw(c, im, s, x, y, h, rot, sx, sy, alpha, flip, ax, ay);
+    _draw(c, im, s, x, y, h, rot, sx, sy, alpha, flip, ax, ay, tint);
   }
 
   /// Solo la sombra con la silueta del sprite (cuando el sprite se dibuja dentro de un lienzo girado).
@@ -157,24 +173,36 @@ class Gfx {
       bool flip = false,
       double ax = .5,
       double ay = .5,
-      double fps = 12}) {
+      double fps = 12,
+      Color? tint,
+      bool pingPong = false}) {
     final a = anims[name]!;
-    final f = (t * fps).floor() % a.frames;
+    var f = (t * fps).floor();
+    // ping-pong: 0,1,…,n-1,n-2,…,1 (para vídeos que no cierran el bucle perfecto)
+    if (pingPong && a.frames > 1) {
+      final m = f % (a.frames * 2 - 2);
+      f = m < a.frames ? m : a.frames * 2 - 2 - m;
+    } else {
+      f %= a.frames;
+    }
     final src = Rect.fromLTWH((f % a.cols) * a.fw.toDouble(),
         (f ~/ a.cols) * a.fh.toDouble(), a.fw.toDouble(), a.fh.toDouble());
-    _draw(c, img['anim_$name']!, src, x, y, h, rot, sx, sy, alpha, flip, ax, ay);
+    _draw(c, img['anim_$name']!, src, x, y, h, rot, sx, sy, alpha, flip, ax, ay, tint);
   }
+
+  static final Paint _tp = Paint()..filterQuality = FilterQuality.medium;
 
   static void _draw(Canvas c, ui.Image im, Rect src, double x, double y,
       double h, double rot, double sx, double sy, double alpha, bool flip,
-      double ax, double ay) {
+      double ax, double ay, [Color? tint]) {
     final w = h * src.width / src.height;
     c.save();
     c.translate(x, y);
     if (rot != 0) c.rotate(rot);
     c.scale(flip ? -sx : sx, sy);
-    _p.color = Color.fromRGBO(255, 255, 255, alpha.clamp(0, 1));
-    c.drawImageRect(im, src, Rect.fromLTWH(-w * ax, -h * ay, w, h), _p);
+    final p = tint == null ? _p : (_tp..colorFilter = ColorFilter.mode(tint, BlendMode.modulate));
+    p.color = Color.fromRGBO(255, 255, 255, alpha.clamp(0, 1));
+    c.drawImageRect(im, src, Rect.fromLTWH(-w * ax, -h * ay, w, h), p);
     c.restore();
   }
 

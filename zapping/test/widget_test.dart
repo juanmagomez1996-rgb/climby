@@ -1,12 +1,13 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zapping_infinito/channels.dart';
 import 'package:zapping_infinito/channels2.dart';
+import 'package:zapping_infinito/channels3.dart';
 import 'package:zapping_infinito/game.dart';
 
 void main() {
   balanceTest();
-  test('hay 30 canales y la pantalla cabe dentro de la tele', () {
-    expect(allChannels.length, 30);
+  test('hay 30 canales base más los extra y la pantalla cabe dentro de la tele', () {
+    expect(allChannels.length, 30 + extraChannels.length);
     expect(ZappingGame.tvRect.contains(ZappingGame.screen.topLeft), isTrue);
     expect(ZappingGame.tvRect.contains(ZappingGame.screen.bottomRight), isTrue);
   });
