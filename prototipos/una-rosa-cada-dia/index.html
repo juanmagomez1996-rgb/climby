@@ -410,12 +410,13 @@ function build(i) {
   L = prevL;
   d.lifts = (d.lifts || []).map(l => { const A = box(l.a.x, l.y, l.a.w, 8, 'lift'), B = box(l.b.x, l.y, l.b.w, 8, 'lift'); d.boxes.push(A, B); return { ...l, A, B, s: 0, stuck: 0 }; });
   d.boxes.forEach(b => { b.x0 = b.x; b.y0b = b.y; b.t = -1; b.gone = false; b.vy = 0; b.vx = 0; });
-  d.ropes = (d.ropes || []).map(r => ({ ...r, th: 0, om: 0 }));
+  d.ropes = (d.ropes || []).map(r => { const o = { ...r, th: 0, om: 0 }; ropeInit(o); return o; });
+  d.water.forEach(waterInit); FX.length = 0;
   d.boulders = (d.boulders || []).map(b => ({ ...b, y: 0, vx: 0, vy: 0, rot: 0, state: 'idle' }));
   d.hands = (d.hands || []).map(h => ({ ...h, reach: 0, tP: 0, tM: 0 }));
   d.lamps = d.lamps || []; d.rubble = null;
   d.spider = d.spider ? { ...d.spider, t: .8, leg: null, caught: null, away: 0 } : null;
-  d.crates = d.crates.map(c => { const w = c.w || 26, h = c.h || 26; return { x: c.x, y: c.y + 26 - h, x0: c.x, y0: c.y + 26 - h, w, h, vx: 0, vy: 0, on: false, stuck: false, crate: true }; });   // y is given for the usual 26 px crate
+  d.crates = d.crates.map(c => { const w = c.w || 26, h = c.h || 26; return { x: c.x, y: c.y + 26 - h, x0: c.x, y0: c.y + 26 - h, w, h, vx: 0, vy: 0, on: false, stuck: false, crate: true, rot: 0, vr: 0, pf: 0 }; });   // y is given for the usual 26 px crate
   d.traps = d.traps.map(t => ({ ...t, w: 24, shut: false }));
   d.levers = d.levers.map(l => ({ ...l, on: false, left: 0 }));
   d.plates = d.plates.map(p => ({ ...p, down: 0 }));
@@ -862,6 +863,91 @@ function actPose(a) { // where the body is at the clip's current frame
   return { x, bottom, base: bottom + (ATLAS.brother.frameH - 3 - m.by[i]) * s };
 }
 /* =========================================================================
+   PHYSICS FEEL — dust and debris, water that moves, ropes that bend, crates
+   with weight, things that fall, bounce and break
+   ========================================================================= */
+const FX = [];
+function fx(o) { if (FX.length < 420) FX.push(Object.assign({ vx: 0, vy: 0, rot: 0, vr: 0, t: 0, life: 1, g: GRAV, w: 2, h: 2, size: 2, kind: 'dust' }, o)); }
+function dust(x, y, n = 6, power = 1) { for (let i = 0; i < n; i++) fx({ kind: 'dust', x: x + (Math.random() - .5) * 8, y: y - 1, vx: (Math.random() - .5) * 1.8 * power, vy: -Math.random() * .7 * power, g: -.004, life: .45 + Math.random() * .5, size: 1.5 + Math.random() * 2.5 * power }); }
+function shards(x, y, w, h, n, vx = 0, vy = -2, big = 1) { for (let i = 0; i < n; i++) fx({ kind: 'shard', x: x + Math.random() * w, y: y + Math.random() * h, vx: vx + (Math.random() - .5) * 2.6, vy: vy - Math.random() * 2, vr: (Math.random() - .5) * .5, w: (2 + Math.random() * 4) * big, h: (1 + Math.random() * 1.6) * big, life: 2.5 + Math.random() * 2 }); }
+function drops(x, y, n, power = 1) { for (let i = 0; i < n; i++) fx({ kind: 'drop', x: x + (Math.random() - .5) * 6, y: y - 1, vx: (Math.random() - .5) * 2 * power, vy: -(1 + Math.random() * 2.4) * power, life: 1.4, size: .8 + Math.random() * .9 }); }
+function fxTick(dt) {
+  for (let i = FX.length - 1; i >= 0; i--) {
+    const f = FX[i]; f.t += dt;
+    if (f.t > f.life) { FX.splice(i, 1); continue; }
+    f.vy += f.g; f.x += f.vx; f.y += f.vy; f.rot += f.vr;
+    if (f.kind === 'dust') { f.vx *= .92; f.vy *= .92; continue; }
+    const w = waterAt(f.x);
+    if (f.kind === 'drop') { if ((w && f.vy > 0 && f.y > surfY(w, f.x)) || f.y > groundAt(f.x)) FX.splice(i, 1); continue; }
+    if (w && f.y > surfY(w, f.x)) { f.vy = Math.min(f.vy, .4); f.vx *= .9; f.vr *= .9; continue; }   // debris sinks slowly
+    const gy = groundAt(f.x);
+    if (f.y + f.h / 2 > gy) { f.y = gy - f.h / 2; f.vy *= -.3; f.vx *= .55; f.vr *= .5; if (Math.abs(f.vy) < .6) { f.vy = 0; const off = f.h > f.w ? Math.PI / 2 : 0; f.rot += (Math.round((f.rot - off) / Math.PI) * Math.PI + off - f.rot) * .3; } }   // long pieces settle lying down
+  }
+}
+function drawFX(c) {
+  for (const f of FX) {
+    if (f.x < cam - 20 || f.x > cam + VW + 20) continue;
+    const k = 1 - f.t / f.life;
+    if (f.kind === 'dust') { c.fillStyle = `rgba(30,30,30,${.28 * k})`; c.beginPath(); c.arc(f.x, f.y, f.size * (1.8 - k * .8), 0, 7); c.fill(); }
+    else if (f.kind === 'drop') { c.fillStyle = 'rgba(14,14,16,.85)'; c.fillRect(f.x, f.y, f.size, f.size * 1.7); }
+    else { c.save(); c.globalAlpha = Math.min(1, k * 3); c.translate(f.x, f.y); c.rotate(f.rot); c.fillStyle = '#060606'; c.fillRect(-f.w / 2, -f.h / 2, f.w, f.h); c.restore(); }
+  }
+}
+// ---- water: a row of springs; bodies breaking the surface make splashes and waves
+function waterInit(w) { w.cols = Array.from({ length: Math.ceil(w.w / 4) + 1 }, () => ({ h: 0, v: 0 })); }
+function waterAt(x) { return L && L.water.find(w => x > w.x && x < w.x + w.w); }
+function surfY(w, x) { const i = clamp(Math.round((x - w.x) / 4), 0, w.cols.length - 1); return w.y + w.cols[i].h; }
+function splash(w, x, amp) { const i = clamp(Math.round((x - w.x) / 4), 0, w.cols.length - 1); for (let k = -2; k <= 2; k++) { const c = w.cols[i + k]; if (c) c.v += amp * (1 - Math.abs(k) * .3); } }
+function waterTick() {
+  for (const w of L.water) {
+    const C = w.cols;
+    for (const c of C) { c.v += -c.h * .025 - c.v * .035; c.h += c.v; }
+    for (let p = 0; p < 2; p++) for (let i = 0; i < C.length; i++) { if (i > 0) C[i - 1].v += (C[i].h - C[i - 1].h) * .09; if (i < C.length - 1) C[i + 1].v += (C[i].h - C[i + 1].h) * .09; }
+    C[Math.floor(Math.random() * C.length)].v += (Math.random() - .5) * (L.theme === 'rain' ? .35 : .12);
+    for (const o of [P, M, ...L.crates]) {
+      if (!o) continue; const cx = o.x + o.w / 2; if (cx < w.x || cx > w.x + w.w) { o._inW = false; continue; }
+      const inside = o.y + o.h > w.y + 1;
+      if (inside && !o._inW) { const amp = Math.min(4.5, Math.abs(o.vy || 2) * .9 + .6); splash(w, cx, amp); drops(cx, w.y, 5 + amp * 3, .6 + amp * .22); noise(.35, .03 + .08 * amp / 4.5, 'bandpass', 900, .8, 300); }
+      else if (inside && Math.abs(o.vx || 0) > .2 && Math.random() < .35) splash(w, cx, Math.abs(o.vx) * .5);
+      o._inW = inside;
+    }
+  }
+}
+// ---- ropes: a chain of points (verlet); it hangs, sways, bends, and lets itself be pushed
+function ropeInit(r) { const n = 16; r.seg = r.len / (n - 1); r.pts = Array.from({ length: n }, (_, i) => ({ x: r.x, y: r.y + r.seg * i, px: r.x, py: r.y + r.seg * i })); }
+function ropeVerlet(r) {
+  const Q = r.pts, n = Q.length, held = P && P.rope === r;
+  let hi = 0, hx = 0, hy = 0;
+  if (held) { hx = r.x + Math.sin(r.th) * P.ropeS; hy = r.y + Math.cos(r.th) * P.ropeS; hi = clamp(Math.round(P.ropeS / r.seg), 1, n - 1); }
+  for (let i = 1; i < n; i++) { const p = Q[i], vx = (p.x - p.px) * .988, vy = (p.y - p.py) * .988; p.px = p.x; p.py = p.y; p.x += vx + Math.sin(S.t * .6 + i * .4) * .006; p.y += vy + .22; }
+  if (P && !held && S.state === 'play') for (const p of Q) if (p.x > P.x - 3 && p.x < P.x + P.w + 3 && p.y > P.y && p.y < P.y + P.h) p.x += (P.vx || 0) * .45 + (p.x - (P.x + P.w / 2)) * .05;
+  if (held) for (let i = 1; i <= hi; i++) { const p = Q[i], t = i / hi; p.x = r.x + (hx - r.x) * t; p.y = r.y + (hy - r.y) * t; }
+  for (let it = 0; it < 10; it++) {
+    Q[0].x = r.x; Q[0].y = r.y;
+    for (let i = 0; i < n - 1; i++) {
+      const a = Q[i], b = Q[i + 1], dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1, k = (d - r.seg) / d;
+      const fa = i === 0 || (held && i <= hi) ? 0 : .5, fb = held && i + 1 <= hi ? 0 : 1 - fa;
+      a.x += dx * k * fa; a.y += dy * k * fa; b.x -= dx * k * fb; b.y -= dy * k * fb;
+    }
+  }
+  if (!held) { const e = Q[n - 1], th = Math.atan2(e.x - r.x, e.y - r.y); r.om = (th - r.th) * 60; r.th = th; }   // where you can grab it follows the chain
+}
+// ---- crates: weight, a little slide after the push, tipping over edges, a wobble when they land
+function crateSpeed(c) { return c ? clamp(Math.sqrt(26 / c.h), .78, 1.2) : 1; }
+function crateTick(c) {
+  if (c.pf > 0) c.pf--;
+  else if (Math.abs(c.vx) > .02) { const r = moveX(c, c.vx, c.on); if (r.blocked) c.vx = 0; c.vx *= c.on ? .72 : .99; } else c.vx = 0;
+  // center of mass past the edge: it tips and slides off
+  if (c.on && !c.stuck) {
+    const mid = hitSolid(c.x + c.w / 2 - 1, c.y + 2, 2, c.h, c), l = hitSolid(c.x, c.y + 2, 3, c.h, c), rr = hitSolid(c.x + c.w - 3, c.y + 2, 3, c.h, c);
+    if (!mid && l !== rr) { c.vx += (l ? 1 : -1) * .12; c.vr += (l ? 1 : -1) * .01; }
+  }
+  const wv = waterAt(c.x + c.w / 2);
+  if (wv && c.y + c.h * .55 > surfY(wv, c.x + c.w / 2)) { c.vy -= GRAV * 1.7; c.vy *= .86; }   // it floats
+  if (!c.on) { c.rot += c.vr; c.rot = clamp(c.rot, -.8, .8); }
+  else { c.vr += -c.rot * .18; c.vr *= .72; c.rot += c.vr; }
+}
+/* =========================================================================
    MECHANICS — the rope, the counterweight lift, the raft, the boulder, the hands
    in the dark, the spider, the rose's light, and leading her by the hand
    ========================================================================= */
@@ -884,7 +970,7 @@ function dropFrom(o, x) { for (let k = 0; k < 260; k++) if (hitSolid(x, o.y + k 
 
 // ---- rope: grab it in the air, pump with ← →, let go with ↑
 function ropeTick(dt) {
-  for (const r of L.ropes || []) { if (P && P.rope === r) continue; r.om += -GPX / r.len * Math.sin(r.th) * dt; r.om *= .99; r.th += r.om * dt; }
+  for (const r of L.ropes || []) ropeVerlet(r);
 }
 function ropeGrab() {
   if (P.ropeCd > 0) return false;
@@ -918,8 +1004,12 @@ function liftTick(dt) {
   for (const l of L.lifts || []) {
     let wa = 0, wb = 0; for (const o of bodies()) { if (standsOn(o, l.A)) wa += weight(o); if (standsOn(o, l.B)) wb += weight(o); }
     const want = wa - wb >= 1.5 ? l.aDown : wb - wa >= 1.5 ? -l.aUp : l.s;
-    const ds = Math.sign(want - l.s) * Math.min(Math.abs(want - l.s), l.speed);
-    if (ds) { carry(l.A, 0, ds); carry(l.B, 0, -ds); l.A.y += ds; l.B.y -= ds; l.s += ds; if (Math.random() < .06) SFX.creak(); }
+    const dir = Math.sign(want - l.s);
+    l.v = (l.v || 0) + (dir * l.speed - (l.v || 0)) * (dir ? .03 : .12);
+    let next = clamp(l.s + l.v, -l.aUp, l.aDown);
+    if (dir > 0 && next > want || dir < 0 && next < want) { next = want; if (Math.abs(l.v) > .25) { S.shake = Math.max(S.shake, 1.5); SFX.creak(); dust(l.A.x + l.A.w / 2, l.A.y, 3, .6); } l.v = -l.v * .15; }
+    const ds = next - l.s;
+    if (Math.abs(ds) > .001) { carry(l.A, 0, ds); carry(l.B, 0, -ds); l.A.y += ds; l.B.y -= ds; l.s += ds; if (Math.random() < .06) SFX.creak(); }
     // the heavy side down, nobody on the other and he is stuck below: the chain slips and it all goes back
     const stuck = l.s >= l.aDown - .5 && wb === 0 && P && P.on && P.y + P.h > l.y - 4 && Math.abs(P.x - l.b.x) < 220;
     l.stuck = stuck ? l.stuck + dt : 0;
@@ -939,7 +1029,9 @@ function raftTick() {
     if (dx > 0 && groundAt(b.x + b.w + dx) < b.y + b.h) dx = 0;
     if (dx < 0 && groundAt(b.x + dx) < b.y + b.h) dx = 0;
     if (!dx) b.vx = 0;
-    const ny = (w ? w.y - b.h : b.y) + Math.sin(S.t * 1.7 + b.x * .02) * .6;
+    const ny = w ? (surfY(w, b.x + 8) + surfY(w, b.x + b.w - 8)) / 2 - b.h + (loaded ? 1.5 : 0) : b.y;
+    b.rot = w ? Math.atan2(surfY(w, b.x + b.w - 8) - surfY(w, b.x + 8), b.w - 16) * .8 : 0;
+    if (w && Math.abs(b.vx) > .2 && Math.random() < .2) splash(w, b.x + (b.vx > 0 ? b.w : 0), .4);
     carry(b, dx, ny - b.y); b.x += dx; b.y = ny;
   }
 }
@@ -951,11 +1043,15 @@ function boulderTick() {
     if (b.state !== 'roll') continue;
     const slope = (rest(b.x + 6) - rest(b.x - 6)) / 12;
     b.vx = clamp(b.vx + .03 + slope * .09, .5, 1.95); b.x += b.vx; b.rot += b.vx / b.r;
-    const ny = rest(b.x); b.vy = (b.vy || 0) + GRAV; b.y = ny > b.y + b.vy ? b.y + b.vy : ny; if (b.y >= ny) b.vy = 0;
+    const ny = rest(b.x); b.vy = (b.vy || 0) + GRAV; b.y += b.vy;
+    if (b.y >= ny) { if (b.vy > 2.4) { b.vy = -b.vy * .32; dust(b.x, ny + b.r, 10, 1.4); S.shake = Math.max(S.shake, 5); SFX.land(); } else b.vy = 0; b.y = Math.min(b.y, ny); }
+    if (b.vy === 0 && Math.random() < .5) dust(b.x - b.r * .4, b.y + b.r, 1, .7);
     if (Math.random() < .12) noise(.3, .08, 'lowpass', 120);
     S.shake = Math.max(S.shake, 1.2);
     for (const w of L.boxes) if (w.kind === 'barrier' && !w.gone && b.x + b.r > w.x && b.x - b.r < w.x + w.w) {
       w.gone = true; b.state = 'done'; S.shake = 8; SFX.crush(); setTimeout(() => SFX.crush(), 120); L.rubble = { x: w.x, y: groundAt(w.x) };
+      for (let k = 0; k < 3; k++) fx({ kind: 'shard', x: w.x + k * 5, y: w.y + 30 + k * 25, vx: 1.5 + Math.random() * 2.5, vy: -2 - Math.random() * 2.5, vr: (Math.random() - .5) * .3, w: 5, h: 26 + Math.random() * 20, life: 6 });
+      shards(w.x, w.y + 20, w.w, 80, 10, 1.5, -1.5, .8); shards(b.x - b.r, b.y - b.r, b.r * 2, b.r * 2, 12, b.vx * .8, -2.5, 1.8); dust(b.x, b.y + b.r, 16, 2);
     }
     for (const o of [P, M]) {
       if (!o || S.state !== 'play' || (o === P && (P.act || P.rope))) continue;
@@ -1029,20 +1125,38 @@ function stepCore() {
     if (b.kind === 'gate') {
       const src = L.plates.find(p => p.id === b.by) || L.levers.find(l => l.id === b.by);
       const want = src ? (src.down !== undefined ? (src.down > 0 ? 1 : 0) : src.crank ? src.prog || 0 : (src.on ? 1 : 0)) : 0;
-      const prev = b.open; b.open += Math.sign(want - b.open) * Math.min(Math.abs(want - b.open), want ? .018 : .05);
+      const prev = b.open;
+      if (want > b.open + .001 && (b.gv || 0) <= 0) { b.gv = 0; b.open = Math.min(want, b.open + .018); }
+      else if (want < b.open || b.gv) {
+        b.gv = (b.gv || 0) + .0035; b.open -= b.gv;
+        if (b.open <= want) { b.open = want; if (b.gv > .02) { b.gv = -b.gv * .3; dust(b.x + b.w / 2, b.y0 + b.h, 8, 1.2); S.shake = Math.max(S.shake, 2.5); SFX.land(); } else b.gv = 0; }
+      }
       if ((prev === 0 && b.open > 0) || (prev === 1 && b.open < 1)) SFX.gate();
       const ny = b.y0 - b.openH * b.open;
       if (ny > b.y && P && P.x < b.x + b.w && P.x + P.w > b.x && P.y < ny + b.h && P.y + P.h > ny && S.state === 'play') die('crush');
       b.y = ny;
     }
-    if (b.kind === 'bridge') { const lv = L.levers.find(l => l.id === b.by), prev = b.open; b.open = Math.min(1, b.open + (lv && lv.on ? .012 : 0)); if (prev < 1 && b.open >= 1) { SFX.land(); S.shake = 3; } }
-    if (b.fragile && b.t >= 0 && !b.falling) { b.t += dt; if (b.t > (b.sink ? .6 : .32)) { b.falling = true; SFX.crack(); } }
-    if (b.falling && !b.gone) { b.vy = Math.min(b.sink ? .6 : 7, b.vy + (b.sink ? .02 : .4)); b.y += b.vy; if (b.y > VH + 60) b.gone = true; }
+    if (b.kind === 'bridge') {
+      const lv = L.levers.find(l => l.id === b.by);
+      if (lv && lv.on && (b.open < 1 || b.av)) {
+        b.av = (b.av || 0) + .0011 * Math.max(.3, Math.sin(b.open * Math.PI / 2 + .3)); b.open += b.av;   // gravity pulls harder as it leans
+        if (b.open >= 1) { b.open = 1; if (b.av > .008) { b.av = -b.av * .32; for (let x = b.x; x < b.x + b.w; x += 20) dust(x, b.y + 4, 2, .8); S.shake = Math.max(S.shake, 3); SFX.land(); } else b.av = 0; }
+      }
+    }
+    if (b.fragile && b.t >= 0 && !b.falling) { b.t += dt; if (b.t > (b.sink ? .6 : .32)) { b.falling = true; SFX.crack(); b.rot = 0; b.vr = (Math.random() - .5) * (b.sink ? .006 : .09); if (!b.sink) { shards(b.x, b.y, b.w, 3, 5, 0, -1, .7); dust(b.x + b.w / 2, b.y, 4, .6); } } }
+    if (b.falling && !b.gone) {
+      b.vy = Math.min(b.sink ? .6 : 7, b.vy + (b.sink ? .02 : .4)); b.y += b.vy; b.rot = (b.rot || 0) + (b.vr || 0);
+      if (b.sink && Math.random() < .25) drops(b.x + Math.random() * b.w, b.y + 2, 1, .3);
+      if (b.y > VH + 60) b.gone = true;
+    }
   }
   for (const lv of L.levers) if (lv.on && lv.timed) { lv.left -= dt; if (Math.floor(lv.left * 4) !== Math.floor((lv.left + dt) * 4)) SFX.tick(); if (lv.left <= 0) { lv.on = false; SFX.lever(); } }
   for (const c of L.crates) {
+    crateTick(c);
     c.vy = Math.min(7, c.vy + GRAV);
-    const r = moveY(c, c.vy); if (r === 'land') { if (!c.on && c.vy > 2) SFX.land(); c.vy = 0; c.on = true; } else c.on = false;
+    const r = moveY(c, c.vy);
+    if (r === 'land') { if (!c.on && c.vy > 2) { SFX.land(); dust(c.x + c.w / 2, c.y + c.h, 5 + c.vy * 1.5, Math.min(1.6, c.vy / 4)); S.shake = Math.max(S.shake, c.vy * .35); c.vr = -c.rot * .3 + (Math.random() - .5) * .05; } c.vy = 0; c.on = true; }
+    else { if (c.on && Math.abs(c.vx) > .05) c.vr = clamp(c.vx * .045, -.06, .06); c.on = false; }
     for (const t of L.traps) if (!t.shut && c.x + c.w / 2 > t.x + 8 && c.x + c.w / 2 < t.x + t.w && Math.abs(c.y + c.h - t.y) < 3) { t.shut = true; c.stuck = true; SFX.snap(); S.shake = 3; }
   }
   for (const p of L.plates) {
@@ -1058,17 +1172,17 @@ function stepCore() {
       s.vy += GRAV * 1.2; s.y += s.vy;
       const tipY = 14 + s.y + s.len, g = surfaceY(s.x);
       if (S.state === 'play' && P.x < s.x + 6 && P.x + P.w > s.x - 6 && tipY > P.y + 4 && 14 + s.y < P.y + P.h) die('crush');
-      if (tipY >= g) { s.state = 'down'; s.y = g - s.len - 14 + 10; S.shake = Math.max(S.shake, 3); SFX.crush(); }
+      if (tipY >= g) { s.state = 'down'; s.y = g - s.len - 14 + 10; S.shake = Math.max(S.shake, 3); SFX.crush(); shards(s.x - 5, g - 8, 10, 6, 9, 0, -2.4, .9); dust(s.x, g, 8, 1.2); }
     }
   }
-  ropeTick(dt); liftTick(dt); raftTick(); boulderTick(); spiderTick(dt); handsTick(dt);
+  ropeTick(dt); liftTick(dt); raftTick(); boulderTick(); spiderTick(dt); handsTick(dt); waterTick(); fxTick(dt);
   if (S.state === 'deliver') { S.timer++; if (chase) chase.x -= 5; if (M) { M.vx = 0; M.ic += dt; } if (S.timer > (L.garden ? 230 : 170)) { if (!L.garden) S.roses++; goalCard(); } return; }
   if (S.state === 'meet') { S.timer++; P.animT += dt; if (S.timer > 150) endCard(); return; }
   if (S.state === 'dead') {
     const d = S.dead; d.t += dt;
     if (d.type === 'drown') d.y += .25;
     if (d.type === 'shadow') d.x -= .8;
-    if (d.type === 'fall') { d.vy = Math.min(8, d.vy + GRAV); d.y += d.vy; }
+    if (d.type === 'fall') { d.vy = Math.min(8, d.vy + GRAV); d.y += d.vy; d.rot = (d.rot || 0) + .06 * d.face; }
     if (d.type === 'hands') d.y += .12;
     if (d.type === 'mom') d.my += .15;
     if (d.t > 2.1) respawn();
@@ -1125,8 +1239,9 @@ function stepCore() {
   const chasing = chase && chase.started && !chase.done;
   let maxv = L.dream ? MOMV : !P.on ? RUN : chasing ? RUNG : P.holdT < .45 ? WALK : Math.min(RUNG, WALK + (P.holdT - .45) * 2.6);
   if (!L.dream && P.on && !chasing && P.x > L.goalX - 170) maxv = Math.min(maxv, WALK);
+  if (P.on && dir) { const cx = P.x + P.w / 2, sl = (groundAt(cx + dir * 7) - groundAt(cx - dir * 7)) / 14; if (isFinite(sl)) maxv *= clamp(1 + sl * 1.3, .68, 1.22); }
   const pullC = grab && dir ? adjacentCrate(-dir) : null;
-  if (pullC || P.pushing > 0) maxv = PUSHV;
+  if (pullC || P.pushing > 0) maxv = PUSHV * crateSpeed(pullC || P.pushC);
   if (M && M.hand) maxv = Math.min(maxv, MOMV);
   if (P.cranking) maxv = 0;
   if (inWater) maxv = .8;
@@ -1139,7 +1254,7 @@ function stepCore() {
   P.co = P.on ? 6 : P.co - 1;
   if (P.buf > 0 && M && M.hand) { M.hand = false; tone(330, .5, .03, 'triangle'); }   // you need both hands to jump
   if (P.buf > 0 && P.on && !pullC && !inWater && tryTraverse(dir)) { P.buf = 0; camFollow(); return; }
-  if (P.buf > 0 && P.co > 0 && !pullC && (!inWater || P.y + 8 < inWater.y)) { P.vy = JUMP; P.buf = 0; P.co = 0; P.on = false; P.airT = 0; if (dir) P.vx = dir * Math.max(Math.abs(P.vx), RUNG) * 1.25; /* a held direction makes a full leap */ AN.airKind = dir ? 'leap' : 'jump'; noise(.08, .05, 'bandpass', 700, 1); }
+  if (P.buf > 0 && P.co > 0 && !pullC && (!inWater || P.y + 8 < inWater.y)) { P.vy = JUMP; P.buf = 0; P.co = 0; P.on = false; P.airT = 0; if (dir) P.vx = dir * Math.max(Math.abs(P.vx), RUNG) * 1.25; /* a held direction makes a full leap */ AN.airKind = dir ? 'leap' : 'jump'; noise(.08, .05, 'bandpass', 700, 1); dust(P.x + P.w / 2, P.y + P.h, 3, .5); }
   P.buf--;
   if (!K.j && P.vy < -2.6) P.vy = -2.6;
   P.vy = Math.min(inWater ? .7 : 7, P.vy + (inWater ? .05 : GRAV));
@@ -1149,14 +1264,14 @@ function stepCore() {
   P.pushing = Math.max(0, P.pushing - 1); P.pulling = Math.max(0, P.pulling - 1);
   if (pullC) {
     const r = moveX(P, P.vx, true);
-    if (r.moved) { P.pulling = 8; P.pushH = pullC.h; const r2 = moveX(pullC, r.moved, true); if (Math.abs(r2.moved) < Math.abs(r.moved) - .01) P.x -= r.moved - r2.moved; noise(.05, .03, 'lowpass', 300); }
+    if (r.moved) { P.pulling = 8; P.pushH = pullC.h; P.pushC = pullC; const r2 = moveX(pullC, r.moved, true); pullC.vx = r2.moved; pullC.pf = 2; if (Math.abs(r2.moved) < Math.abs(r.moved) - .01) P.x -= r.moved - r2.moved; noise(.05, .03, 'lowpass', 300); }
   } else {
     const r = moveX(P, P.vx, P.on);
     if (r.blocked && dir) {
       const c = P.on ? adjacentCrate(dir) : null;
       if (c && !c.stuck && c.on) {
-        P.pushing = 8; P.pushH = c.h; const want = dir * PUSHV - r.moved;
-        const r2 = moveX(c, want, true); if (Math.abs(r2.moved) > .01) { moveX(P, r2.moved, true); if (Math.random() < .3) noise(.06, .04, 'lowpass', 280); }
+        P.pushing = 8; P.pushH = c.h; P.pushC = c; const want = dir * PUSHV * crateSpeed(c) - r.moved;
+        const r2 = moveX(c, want, true); c.vx = r2.moved; c.pf = 2; if (Math.abs(r2.moved) > .01) { moveX(P, r2.moved, true); if (Math.random() < .3) noise(.06, .04, 'lowpass', 280); }
       } else if (!P.on && P.vy > -3) tryMantle(dir);
       if (!c || c.stuck) P.vx = 0;
     }
@@ -1168,6 +1283,7 @@ function stepCore() {
     const drop = P.y - P.topY;    // how far the body came down: a step, a drop, a fall, or too far
     if (!wasOn && !L.dream && drop > FALL.dead && !inWater) { P.vy = 0; P.on = true; die('impact'); return; }
     if (!wasOn) { const J = ATLAS.brother && ATLAS.brother.anims; if (J && !L.dream && drop > FALL.step) { AN.landT = 0; AN.landClip = drop > FALL.hard && J.land ? 'land' : (AN.airKind === 'leap' && J.leap ? 'leap' : 'jump'); AN.landFrom = AN.landClip === 'land' && AN.cur ? match('brother', AN.cur.anim, AN.cur.f, 'land', 0, .4) : 0; } }
+    if (!wasOn && drop > 14) dust(P.x + P.w / 2, P.y + P.h, 3 + Math.min(10, drop / 10), Math.min(1.6, drop / 70));
     if (!wasOn && drop > FALL.step && P.vy > 3.2) { const J = ATLAS.brother && ATLAS.brother.anims.jump; P.landT = J && !L.dream ? Math.min(drop > FALL.hard ? .5 : .3, J.land.length / J.fps) : .16; if (P.vy > 4.5) SFX.land(); }
     P.vy = 0; P.on = true;
   }
@@ -1179,7 +1295,7 @@ function stepCore() {
     const d = dropBelow(P.x + P.vx * 8);
     AN.airKind = d <= FALL.step ? 'step' : Math.abs(P.vx) > .8 ? 'leap' : 'jump';
   }
-  if (P.on && Math.abs(P.vx) > .4) { P.stepT += Math.abs(P.vx) * dt; if (P.stepT > .38) { P.stepT = 0; SFX.step(); } }
+  if (P.on && Math.abs(P.vx) > .4) { P.stepT += Math.abs(P.vx) * dt; if (P.stepT > .38) { P.stepT = 0; SFX.step(); if (Math.abs(P.vx) > 1.2) dust(P.x + P.w / 2 - P.face * 3, P.y + P.h, 1, .5); } }
   // what we stand on
   if (P.on) for (const b of supportUnder(P)) if (b.fragile && b.t < 0) { b.t = 0; SFX.creak(); }
   // dangers
@@ -1231,10 +1347,17 @@ function layer(c, im, par, bottom, height, alpha = 1, top = false) {
   }
   c.restore();
 }
+const BEND = new Set(['grass', 'fern', 'reeds', 'deadBush', 'thorns', 'mushrooms']);
 function drawProp(c, d, par, color) {
   const im = color ? tinted(d.k, color) : IMG[d.k]; if (!im) return;
   const h = d.h, w = im.width * h / im.height, x = d.x - cam * par - w / 2;
   if (x > VW + 20 || x + w < -20) return;
+  if (d.layer === 'play' && BEND.has(d.k) && P) {
+    let tgt = Math.sin(S.t * 1.3 + d.x * .05) * .04;
+    for (const o of [P, M]) if (o) { const dx = d.x - (o.x + o.w / 2); if (Math.abs(dx) < w / 2 + 5 && o.y + o.h > d.base - h) tgt += clamp((o.vx || 0) * .3 + Math.sign(dx) * .2, -.6, .6); }
+    d.bv = ((d.bv || 0) + (tgt - (d.ba || 0)) * .09) * .86; d.ba = (d.ba || 0) + d.bv;
+    c.save(); c.translate(x + w / 2, d.base); c.transform(1, 0, -d.ba, 1, 0, 0); if (d.flip) c.scale(-1, 1); c.drawImage(im, -w / 2, -h, w, h); c.restore(); return;
+  }
   if (d.flip) { c.save(); c.translate(x + w, 0); c.scale(-1, 1); c.drawImage(im, 0, d.base - h, w, h); c.restore(); } else c.drawImage(im, x, d.base - h, w, h);
 }
 // a soft rolling ground line for a depth layer (in that layer's own coordinates)
@@ -1272,10 +1395,8 @@ function drawTerrain(c) {
     c.restore();
   }
 }
-function drawBoxes(c) {
-  for (const b of L.boxes) {
-    if (b.gone || b.x > cam + VW + 20 || b.x + b.w < cam - 20) continue;
-    if (b.kind === 'gate') { const im = IMG.gate; if (im) c.drawImage(im, b.x - 4, b.y, b.w + 8, b.h); else { c.fillStyle = '#050505'; c.fillRect(b.x, b.y, b.w, b.h); } }
+function drawBox(c, b) {
+  if (b.kind === 'gate') { const im = IMG.gate; if (im) c.drawImage(im, b.x - 4, b.y, b.w + 8, b.h); else { c.fillStyle = '#050505'; c.fillRect(b.x, b.y, b.w, b.h); } }
     else if (b.kind === 'plank') { c.fillStyle = '#060606'; c.fillRect(b.x, b.y, b.w, b.h); c.fillRect(b.x + 3, b.y + b.h, 2, 3); c.fillRect(b.x + b.w - 5, b.y + b.h, 2, 3); }
     else if (b.kind === 'slab') { c.fillStyle = '#050505'; c.beginPath(); c.moveTo(b.x, b.y); c.lineTo(b.x + b.w, b.y); c.lineTo(b.x + b.w, b.y + b.h); for (let x = b.x + b.w; x > b.x; x -= 7) c.lineTo(x - 3.5, b.y + b.h + 2 + hash(x) * 6); c.lineTo(b.x, b.y + b.h); c.closePath(); c.fill(); }
     else if (b.kind === 'barrier') { c.fillStyle = '#060606'; for (let i = 0; i < 3; i++) { const px = b.x + i * 5.5, top = b.y + (i === 1 ? 0 : 8); c.beginPath(); c.moveTo(px, b.y + b.h); c.lineTo(px, top + 4); c.lineTo(px + 2.5, top); c.lineTo(px + 5, top + 4); c.lineTo(px + 5, b.y + b.h); c.fill(); } c.fillRect(b.x - 3, b.y + 30, b.w + 6, 4); c.fillRect(b.x - 3, b.y + 80, b.w + 6, 4); }
@@ -1284,8 +1405,15 @@ function drawBoxes(c) {
     else if (b.kind === 'raft') { c.fillStyle = '#070707'; c.fillRect(b.x, b.y, b.w, b.h); c.fillStyle = '#111'; for (let x = b.x + 6; x < b.x + b.w; x += 9) c.fillRect(x, b.y + 1, 1, b.h - 2); c.fillStyle = '#060606'; c.fillRect(b.x + b.w - 8, b.y - 14, 2, 14); }
     else if (b.kind === 'stone') { const im = IMG.rock; if (im) c.drawImage(im, b.x - 6, b.y - 4, b.w + 12, Math.min(b.h, 40)); c.fillStyle = '#050505'; c.fillRect(b.x, b.y + 20, b.w, b.h); }
     else { const im = IMG.rock; if (im) c.drawImage(im, b.x - 4, b.y - 4, b.w + 8, b.h + 6); else { c.fillStyle = '#050505'; c.fillRect(b.x, b.y, b.w, b.h); } }
+}
+function drawBoxes(c) {
+  for (const b of L.boxes) {
+    if (b.gone || b.x > cam + VW + 20 || b.x + b.w < cam - 20) continue;
+    if (b.rot) { c.save(); c.translate(b.x + b.w / 2, b.y + b.h / 2); c.rotate(b.rot); c.translate(-(b.x + b.w / 2), -(b.y + b.h / 2)); }
+    drawBox(c, b);
+    if (b.rot) c.restore();
   }
-  for (const cr of L.crates) { const im = IMG.crate; if (im) c.drawImage(im, cr.x - 1, cr.y - 1, cr.w + 2, cr.h + 2); else { c.fillStyle = '#050505'; c.fillRect(cr.x, cr.y, cr.w, cr.h); } }
+  for (const cr of L.crates) { const im = IMG.crate; c.save(); c.translate(cr.x + cr.w / 2, cr.y + cr.h); c.rotate(cr.rot || 0); if (im) c.drawImage(im, -cr.w / 2 - 1, -cr.h - 1, cr.w + 2, cr.h + 2); else { c.fillStyle = '#050505'; c.fillRect(-cr.w / 2, -cr.h, cr.w, cr.h); } c.restore(); }
   for (const l of L.lifts || []) {   // the beam and the two wheels the chain runs over
     const ax = l.A.x + l.A.w / 2, bx = l.B.x + l.B.w / 2, y = 16;
     c.fillStyle = '#050505'; c.fillRect(Math.min(ax, bx) - 22, y - 3, Math.abs(ax - bx) + 44, 5);
@@ -1315,9 +1443,12 @@ function drawBoxes(c) {
     c.restore();
   }
   for (const w of L.water) {
-    c.fillStyle = 'rgba(4,4,6,.93)'; c.fillRect(w.x, w.y, w.w, w.h);
-    c.strokeStyle = 'rgba(180,180,185,.35)'; c.lineWidth = .8; c.beginPath();
-    for (let x = w.x; x <= w.x + w.w; x += 4) { const y = w.y + Math.sin(S.t * 2 + x * .15) * .8; x === w.x ? c.moveTo(x, y) : c.lineTo(x, y); }
+    const C = w.cols, at = i => w.y + C[i].h + Math.sin(S.t * 2 + i * .6) * .5;
+    c.fillStyle = 'rgba(4,4,6,.93)'; c.beginPath(); c.moveTo(w.x, w.y + w.h);
+    for (let i = 0; i < C.length; i++) c.lineTo(Math.min(w.x + w.w, w.x + i * 4), at(i));
+    c.lineTo(w.x + w.w, w.y + w.h); c.closePath(); c.fill();
+    c.strokeStyle = 'rgba(185,185,190,.38)'; c.lineWidth = .8; c.beginPath();
+    for (let i = 0; i < C.length; i++) { const x = Math.min(w.x + w.w, w.x + i * 4); i ? c.lineTo(x, at(i)) : c.moveTo(x, at(i)); }
     c.stroke();
   }
 }
@@ -1399,12 +1530,11 @@ function drawRopes(c) {
   c.strokeStyle = '#060606'; c.lineCap = 'round';
   for (const r of L.ropes || []) {
     if (r.x < cam - 200 || r.x > cam + VW + 200) continue;
-    const sx = Math.sin(r.th), sy = Math.cos(r.th);
-    c.lineWidth = 1.8; c.beginPath(); c.moveTo(r.x, r.y);
-    if (P && P.rope === r) { const hx = r.x + sx * P.ropeS, hy = r.y + sy * P.ropeS; c.lineTo(hx, hy); c.lineTo(hx + sx * 8, hy + sy * 8 + 3); }
-    else { const ex = r.x + sx * r.len, ey = r.y + sy * r.len; c.quadraticCurveTo(r.x + sx * r.len * .5 - r.om * 4, r.y + sy * r.len * .5, ex, ey); }
-    c.stroke();
-    if (!(P && P.rope === r)) { const ex = r.x + sx * r.len, ey = r.y + sy * r.len; c.lineWidth = 3; c.beginPath(); c.moveTo(ex, ey - 4); c.lineTo(ex, ey); c.stroke(); }
+    const Q = r.pts;
+    c.lineWidth = 1.8; c.beginPath(); c.moveTo(Q[0].x, Q[0].y);
+    for (let i = 1; i < Q.length - 1; i++) c.quadraticCurveTo(Q[i].x, Q[i].y, (Q[i].x + Q[i + 1].x) / 2, (Q[i].y + Q[i + 1].y) / 2);
+    const e = Q[Q.length - 1], e2 = Q[Q.length - 2]; c.lineTo(e.x, e.y); c.stroke();
+    c.lineWidth = 3; c.beginPath(); c.moveTo(e2.x + (e.x - e2.x) * .5, e2.y + (e.y - e2.y) * .5); c.lineTo(e.x, e.y); c.stroke();
     // the branch it hangs from: one limb from off screen, thinning to a tip past the rope
     { const x0 = r.x - 170, y0 = r.y - 64, cx = r.x - 60, cy = r.y - 8, x1 = r.x + 36, y1 = r.y + 2, pts = [];
       for (let i = 0; i <= 16; i++) { const t = i / 16, u = 1 - t, x = u * u * x0 + 2 * u * t * cx + t * t * x1, y = u * u * y0 + 2 * u * t * cy + t * t * y1; pts.push([x, y, 5.5 * (1 - t) + 1 + (hash(i * 5) - .5) * .8]); }
@@ -1502,7 +1632,7 @@ function render() {
   // play layer
   c.save(); c.translate(-cam, 0);
   drawHouse(c);
-  for (const d of L.decor) if (d.layer === 'play') drawProp(c, { ...d, x: d.x }, 0, null);
+  for (const d of L.decor) if (d.layer === 'play') drawProp(c, d, 0, null);
   drawTerrain(c);
   drawBoxes(c);
   drawLights(c); drawRosebush(c); drawRopes(c); drawBoulders(c); drawHands(c);
@@ -1524,7 +1654,7 @@ function render() {
     if (A && !L.dream) {
       const an = A.anims, col = frameOf(an.collapse, d.t * 1.15, 'once'), fl = frameOf(an.fall, d.t, 'loop');
       if (d.type === 'drown') drawSprite(c, 'brother', 'fall', fl, cx, base, d.face, .25, Math.max(0, 1 - d.t / 1.6));
-      else if (d.type === 'fall') drawSprite(c, 'brother', 'fall', fl, cx, base, d.face);
+      else if (d.type === 'fall') drawSprite(c, 'brother', 'fall', fl, cx, base, d.face, d.rot || 0);
       else if (d.type === 'impact') drawSprite(c, 'brother', 'collapse', Math.min(an.collapse.frames - 1, an.collapse.frames * .6 + d.t * an.collapse.fps * 2.2), cx, base + 1.5, d.face);   // hits the ground already broken
       else if (d.type === 'shadow') drawSprite(c, 'brother', 'collapse', col, cx, base, d.face, 0, Math.max(0, 1 - d.t / 1.4));
       else drawSprite(c, 'brother', 'collapse', col, cx, base + 1.5, d.face);
@@ -1551,6 +1681,7 @@ function render() {
     const im = IMG.cave_ceil; if (im) { const w = im.width * 64 / im.height; for (let x = Math.floor(cam / w) * w - w; x < cam + VW + w; x += w) c.drawImage(im, x, -6, w, 64); }
     c.restore();
   }
+  drawFX(c);
   drawSpider(c);
   drawShadow(c);
   if (S.debug) {
