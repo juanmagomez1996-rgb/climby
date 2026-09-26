@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#2b1d14">
+<title>Una Vida en 20 Minutos</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="wrap">
+  <div id="stage">
+    <canvas id="cv"></canvas>
+
+    <div id="menu" class="screen">
+      <div class="title"><span>Una Vida</span><small>en 20 minutos</small></div>
+      <div class="menu-bottom">
+        <button id="btn-play" class="btn big">VIVIR</button>
+        <div id="menu-best" class="note"></div>
+        <button id="btn-settings" class="btn small">Ajustes</button>
+      </div>
+    </div>
+
+    <div id="card" class="hidden">
+      <div class="paper">
+        <div class="card-age" id="card-age"></div>
+        <div class="card-q" id="card-q"></div>
+        <div class="card-opts" id="card-opts"></div>
+        <div class="card-timer"><i id="card-timer"></i></div>
+      </div>
+    </div>
+
+    <div id="end" class="screen hidden">
+      <div class="paper end-paper">
+        <div class="end-sub">Sales del juego</div>
+        <div class="end-name" id="end-name"></div>
+        <div class="end-epitaph" id="end-epitaph"></div>
+        <div class="end-cause" id="end-cause"></div>
+        <ul class="end-moments" id="end-moments"></ul>
+        <div class="end-stats" id="end-stats"></div>
+        <div class="end-score" id="end-score"></div>
+        <div class="end-record" id="end-record"></div>
+        <button id="btn-again" class="btn big">Vivir otra vez</button>
+        <button id="btn-menu" class="btn small">Menú</button>
+      </div>
+    </div>
+
+    <div id="settings" class="screen hidden">
+      <div class="paper">
+        <div class="end-sub">Ajustes</div>
+        <label class="row"><span>Música</span><input type="checkbox" id="set-music"></label>
+        <label class="row"><span>Efectos</span><input type="checkbox" id="set-sfx"></label>
+        <label class="row"><span>Vibración</span><input type="checkbox" id="set-vib"></label>
+        <button id="btn-reset" class="btn small">Borrar récord</button>
+        <button id="btn-close" class="btn">Volver</button>
+      </div>
+    </div>
+
+    <button id="btn-pause" class="hidden" aria-label="Pausa">II</button>
+    <div id="loading" class="screen"><div class="note">Pintando la vida…</div></div>
+  </div>
+</div>
+<script src="data.js"></script>
+<script src="meta.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
