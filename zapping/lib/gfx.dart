@@ -29,6 +29,11 @@ class Pal {
 }
 
 const kDisplay = 'Bowlby';
+
+/// Proporción alto/ancho de los botones de plastilina y zona plana donde cabe el texto
+/// (fracciones medidas sobre btn_gold/teal/pink).
+const kButtonAspect = 0.615;
+const kButtonFace = Rect.fromLTRB(.17, .22, .83, .76);
 const kBody = 'Atkinson';
 
 /// Animaciones en bucle generadas en vídeo (Higgsfield) y convertidas a hojas de sprites.
@@ -46,6 +51,13 @@ const anims = <String, AnimInfo>{
   'redbutton': AnimInfo(256, 240),
   'weather_sleep': AnimInfo(186, 256),
   'boss': AnimInfo(246, 256),
+  'sensei': AnimInfo(215, 256),
+  'notary': AnimInfo(222, 256),
+  'baker': AnimInfo(233, 256),
+  'acrobat': AnimInfo(172, 256),
+  'dancer': AnimInfo(196, 256),
+  'cow': AnimInfo(256, 227),
+  'opponent': AnimInfo(256, 190),
 };
 
 const spriteNames = [
@@ -58,6 +70,18 @@ const spriteNames = [
   'bg_screw', 'bg_arms', 'bg_gazpacho', 'bg_kitchen', 'bg_quiz', 'bg_chairs',
   'bg_forbidden', 'bg_soda', 'bg_fishing', 'bg_diner', 'bg_bugs', 'bg_weather',
   'bg_boss',
+  // canales 13–30
+  'sensei_win', 'arrow', 'board', 'slingshot', 'meatball', 'can', 'can_hit',
+  'pen', 'singer_red', 'singer_red_sing', 'singer_blue', 'singer_blue_sing',
+  'singer_yellow', 'singer_yellow_sing', 'singer_green', 'singer_green_sing',
+  'ufo', 'cake', 'cakeplate', 'kid', 'kid_gum', 'bubble', 'cloneA',
+  'cloneA_odd', 'cloneB', 'cloneB_odd', 'hole', 'mole', 'mole_hit', 'nigiri',
+  'maki', 'chili', 'asteroid', 'pad', 'guest_top', 'guest_cowboy',
+  'guest_bald', 'guest_curly', 'key', 'monster', 'monster_clean', 'sponge',
+  'mud', 'paddle', 'opponent_lose',
+  'bg_dojo', 'bg_fair', 'bg_desk', 'bg_karaoke', 'bg_night', 'bg_bakery',
+  'bg_bedroom', 'bg_lab', 'bg_garden', 'bg_sushi', 'bg_circus', 'bg_space',
+  'bg_disco', 'bg_club', 'bg_vault', 'bg_bathroom', 'bg_ranch', 'bg_pingpong',
 ];
 
 class Gfx {
@@ -189,16 +213,22 @@ class Gfx {
       bool outline = true,
       double scale = 1,
       double rot = 0,
-      double alpha = 1}) {
+      double alpha = 1,
+      double? fitW,
+      double? fitH}) {
     final ta = align == .5
         ? TextAlign.center
         : (align < .5 ? TextAlign.left : TextAlign.right);
     final (fill, stroke) = _painters(s, size, color, font, maxW, outline, ta);
     final w = fill.width, h = fill.height;
+    // Encoge (nunca agranda) para que quepa en fitW x fitH.
+    var k = scale;
+    if (fitW != null && w * k > fitW) k = fitW / w;
+    if (fitH != null && h * k > fitH) k = fitH / h;
     c.save();
     c.translate(x, y);
     if (rot != 0) c.rotate(rot);
-    if (scale != 1) c.scale(scale);
+    if (k != 1) c.scale(k);
     final o = Offset(-w * align, -h / 2);
     if (alpha < 1) {
       c.saveLayer(null, Paint()..color = Color.fromRGBO(0, 0, 0, alpha.clamp(0, 1)));
@@ -213,6 +243,17 @@ class Gfx {
   }
 
   // ---------- Formas de plastilina ----------
+  /// Sombra de contacto bajo un personaje apoyado en el suelo.
+  static void shadow(Canvas c, double x, double y, double w, {double alpha = .35}) {
+    final r = Rect.fromCenter(center: Offset(x, y), width: w, height: w * .2);
+    c.drawOval(
+        r,
+        Paint()
+          ..shader = ui.Gradient.radial(Offset(x, y), w / 2,
+              [Color.fromRGBO(0, 0, 0, alpha), const Color(0x00000000)], [0, 1])
+);
+  }
+
   static void clayBall(Canvas c, double x, double y, double r, Color col) {
     final hsl = HSLColor.fromColor(col);
     final light = hsl.withLightness((hsl.lightness + .22).clamp(0, 1)).toColor();
@@ -248,6 +289,17 @@ class Gfx {
           ..style = PaintingStyle.stroke
           ..strokeWidth = 3
           ..color = Pal.dark);
+  }
+
+  /// Botón de plastilina dibujado en el lienzo, con el texto ajustado a su cara plana.
+  static void button(Canvas c, String img, String label, Rect r, {double scale = 1, double size = 44}) {
+    final h = r.width * kButtonAspect;
+    final cy = r.center.dy;
+    sprite(c, img, r.center.dx, cy, h * scale);
+    final face = Rect.fromLTRB(r.left + r.width * kButtonFace.left, cy - h / 2 + h * kButtonFace.top,
+        r.left + r.width * kButtonFace.right, cy - h / 2 + h * kButtonFace.bottom);
+    text(c, label, face.center.dx, face.center.dy, size,
+        scale: scale, fitW: face.width * scale, fitH: face.height * scale);
   }
 
   static void clayPanel(Canvas c, Rect r, Color col, {double radius = 18}) {

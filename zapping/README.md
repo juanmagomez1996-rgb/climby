@@ -3,7 +3,7 @@
 Microjuegos de 4–5 segundos en una tele de otra dimensión, con estética de **plastilina realista** (stop-motion).
 Versión Flutter + Flame del prototipo `prototypes/03-zapping.html`, lista para preparar su publicación en Google Play.
 
-- 12 canales (microjuegos) + un jefe cada 10 canales.
+- 30 canales (microjuegos), cada uno con una mecánica distinta, + un jefe cada 10 canales.
 - 4 vidas; cada 5 canales todo va más rápido.
 - Solo vertical, táctil, sin anuncios, sin permisos y sin recogida de datos.
 
@@ -15,7 +15,7 @@ Todos los gráficos se generaron con **Higgsfield** a partir de una hoja de pers
 |---|---|---|
 | Personajes, objetos, botones, logo, tele (fondo transparente) | GPT Image 2.5 | `assets/images/*.webp` |
 | 13 fondos de canal (dioramas de plastilina) | GPT Image 2.5 | `assets/images/bg_*.webp` |
-| 8 animaciones en bucle (Tito, Glotón, Nano, Chef, presentador del concurso, Botón, Dormilón y el jefe) | MiniMax H3 Max (vídeo con el mismo fotograma inicial y final) → croma y hoja de sprites de 60 fotogramas a 12 fps | `assets/images/anim_*.webp` |
+| 15 animaciones en bucle (Tito, Glotón, reportero, chef, presentador, Botón, Dormilón, jefe, maestro de kung-fu, funcionario, pastelero, equilibrista, bailarín, vaca alienígena y rival de ping-pong) | MiniMax H3 Max (vídeo con el mismo fotograma inicial y final) → croma y hoja de sprites de 60 fotogramas a 12 fps | `assets/images/anim_*.webp` |
 | Icono y gráfico destacado | GPT Image 2.5 | `store/` |
 
 Encima de eso, el código añade animación procedimental: "hervido" de stop-motion a 12 fps (`boil()` en `lib/gfx.dart`), estiramientos y aplastamientos, y partículas de bolitas de plastilina.
@@ -27,7 +27,10 @@ Los efectos de sonido están sintetizados (`assets/audio/*.wav`).
 lib/
   main.dart      arranque, orientación, entrada táctil y overlays
   game.dart      bucle de partida (sintonía → juego → resultado), tele, HUD y efectos CRT
-  channels.dart  los 12 microjuegos + el jefe
+  channels.dart  canales 1–12 + el jefe
+  channels2.dart canales 13–30 (deslizar, tirachinas, trazar, memoria, contar, apilar,
+                 mantener y soltar, encontrar el raro, topos, cortar, equilibrio, pilotar,
+                 ritmo, clasificar, girar, frotar, rodear y rebotar)
   gfx.dart       sprites, animaciones, texto, formas de plastilina y partículas
   ui.dart        menú, pausa y fin de partida
   sfx.dart       efectos de sonido y vibración
@@ -46,7 +49,16 @@ flutter test
 ```
 
 Para ver todos los canales en orden sin perder vidas (útil para capturas):
-`flutter run --dart-define=TOUR=true`.
+`flutter run --dart-define=TOUR=true` (añade `--dart-define=TOUR_FROM=12` para empezar por el canal 13).
+
+## Cómo encajan las piezas
+
+- **Fondos**: se generan vacíos y con el suelo en una altura conocida; `bx()`/`by()` en `Channel` convierten
+  una fracción del decorado a pantalla, así cada personaje se apoya en su suelo, mesa o escenario.
+- **Sombras de contacto** (`Gfx.shadow`) bajo todo lo que pisa el suelo.
+- **Estados de reacción** (gana/pierde) generados con el personaje como referencia y recortados con la misma
+  caja que su versión base (o que su animación), para que al cambiar de estado no se mueva de sitio.
+- **Botones**: el texto solo ocupa la cara plana de la plastilina (`kButtonFace`) y se encoge hasta caber.
 
 ## Publicar en Google Play
 

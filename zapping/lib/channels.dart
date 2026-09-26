@@ -57,6 +57,20 @@ abstract class Channel {
   void render(Canvas c);
 
   void drawBg(Canvas c) => Gfx.cover(c, bg, S.inflate(6));
+
+  /// Convierte una fracción del fondo (imagen 4:5 recortada para cubrir la tele) a coordenadas de pantalla.
+  /// Sirve para apoyar personajes justo en el suelo o la mesa que se ve en el decorado.
+  double bx(double f) => sl - 6 + f * 433;
+  double by(double f) => st - 40.6 + f * 541.25;
+
+  /// Deslizamiento terminado en este frame (vector desde donde empezó), o null.
+  Offset? swipe({double min = 40}) {
+    if (!p.released) return null;
+    final d = Offset(p.x - p.sx, p.y - p.sy);
+    return d.distance >= min ? d : null;
+  }
+
+  bool get pointerIn => S.contains(Offset(p.x, p.y));
 }
 
 typedef ChannelFactory = Channel Function(ZappingGame g);
@@ -132,6 +146,7 @@ class Screw extends Channel {
   @override
   void render(Canvas c) {
     drawBg(c);
+    Gfx.shadow(c, cx, sb - 4, 150);
     Gfx.sprite(c, 'host_body', cx, sb + 12, 230, ay: 1, sx: 1 + boil(vt, 1) * .01);
     final hy = headY;
     Gfx.anim(c, 'host_head', vt, cx, hy, 150, rot: a);
@@ -200,6 +215,7 @@ class FakeArms extends Channel {
   void render(Canvas c) {
     drawBg(c);
     final ok = res == 1;
+    Gfx.shadow(c, custX, sb - 8, 190);
     Gfx.sprite(c, 'customer', custX, sb - 8, custH,
         ay: 1, sy: 1 + boil(vt, 2) * .012 + (ok ? math.sin(since * 20) * .03 * clamp01(1 - since) : 0));
     // diana
@@ -295,6 +311,7 @@ class Gazpacho extends Channel {
   void render(Canvas c) {
     drawBg(c);
     final hit = res == -1;
+    Gfx.shadow(c, px, sb - 10, 80);
     Gfx.anim(c, 'reporter', vt, px, sb - 10, 118,
         ay: 1, rot: hit ? math.sin(since * 30) * .15 : (px - cx) * .0006);
     for (final s in splats) {
@@ -443,8 +460,9 @@ class Quiz extends Channel {
 
   String q = '';
   int ans = 0, picked = -1;
-  Rect get yes => Rect.fromLTWH(sl + 16, sb - 150, S.width / 2 - 24, 128);
-  Rect get no => Rect.fromLTWH(cx + 8, sb - 150, S.width / 2 - 24, 128);
+  double get bw => S.width / 2 - 24;
+  Rect get yes => Rect.fromLTWH(sl + 16, sb - 24 - bw * kButtonAspect, bw, bw * kButtonAspect);
+  Rect get no => Rect.fromLTWH(cx + 8, sb - 24 - bw * kButtonAspect, bw, bw * kButtonAspect);
 
   @override
   void init(int l) {
@@ -480,8 +498,7 @@ class Quiz extends Channel {
     void btn(Rect r, String img, String label, int v) {
       final sel = picked == v;
       final s = sel ? 1.08 : 1 + math.sin(vt * 6 + v) * .015;
-      Gfx.sprite(c, img, r.center.dx, r.center.dy, r.height * s);
-      Gfx.text(c, label, r.center.dx, r.center.dy - 4, 50, scale: s);
+      Gfx.button(c, img, label, r, scale: s, size: 56);
     }
 
     btn(yes, 'btn_teal', 'SÍ', 1);
@@ -536,6 +553,7 @@ class Chairs extends Channel {
   @override
   void render(Canvas c) {
     drawBg(c);
+    Gfx.shadow(c, cx, cy + 150, 130);
     Gfx.sprite(c, 'chair', cx, cy + 150, 165, ay: 1);
     final rv = on ? 0.0 : clamp01((t - stop) / window);
     final a = t * 3;
@@ -545,11 +563,13 @@ class Chairs extends Channel {
     } else {
       final x = on ? cx + math.cos(a) * 140 : lerp(cx + 140, cx + 110, rv);
       final y = on ? cy + 70 + math.sin(a) * 40 : cy + 110;
+      Gfx.shadow(c, x, y, 60);
       Gfx.sprite(c, 'player', x, y + (on ? hop(0) : 0), 88, ay: 1);
     }
     if (!me) {
       final x = on ? cx - math.cos(a) * 140 : lerp(cx - 140, cx, rv);
       final y = on ? cy + 70 - math.sin(a) * 40 : lerp(cy + 110, seatY + 6, rv);
+      Gfx.shadow(c, x, y, 64);
       Gfx.sprite(c, 'rival', x, y + (on ? hop(1) : 0), 94, ay: 1);
     }
     if (on) {
@@ -656,6 +676,7 @@ class Soda extends Channel {
     drawBg(c);
     final j = rnd(-f, f) * 8;
     final fly = res == 1 ? -since * since * 1800 : 0.0;
+    if (res != 1) Gfx.shadow(c, cx + off, cy + 150, 110);
     Gfx.sprite(c, 'soda', cx + off + j, cy + 150 + fly, 270,
         ay: 1, rot: off * .004 + j * .01, sy: 1 + f * .06, sx: 1 - f * .03);
     Gfx.clayBar(c, Rect.fromLTWH(sl + 36, sb - 34, S.width - 72, 20), f, Pal.lime);
@@ -757,7 +778,7 @@ class Glutton extends Channel {
   @override
   String get bg => 'bg_diner';
 
-  double bx = 0, by = 0, mx = 0, spd = 0;
+  double hx = 0, hy = 0, mx = 0, spd = 0;
   bool grab = false;
   static const gh = 200.0;
   double get gy => st + 20;
@@ -765,8 +786,8 @@ class Glutton extends Channel {
 
   @override
   void init(int l) {
-    bx = cx;
-    by = sb - 70;
+    hx = cx;
+    hy = sb - 70;
     mx = cx;
     spd = 1.6 + l * .4;
   }
@@ -775,15 +796,15 @@ class Glutton extends Channel {
   void update(double dt) {
     if (res != 0) return;
     mx = cx + math.sin(t * spd) * 120;
-    if (p.pressed && dist(p.x, p.y, bx, by) < 80) grab = true;
+    if (p.pressed && dist(p.x, p.y, hx, hy) < 80) grab = true;
     if (!p.down) grab = false;
     if (grab) {
-      bx = p.x;
-      by = p.y;
+      hx = p.x;
+      hy = p.y;
     }
-    bx = bx.clamp(sl + 30, sr - 30);
-    by = by.clamp(st + 30, sb - 30);
-    if (dist(bx, by, mouth.dx, mouth.dy) < 55) {
+    hx = hx.clamp(sl + 30, sr - 30);
+    hy = hy.clamp(st + 30, sb - 30);
+    if (dist(hx, hy, mouth.dx, mouth.dy) < 55) {
       win();
       g.fx.burst(mouth.dx, mouth.dy, Pal.gold, 24);
       Sfx.play('gulp');
@@ -800,7 +821,7 @@ class Glutton extends Channel {
       Gfx.anim(c, 'glutton_open', vt, mx, gy, gh, ay: 0);
     }
     if (res != 1) {
-      Gfx.sprite(c, 'burger', bx, by, grab ? 86 : 78, rot: boil(vt, 5) * .04);
+      Gfx.sprite(c, 'burger', hx, hy, grab ? 86 : 78, rot: boil(vt, 5) * .04);
     }
     Gfx.text(c, 'MÉTELA EN LA BOCA', cx, sb - 18, 16, font: kBody, color: Pal.ink);
   }

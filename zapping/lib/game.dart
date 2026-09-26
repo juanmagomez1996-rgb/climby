@@ -5,13 +5,16 @@ import 'package:flame/game.dart';
 import 'package:flutter/widgets.dart';
 
 import 'channels.dart';
+import 'channels2.dart';
 import 'gfx.dart';
 import 'prefs.dart';
 import 'sfx.dart';
 
 class Pointer {
   double x = -999, y = -999, dx = 0, dy = 0;
-  bool down = false, pressed = false;
+  // Dónde empezó el toque actual (o el último).
+  double sx = -999, sy = -999;
+  bool down = false, pressed = false, released = false;
   int? id;
 }
 
@@ -36,6 +39,7 @@ class ZappingGame extends FlameGame {
 
   /// Solo para capturas: `--dart-define=TOUR=true` recorre los canales en orden sin perder vidas.
   static const bool tour = bool.fromEnvironment('TOUR');
+  static const int tourFrom = int.fromEnvironment('TOUR_FROM');
 
   final ptr = Pointer();
   final fx = Fx();
@@ -86,6 +90,8 @@ class ZappingGame extends FlameGame {
       ..y = o.dy
       ..dx = 0
       ..dy = 0
+      ..sx = o.dx
+      ..sy = o.dy
       ..down = true
       ..pressed = true;
     if (mode == Mode.playing && (o - pauseBtn).distance < 34) {
@@ -108,6 +114,7 @@ class ZappingGame extends FlameGame {
     if (id != ptr.id) return;
     ptr
       ..down = false
+      ..released = true
       ..id = null;
   }
 
@@ -158,13 +165,13 @@ class ZappingGame extends FlameGame {
     ch++;
     Channel c;
     if (tour) {
-      final i = (ch - 1) % (channelFactories.length + 1);
-      c = i == channelFactories.length ? Boss(this) : channelFactories[i](this);
+      final i = (ch - 1 + tourFrom) % (allChannels.length + 1);
+      c = i == allChannels.length ? Boss(this) : allChannels[i](this);
     } else if (ch % 10 == 0) {
       c = Boss(this);
     } else {
       if (bag.isEmpty) {
-        bag.addAll(List.generate(channelFactories.length, (i) => i)..shuffle(rng));
+        bag.addAll(List.generate(allChannels.length, (i) => i)..shuffle(rng));
       }
       var i = bag.removeLast();
       if (i == lastIdx && bag.isNotEmpty) {
@@ -173,7 +180,7 @@ class ZappingGame extends FlameGame {
         i = j;
       }
       lastIdx = i;
-      c = channelFactories[i](this);
+      c = allChannels[i](this);
     }
     c.init(level);
     cur = c;
@@ -254,6 +261,7 @@ class ZappingGame extends FlameGame {
     }
     ptr
       ..pressed = false
+      ..released = false
       ..dx = 0
       ..dy = 0;
   }

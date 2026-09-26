@@ -44,14 +44,18 @@ class _ClayButtonState extends State<ClayButton> {
           duration: const Duration(milliseconds: 90),
           child: SizedBox(
             width: widget.width,
-            height: widget.width * .42,
-            child: Stack(alignment: Alignment.center, children: [
+            height: widget.width * kButtonAspect,
+            child: Stack(children: [
               Positioned.fill(child: Image.asset('assets/images/${widget.image}.webp', fit: BoxFit.fill)),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 6, left: 18, right: 18),
+              // El texto solo ocupa la cara plana del botón (sin el borde abultado).
+              Positioned(
+                left: widget.width * kButtonFace.left,
+                right: widget.width * (1 - kButtonFace.right),
+                top: widget.width * kButtonAspect * kButtonFace.top,
+                bottom: widget.width * kButtonAspect * (1 - kButtonFace.bottom),
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
-                  child: Text(widget.label, style: _display.copyWith(fontSize: 26)),
+                  child: Text(widget.label, maxLines: 1, style: _display.copyWith(fontSize: 26)),
                 ),
               ),
             ]),
@@ -140,7 +144,7 @@ class _MenuOverlayState extends State<MenuOverlay> {
               ),
             ),
           const SizedBox(height: 14),
-          ClayButton('ENCENDER LA TELE', onTap: widget.game.startRun, width: 290),
+          ClayButton('ENCENDER LA TELE', onTap: widget.game.startRun, width: 250),
           const SizedBox(height: 10),
           Text('Récord: ${Prefs.best} canales', style: _body.copyWith(color: Pal.gold, fontSize: 18)),
           const SizedBox(height: 12),
@@ -181,9 +185,9 @@ class PauseOverlay extends StatelessWidget {
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Text('PAUSA', style: _display.copyWith(fontSize: 54, color: Pal.gold)),
           const SizedBox(height: 24),
-          ClayButton('SEGUIR', image: 'btn_teal', onTap: game.resume),
+          ClayButton('SEGUIR', image: 'btn_teal', onTap: game.resume, width: 230),
           const SizedBox(height: 12),
-          ClayButton('APAGAR LA TELE', image: 'btn_pink', onTap: game.toMenu),
+          ClayButton('SALIR AL MENÚ', image: 'btn_pink', onTap: game.toMenu, width: 230),
         ]),
       );
 }
@@ -206,9 +210,9 @@ class GameOverOverlay extends StatelessWidget {
         const SizedBox(height: 4),
         Text('Récord: ${Prefs.best}', style: _body.copyWith(color: Pal.gold, fontWeight: FontWeight.w700)),
         const SizedBox(height: 22),
-        ClayButton('VOLVER A ZAPEAR', onTap: game.startRun, width: 290),
+        ClayButton('VOLVER A ZAPEAR', onTap: game.startRun, width: 250),
         const SizedBox(height: 10),
-        ClayButton('MENÚ', image: 'btn_teal', onTap: game.toMenu, width: 200),
+        ClayButton('MENÚ', image: 'btn_teal', onTap: game.toMenu, width: 170),
       ]),
     );
   }
