@@ -1,68 +1,46 @@
-<!doctype html>
-<html lang="es">
+<!DOCTYPE html>
+<html>
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-<meta name="theme-color" content="#2b1d14">
-<title>Una Vida en 20 Minutos</title>
-<link rel="stylesheet" href="style.css">
+  <!--
+    If you are serving your web app in a path other than the root, change the
+    href value below to reflect the base path you are serving from.
+
+    The path provided below has to start and end with a slash "/" in order for
+    it to work correctly.
+
+    For more details:
+    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
+
+    This is a placeholder for base href that will be replaced by the value of
+    the `--base-href` argument provided to `flutter build`.
+  -->
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="A new Flutter project.">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="una_vida">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <title>una_vida</title>
+  <link rel="manifest" href="manifest.json">
 </head>
 <body>
-<div id="wrap">
-  <div id="stage">
-    <canvas id="cv"></canvas>
+  <!--
+    You can customize the "flutter_bootstrap.js" script.
+    This is useful to provide a custom configuration to the Flutter loader
+    or to give the user feedback during the initialization process.
 
-    <div id="menu" class="screen">
-      <img class="logo" src="assets/ui/logo.webp" alt="Una Vida en 20 minutos">
-      <div class="menu-bottom">
-        <button id="btn-play" class="btn big">VIVIR</button>
-        <div id="menu-best" class="note"></div>
-        <button id="btn-settings" class="btn small">Ajustes</button>
-      </div>
-    </div>
-
-    <div id="card" class="hidden">
-      <div class="paper">
-        <img id="card-img" class="card-img" alt="">
-        <div class="card-age" id="card-age"></div>
-        <div class="card-q" id="card-q"></div>
-        <div class="card-opts" id="card-opts"></div>
-        <div class="card-timer"><i id="card-timer"></i></div>
-      </div>
-    </div>
-
-    <div id="end" class="screen hidden">
-      <div class="paper end-paper">
-        <div class="end-sub">Sales del juego</div>
-        <div class="end-name" id="end-name"></div>
-        <div class="end-epitaph" id="end-epitaph"></div>
-        <div class="end-cause" id="end-cause"></div>
-        <ul class="end-moments" id="end-moments"></ul>
-        <div class="end-stats" id="end-stats"></div>
-        <div class="end-score" id="end-score"></div>
-        <div class="end-record" id="end-record"></div>
-        <button id="btn-again" class="btn big">Vivir otra vez</button>
-        <button id="btn-menu" class="btn small">Menú</button>
-      </div>
-    </div>
-
-    <div id="settings" class="screen hidden">
-      <div class="paper">
-        <div class="end-sub">Ajustes</div>
-        <label class="row"><span>Música</span><input type="checkbox" id="set-music"></label>
-        <label class="row"><span>Efectos</span><input type="checkbox" id="set-sfx"></label>
-        <label class="row"><span>Vibración</span><input type="checkbox" id="set-vib"></label>
-        <button id="btn-reset" class="btn small">Borrar récord</button>
-        <button id="btn-close" class="btn">Volver</button>
-      </div>
-    </div>
-
-    <button id="btn-pause" class="hidden" aria-label="Pausa">II</button>
-    <div id="loading" class="screen"><div class="note">Pintando la vida…</div></div>
-  </div>
-</div>
-<script src="data.js"></script>
-<script src="meta.js"></script>
-<script src="game.js"></script>
+    For more details:
+    * https://docs.flutter.dev/platform-integration/web/initialization
+  -->
+  <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

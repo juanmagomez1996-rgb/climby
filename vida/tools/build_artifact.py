@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Empaqueta web/ en dist/vida.html (formato artifact: sin <html>/<head>, CSS y JS en línea)
+"""Empaqueta html/ en dist/vida.html (formato artifact: sin <html>/<head>, CSS y JS en línea)
 y escribe dist/files.json con el mapa de assets para publicarlos al lado."""
 import re, json, pathlib
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-web = ROOT / 'web'; dist = ROOT / 'dist'; dist.mkdir(exist_ok=True)
+web = ROOT / 'html'; dist = ROOT / 'dist'; dist.mkdir(exist_ok=True)
 html = (web / 'index.html').read_text()
 body = re.search(r'<body>(.*)</body>', html, re.S).group(1)
 body = re.sub(r'<script src="[^"]+"></script>\s*', '', body)

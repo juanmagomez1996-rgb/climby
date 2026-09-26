@@ -135,7 +135,9 @@ def render(bpm, prog, key, parts, beats=4, bars_per_chord=1, name='x', seed=1, m
     wav = OUT / f'{name}.wav'
     with wave.open(str(wav), 'wb') as w:
         w.setnchannels(2); w.setsampwidth(2); w.setframerate(SR); w.writeframes(pcm.tobytes())
-    subprocess.run([imageio_ffmpeg.get_ffmpeg_exe(), '-loglevel', 'error', '-y', '-i', str(wav), '-b:a', '112k', str(OUT / f'{name}.mp3')], check=True)
+    ff = imageio_ffmpeg.get_ffmpeg_exe()
+    subprocess.run([ff, '-loglevel', 'error', '-y', '-i', str(wav), '-b:a', '112k', str(OUT / f'{name}.mp3')], check=True)   # web
+    subprocess.run([ff, '-loglevel', 'error', '-y', '-i', str(wav), '-c:a', 'libvorbis', '-q:a', '4', str(OUT / f'{name}.ogg')], check=True)  # Android (bucle sin hueco)
     wav.unlink(); print(name, round(L / SR, 1), 's')
 
 # ---- partes reutilizables ----
