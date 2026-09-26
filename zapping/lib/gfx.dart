@@ -80,7 +80,7 @@ const spriteNames = [
   'cloneA_odd', 'cloneB', 'cloneB_odd', 'hole', 'hole_front', 'mole', 'mole_hit', 'nigiri',
   'maki', 'chili', 'asteroid', 'pad', 'guest_top', 'guest_cowboy',
   'guest_bald', 'guest_curly', 'key', 'monster', 'monster_clean', 'sponge',
-  'mud', 'tub_front', 'paddle', 'opponent_lose',
+  'mud', 'tub_front', 'knob', 'paddle', 'opponent_lose',
   'bg_dojo', 'bg_fair', 'bg_desk', 'bg_karaoke', 'bg_night', 'bg_bakery',
   'bg_bedroom', 'bg_lab', 'bg_garden', 'bg_sushi', 'bg_circus', 'bg_space',
   'bg_disco', 'bg_club', 'bg_vault', 'bg_bathroom', 'bg_ranch', 'bg_pingpong',

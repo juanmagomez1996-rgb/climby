@@ -64,6 +64,12 @@ class ZappingGame extends FlameGame {
   Channel? cur;
   RunResult? lastRun;
 
+  /// Perilla de canales: gira un «clic» cada vez que se cambia de canal.
+  int zaps = 0;
+  double knobA = 0;
+  static const Offset knobPos = Offset(340.6, 638.1);
+  static const double knobSize = 70.7;
+
   double _k = 1;
   Offset _off = Offset.zero;
 
@@ -237,6 +243,7 @@ class ZappingGame extends FlameGame {
 
   void _nextChannel() {
     ch++;
+    zaps++;
     Channel c;
     if (practice != null) {
       c = makeChannel(practice!);
@@ -308,6 +315,10 @@ class ZappingGame extends FlameGame {
     dt = math.min(dt, 1 / 20);
     time += dt;
     Gfx.time = time;
+    // en el menú la perilla también salta cuando la demo corta a estática
+    if (mode == Mode.menu && (time % 6) > 5.6 && ((time - dt) % 6) <= 5.6) zaps++;
+    final target = zaps * math.pi / 4;
+    knobA += (target - knobA) * (1 - math.exp(-dt * 14));
     fx.update(dt);
     if (mode == Mode.playing) {
       phaseT += dt;
@@ -370,6 +381,9 @@ class ZappingGame extends FlameGame {
     _crt(canvas);
     canvas.restore();
     Gfx.sprite(canvas, 'tv', tvRect.left, tvRect.top, tvRect.height, ax: 0, ay: 0);
+    // la perilla se pinta encima de la del decorado, girada (con un pequeño rebote al encajar)
+    final wob = math.sin((knobA - zaps * math.pi / 4) * 9) * .04;
+    Gfx.sprite(canvas, 'knob', knobPos.dx, knobPos.dy, knobSize, rot: knobA + wob);
     canvas.restore();
     _hud(canvas);
     fx.render(canvas);

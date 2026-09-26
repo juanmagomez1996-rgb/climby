@@ -271,43 +271,58 @@ class Signature extends Channel {
   @override
   String get bg => 'bg_desk';
   @override
-  double get dur => 5.0;
+  double get dur => 7.0;
 
   final pts = <Offset>[];
+  final ink = <Offset>[];
   int k = 0;
   bool drawing = false;
+  double err = 0;
 
   @override
   void init(int l) {
-    final x0 = bx(.2), x1 = bx(.8), yc = by(.52);
-    // Más ondas, un garabato encima y menos margen: una firma de verdad.
-    final ph = rnd(0, tau), loops = 1.9 + l * .3, ph2 = rnd(0, tau);
-    for (var i = 0; i <= 90; i++) {
-      final u = i / 90;
-      pts.add(Offset(lerp(x0, x1, u),
-          yc + math.sin(u * tau * loops + ph) * 50 + math.sin(u * tau * loops * 2.4 + ph2) * 16));
+    // Firma con bucles (trocoide): hay que seguir cada rizo, no vale deslizar en línea recta.
+    final x0 = bx(.17), x1 = bx(.8), yc = by(.5);
+    final n = 3 + math.min(l, 3) * .5;
+    final ph = rnd(-.4, .4);
+    const nPts = 160;
+    for (var i = 0; i <= nPts; i++) {
+      final u = i / nPts;
+      final a = u * tau * n + ph;
+      pts.add(Offset(lerp(x0, x1, u) - 38 * math.sin(a), yc - 58 * math.cos(a) + 12 * math.sin(u * tau)));
     }
+  }
+
+  /// Distancia del dedo al trazo cercano al avance actual (a los segmentos, no solo a los puntos).
+  double _dist(Offset f) {
+    var best = double.infinity;
+    for (var j = math.max(0, k - 4); j < math.min(pts.length - 1, k + 8); j++) {
+      final a = pts[j], b = pts[j + 1], ab = b - a;
+      final u = (((f - a).dx * ab.dx + (f - a).dy * ab.dy) / math.max(ab.distanceSquared, 1e-6)).clamp(0.0, 1.0);
+      best = math.min(best, (f - (a + ab * u)).distance);
+    }
+    return best;
   }
 
   @override
   void update(double dt) {
     if (res != 0) return;
-    if (p.pressed && (Offset(p.x, p.y) - pts[k]).distance < 40) drawing = true;
+    final f = Offset(p.x, p.y);
+    if (p.pressed && (f - pts[k]).distance < 34) drawing = true;
     if (!p.down) {
       drawing = false;
       return;
     }
     if (!drawing) return;
-    final f = Offset(p.x, p.y);
-    // avanza por los puntos cercanos
-    for (var j = k + 1; j < math.min(pts.length, k + 5); j++) {
-      if ((f - pts[j]).distance < 24) k = j;
+    // solo avanza por los siguientes puntos (en orden): si te saltas un rizo, no cuenta
+    for (var j = k + 1; j < math.min(pts.length, k + 7); j++) {
+      if ((f - pts[j]).distance < 20) k = j;
     }
-    var near = double.infinity;
-    for (var j = math.max(0, k - 3); j < math.min(pts.length, k + 6); j++) {
-      near = math.min(near, (f - pts[j]).distance);
-    }
-    if (near > 32) {
+    final d = _dist(f);
+    if (ink.isEmpty || (ink.last - f).distance > 3) ink.add(f);
+    // tinta que se sale: un poco se perdona, pero se acumula
+    if (d > 16) err += (d - 16) * dt;
+    if (d > 30 || err > 5) {
       lose('¡Firma torcida!');
       Sfx.play('boing');
     } else if (k >= pts.length - 1) {
@@ -326,17 +341,17 @@ class Signature extends Channel {
     for (var j = k; j < pts.length; j += 3) {
       c.drawCircle(pts[j], 3.5, Paint()..color = const Color(0x88404050));
     }
-    // tinta
-    if (k > 0) {
-      final path = Path()..moveTo(pts[0].dx, pts[0].dy);
-      for (var j = 1; j <= k; j++) {
-        path.lineTo(pts[j].dx, pts[j].dy);
+    // tinta: el trazo real del dedo (si tiembla, se ve)
+    if (ink.length > 1) {
+      final path = Path()..moveTo(ink[0].dx, ink[0].dy);
+      for (final o in ink.skip(1)) {
+        path.lineTo(o.dx, o.dy);
       }
       c.drawPath(
           path,
           Paint()
             ..style = PaintingStyle.stroke
-            ..strokeWidth = 7
+            ..strokeWidth = 6
             ..strokeCap = StrokeCap.round
             ..strokeJoin = StrokeJoin.round
             ..color = const Color(0xFF2A2A7A));
@@ -1025,42 +1040,50 @@ class Balance extends Channel {
   @override
   bool get survive => true;
 
-  double x = 0, vx = 0, th = 0, w = 0, gust = 0;
+  double x = 0, th = 0, w = 0, gust = 0, acc = 0;
+  static const step = 1 / 120;
   double gain = 5;
 
   @override
   void init(int l) {
     x = cx;
-    th = (rng.nextBool() ? 1 : -1) * .03;
-    gain = 1.8 + l * .25;
+    // sin tocar se cae en unos 2 s; con el dedo se sostiene sin necesitar reflejos de gato
+    final sgn = rng.nextBool() ? 1 : -1;
+    th = sgn * .05;
+    w = sgn * .12;
+    gain = 2.5 + l * .25;
   }
 
   @override
   void update(double dt) {
-    final tx = p.down && pointerIn ? p.x : x;
-    final nx = lerp(x, tx.clamp(sl + 50, sr - 50), 1 - math.exp(-dt * 10));
-    final nvx = (nx - x) / math.max(dt, 1e-4);
-    final ax = (nvx - vx) / math.max(dt, 1e-4);
-    x = nx;
-    vx = nvx;
-    if (res == -1) {
-      w += math.sin(th).sign * 8 * dt;
-      th += w * dt;
-      return;
-    }
-    if ((gust -= dt) <= 0) {
-      gust = rnd(.8, 1.4);
-      w += rnd(-.12, .12);
-    }
-    // péndulo invertido: la gravedad lo tumba y mover la base lo endereza
-    final alpha = gain * math.sin(th) - (ax / 200).clamp(-10, 10) * math.cos(th);
-    w += alpha * dt;
-    w *= math.pow(.35, dt).toDouble();
-    th += w * dt;
-    if (th.abs() > 1.05) {
-      lose('¡Al suelo!');
-      Sfx.play('boing');
-      g.fx.shake(8);
+    // Física en pasos fijos y solo con posiciones (sin derivar la aceleración del dedo):
+    // se comporta igual en cualquier pantalla y a cualquier frecuencia de refresco.
+    final tx = (p.down && pointerIn ? p.x : x).clamp(sl + 50, sr - 50);
+    acc += dt;
+    while (acc >= step) {
+      acc -= step;
+      final nx = lerp(x, tx, 1 - math.exp(-step * 14));
+      final dx = nx - x;
+      x = nx;
+      if (res == -1) {
+        w += math.sin(th).sign * 8 * step;
+        th += w * step;
+        continue;
+      }
+      // meter la rueda debajo del cuerpo lo endereza (el cuerpo mide ~260 px)
+      th -= dx / 260;
+      if ((gust -= step) <= 0) {
+        gust = rnd(.9, 1.5);
+        w += rnd(-.14, .14);
+      }
+      w += gain * math.sin(th) * step;
+      w *= math.pow(.3, step).toDouble();
+      th += w * step;
+      if (th.abs() > 1.05) {
+        lose('¡Al suelo!');
+        Sfx.play('boing');
+        g.fx.shake(8);
+      }
     }
   }
 
@@ -1658,7 +1681,7 @@ class PingPong extends Channel {
   void init(int l) {
     px = cx;
     ox = cx;
-    spd = 380 + l * 45;
+    spd = 520 + l * 55;
     b = Offset(cx, oppY + 40);
   }
 
@@ -1674,7 +1697,7 @@ class PingPong extends Channel {
       if (t < serveAt) return;
       served = true;
       final a = rnd(.3, .6) * (px < cx ? -1 : 1);
-      v = Offset(math.sin(a), math.cos(a)) * spd * .85;
+      v = Offset(math.sin(a), math.cos(a)) * spd * .9;
       Sfx.play('pop');
     }
     ox = lerp(ox, b.dx, 1 - math.exp(-dt * 4));
