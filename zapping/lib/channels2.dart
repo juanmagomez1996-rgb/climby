@@ -1329,11 +1329,13 @@ class Doorman extends Channel {
     c.rotate(sw);
     c.translate(-sign.center.dx, -sign.top);
     Gfx.clayPanel(c, sign, const Color(0xFFF7F1E3), radius: 18);
-    Gfx.text(c, 'NORMA DEL PORTERO', sign.center.dx, sign.top + 26, 18, color: const Color(0xFF6A3FA0), fitW: sign.width - 40);
+    final safe = Gfx.panelSafe(sign, const Color(0xFFF7F1E3));
+    Gfx.textIn(c, 'NORMA DEL PORTERO', Rect.fromLTWH(safe.left, safe.top, safe.width, safe.height * .36), 18,
+        color: const Color(0xFF6A3FA0));
     final pulse = 1 + math.sin(vt * 6) * .04;
-    Gfx.text(c, wantHat ? 'SOLO CON SOMBRERO' : 'PROHIBIDO EL SOMBRERO', sign.center.dx, sign.top + 66, 34,
-        color: wantHat ? const Color(0xFF1E9E54) : const Color(0xFFD02050),
-        fitW: sign.width - 36, fitH: 44, scale: pulse);
+    Gfx.textIn(c, wantHat ? 'SOLO CON SOMBRERO' : 'PROHIBIDO EL SOMBRERO',
+        Rect.fromLTRB(safe.left, safe.top + safe.height * .36, safe.right, safe.bottom), 34,
+        color: wantHat ? const Color(0xFF1E9E54) : const Color(0xFFD02050), scale: pulse);
     c.restore();
     final floorY = by(.78);
     // cola al fondo

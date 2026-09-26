@@ -426,11 +426,14 @@ class ZappingGame extends FlameGame {
     if (phase == Phase.play && ch.t < .8) {
       final k = 1 + math.max(0.0, .4 - ch.t) * 1.5;
       final a = clamp01((.8 - ch.t) * 5);
-      final sz = Gfx.measure(ch.ins, 42, maxW: S.width - 30);
-      Gfx.clayPanel(c, Rect.fromCenter(center: Offset(S.center.dx, S.top + 70), width: (sz.width + 44) * k, height: (math.min(sz.height, 110) + 26) * k),
-          Color.fromRGBO(0x2A, 0x1F, 0x3A, .9 * a), radius: 18);
-      Gfx.text(c, ch.ins, S.center.dx, S.top + 70, 42,
-          scale: k, rot: math.sin(ch.t * 30) * .04, maxW: S.width - 30, fitH: 110);
+      final sz = Gfx.measure(ch.ins, 42, maxW: S.width - 80);
+      final col = Color.fromRGBO(0x2A, 0x1F, 0x3A, .9 * a);
+      final r = Rect.fromCenter(
+          center: Offset(S.center.dx, S.top + 70),
+          width: math.min((sz.width + 56) * k, S.width - 16),
+          height: math.min((sz.height + 34) * k, 130));
+      Gfx.clayPanel(c, r, col, radius: 18);
+      Gfx.textIn(c, ch.ins, Gfx.panelSafe(r, col), 42, rot: math.sin(ch.t * 30) * .04);
     }
     if (phase == Phase.result) {
       c.drawRect(bleed, Paint()..color = ok ? const Color(0x3353D8C3) : const Color(0x44FF5C7A));
@@ -460,20 +463,23 @@ class ZappingGame extends FlameGame {
           Paint()..color = Color.fromRGBO(255, 255, 255, 1 - k));
     }
     final a = clamp01(phaseT * 3);
-    final panel = Rect.fromLTWH(S.left + 18, S.center.dy - 140, S.width - 36, 280);
+    final panel = Rect.fromLTWH(S.left + 14, S.center.dy - 158, S.width - 28, 316);
+    const col = Color(0xEE1A1424);
     c.saveLayer(null, Paint()..color = Color.fromRGBO(0, 0, 0, a));
-    Gfx.clayPanel(c, panel, const Color(0xEE1A1424), radius: 22);
-    // cada texto tiene su franja dentro de la cara plana de la placa y se encoge hasta caber
-    final inner = panel.deflate(26);
-    void slot(String txt, double top, double h, double size, Color col) {
-      Gfx.text(c, txt, inner.center.dx, inner.top + top + h / 2, size,
-          color: col, maxW: inner.width, fitW: inner.width, fitH: h);
+    Gfx.clayPanel(c, panel, col, radius: 22);
+    // cada texto tiene su franja dentro de la zona segura de la placa y se encoge hasta caber
+    final safe = Gfx.panelSafe(panel, col);
+    var y = safe.top;
+    void slot(String txt, double frac, double size, Color color) {
+      final h = safe.height * frac;
+      Gfx.textIn(c, txt, Rect.fromLTWH(safe.left, y, safe.width, h), size, color: color);
+      y += h;
     }
 
-    slot('CANAL ${ch.toString().padLeft(2, '0')}', 0, 44, 40, chn.boss ? Pal.pink : Pal.lime);
-    slot(chn.name, 50, 56, 26, Pal.gold);
-    slot(chn.sub, 112, 62, 21, Pal.ink);
-    slot(chn.hint, 180, inner.height - 180, 19, Pal.teal);
+    slot('CANAL ${ch.toString().padLeft(2, '0')}', .22, 40, chn.boss ? Pal.pink : Pal.lime);
+    slot(chn.name, .24, 26, Pal.gold);
+    slot(chn.sub, .28, 21, Pal.ink);
+    slot(chn.hint, .26, 19, Pal.teal);
     c.restore();
   }
 

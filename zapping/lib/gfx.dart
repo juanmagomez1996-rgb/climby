@@ -405,8 +405,30 @@ class Gfx {
     sprite(c, img, r.center.dx, cy, h * scale);
     final face = Rect.fromLTRB(r.left + r.width * kButtonFace.left, cy - h / 2 + h * kButtonFace.top,
         r.left + r.width * kButtonFace.right, cy - h / 2 + h * kButtonFace.bottom);
-    text(c, label, face.center.dx, face.center.dy, size,
-        scale: scale, fitW: face.width * scale, fitH: face.height * scale);
+    textIn(c, label, Rect.fromCenter(center: face.center, width: face.width * scale, height: face.height * scale), size,
+        scale: scale);
+  }
+
+  /// Zona segura de una placa: dentro del churro del borde y lejos de las esquinas redondeadas.
+  /// Medido sobre los sprites (panel_dark 600x320: borde ~35 px de lado y ~28 arriba/abajo,
+  /// esquina interior de radio ~40) y escalado igual que lo escala [nine].
+  static Rect panelSafe(Rect r, Color col) {
+    final light = HSLColor.fromColor(col).lightness > .45;
+    final ih = light ? 336.0 : 320.0;
+    final cs = ih * .32;
+    final cd = math.min(math.min(r.width, r.height) / 2, math.min(cs, r.height * .32 * 1.2));
+    final k = cd / cs;
+    final hx = (light ? 48.0 : 54.0) * k, vy = (light ? 40.0 : 42.0) * k;
+    return Rect.fromLTRB(r.left + hx, r.top + vy, r.right - hx, r.bottom - vy);
+  }
+
+  /// Texto centrado dentro de una caja: parte en líneas y se encoge hasta caber entero,
+  /// dejando margen para el temblor de las letras (±3,5 % de alto y un poco de giro).
+  static void textIn(Canvas c, String s, Rect box, double size,
+      {Color color = Pal.ink, double scale = 1, double rot = 0, double alpha = 1}) {
+    final w = box.width * .94, h = box.height * .9;
+    text(c, s, box.center.dx, box.center.dy, size,
+        color: color, maxW: w / scale, fitW: w, fitH: h, scale: scale, rot: rot, alpha: alpha);
   }
 
   /// Placa de plastilina: morada oscura o crema (teñida con [col] si es clara).
@@ -512,11 +534,12 @@ class Fx {
       final k = 1 - f.life / 1.1;
       final a = clamp01(f.life * 2);
       // placa oscura detrás: el aviso se lee aunque pase por encima de otros textos del canal
-      final sz = Gfx.measure(f.s, f.size, maxW: 360);
-      Gfx.clayPanel(c, Rect.fromCenter(center: Offset(f.x, f.y), width: sz.width + 40, height: sz.height + 22),
-          Color.fromRGBO(0x2A, 0x1F, 0x3A, .92 * a), radius: 16);
-      Gfx.text(c, f.s, f.x, f.y, f.size,
-          color: f.col, alpha: a, maxW: 360, scale: 1 + math.max(0, .25 - k) * 1.6);
+      final sz = Gfx.measure(f.s, f.size, maxW: 340);
+      final col = Color.fromRGBO(0x2A, 0x1F, 0x3A, .92 * a);
+      final r = Rect.fromCenter(center: Offset(f.x, f.y), width: math.min(sz.width + 48, 400), height: sz.height + 30);
+      Gfx.clayPanel(c, r, col, radius: 16);
+      Gfx.textIn(c, f.s, Gfx.panelSafe(r, col), f.size,
+          color: f.col, alpha: a, scale: 1 + math.max(0, .25 - k) * 1.6);
     }
   }
 

@@ -112,7 +112,11 @@ class _ClayButtonState extends State<ClayButton> {
                 right: widget.width * (1 - kButtonFace.right),
                 top: h * kButtonFace.top,
                 bottom: h * (1 - kButtonFace.bottom),
-                child: FittedBox(fit: BoxFit.scaleDown, child: ClayText(widget.label, size: 42)),
+                // margen extra para el temblor de las letras: nunca tocan el borde de la cara
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: widget.width * .02, vertical: h * .03),
+                  child: FittedBox(fit: BoxFit.scaleDown, child: ClayText(widget.label, size: 42)),
+                ),
               ),
             ]),
           ),
@@ -185,13 +189,18 @@ class _Scrim extends StatelessWidget {
 }
 
 /// Placa de plastilina (sprite estirado) detrás de un bloque de texto.
+/// El relleno sale de la zona segura medida en el sprite (para una placa de ~400x180 el churro
+/// del borde ocupa ~36 px de lado y ~28 arriba/abajo); las tarjetas bajas usan [compact].
 class _ClayCard extends StatelessWidget {
   final Widget child;
-  const _ClayCard({required this.child});
+  final bool compact;
+  const _ClayCard({required this.child, this.compact = false});
   @override
   Widget build(BuildContext context) => CustomPaint(
         painter: _CardPainter(),
-        child: Padding(padding: const EdgeInsets.fromLTRB(22, 20, 22, 22), child: child),
+        child: Padding(
+            padding: compact ? const EdgeInsets.fromLTRB(22, 16, 22, 16) : const EdgeInsets.fromLTRB(40, 32, 40, 32),
+            child: child),
       );
 }
 
@@ -230,7 +239,7 @@ class _MenuOverlayState extends State<MenuOverlay> {
                   'Tienes 4 vidas. Cada 5 canales todo va más rápido. '
                   'Cada 10 aparece un jefe y, si lo vences, recuperas una vida.',
                   size: 18,
-                  maxWidth: box.maxWidth - 84,
+                  maxWidth: box.maxWidth - 120,
                 ),
               ),
             ),
@@ -339,6 +348,7 @@ class SandboxOverlay extends StatelessWidget {
                           game.startPractice(i);
                         },
                         child: _ClayCard(
+                          compact: true,
                           child: Row(children: [
                             SizedBox(
                                 width: 52,

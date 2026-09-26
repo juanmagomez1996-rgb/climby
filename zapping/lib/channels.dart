@@ -545,8 +545,7 @@ class Quiz extends Channel {
     Gfx.anim(c, 'quizhost', vt, cx, st + 118, 118, ay: 1);
     final card = Rect.fromLTWH(sl + 26, st + 128, S.width - 52, 116);
     Gfx.clayPanel(c, card, const Color(0xFFF7F1E3));
-    Gfx.text(c, q, cx, card.center.dy, 30,
-        color: const Color(0xFF6A3FA0), maxW: card.width - 40, fitH: card.height - 30);
+    Gfx.textIn(c, q, Gfx.panelSafe(card, const Color(0xFFF7F1E3)), 30, color: const Color(0xFF6A3FA0));
     void btn(Rect r, String img, String label, int v) {
       final sel = picked == v;
       final s = sel ? 1.08 : 1 + math.sin(vt * 6 + v) * .015;
