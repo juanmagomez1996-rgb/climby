@@ -566,8 +566,8 @@ function startLevel(i) {
 }
 function spawn() {
   const dream = !!L.dream, cpx = L.checkpoints[S.cp];
-  P = { x: cpx, y: 0, w: 10, h: dream ? 38 : 36, vx: 0, vy: 0, on: true, co: 0, buf: 0, face: 1, animT: 0, airT: 0, landT: 0, stepT: 0, mantle: null, pushing: 0, pulling: 0, under: 0, holdT: 0, holdDir: 0, idleT: 0 };
-  P.y = surfaceY(cpx + 5) - P.h;
+  P = { x: cpx, y: 0, w: 10, h: dream ? 38 : 36, vx: 0, vy: 0, on: true, co: 0, buf: 0, face: 1, animT: 0, airT: 0, landT: 0, stepT: 0, mantle: null, act: null, topY: 0, pushing: 0, pulling: 0, under: 0, holdT: 0, holdDir: 0, idleT: 0 };
+  P.y = surfaceY(cpx + 5) - P.h; P.topY = P.y;
   // restore chases: if this checkpoint is inside a chase, it restarts right behind you
   chase = null;
   for (const c of L.chases) if (cpx >= c.trigger && cpx < c.end) { c.started = true; chase = c; c.x = cpx - 250; }
@@ -599,8 +599,8 @@ function endCard() {
 function die(type) {
   if (S.dead) return;
   S.dead = { type, t: 0, x: P.x, y: P.y, face: P.face, vy: 0 };
-  S.state = 'dead'; S.shake = type === 'fall' ? 0 : 7;
-  if (type === 'trap') SFX.snap(); else if (type === 'crush') SFX.crush(); else if (type === 'drown') SFX.splash(); else if (type === 'fall') SFX.land();
+  S.state = 'dead'; S.shake = type === 'fall' ? 0 : type === 'impact' ? 9 : 7;
+  if (type === 'trap') SFX.snap(); else if (type === 'crush') SFX.crush(); else if (type === 'drown') SFX.splash(); else if (type === 'fall') SFX.land(); else if (type === 'impact') { SFX.land(); SFX.crush(); }
   setTimeout(() => SFX.death(), 250);
 }
 
@@ -636,7 +636,7 @@ function frameOf(m, t, mode) { // mode: loop | once | pingpong | hold
   if (mode === 'hold') { if (x < n - 1) return x; const a = m.loopFrom || 0, p = 2 * (n - 1 - a), q = p > 0 ? (x - (n - 1)) % p : 0; return q < n - 1 - a ? (n - 1) - q : a + (q - (n - 1 - a)); }
   return x % n;
 }
-function resetAnim() { Object.assign(AN, { cur: null, prev: null, fade: 1, clk: {}, visFace: P ? P.face : 1, moveT: 0, stopT: -1, standT: -1, wasMoving: false, landT: -1 }); }
+function resetAnim() { Object.assign(AN, { tail: null, cur: null, prev: null, fade: 1, clk: {}, visFace: P ? P.face : 1, moveT: 0, stopT: -1, standT: -1, wasMoving: false, landT: -1 }); }
 function chooseAnim(dt) {
   const sheet = L.dream ? 'mother' : 'brother', A = ATLAS[sheet]; if (!A) return null;
   const an = A.anims, clk = AN.clk, v = Math.abs(P.vx), cur = AN.cur && AN.cur.sheet === sheet ? AN.cur : null;
@@ -661,12 +661,20 @@ function chooseAnim(dt) {
   }
   if (S.state === 'deliver') return out(at('offer', frameOf(an.offer, S.timer / 60, 'hold')));
   if (AN.standT >= 0) { AN.standT += dt; const f = AN.kneelF - AN.standT * an.kneel.fps * 1.6; if (f > 0) return out(at('kneel', f)); AN.standT = -1; }
+  if (P.act) return out(at(P.act.type, P.act.f));
+  if (AN.tail) {   // the end of a move carried on by another clip (standing up on top)
+    const m = an[AN.tail.anim]; AN.tail.f += dt * m.fps * 1.5;
+    if (AN.tail.f < m.frames - 1 && v < .15 && P.on) return out(at(AN.tail.anim, AN.tail.f));
+    AN.tail = null;
+  }
   if (P.mantle && an.climb) return out(at('climb', (.2 + .8 * Math.min(1, P.mantle.t)) * (an.climb.frames - 1)));
   // --- in the air: a leap when he jumped with a direction, a hop otherwise, then the fall
   //     (a bump that lifts the feet for a moment is still walking)
-  if (!P.on && (P.vy < -.5 || P.airT > .12)) {
+  if (P.on) AN.fallLong = false;
+  const stepping = AN.airKind === 'step' && P.airT < .4;   // stepping down off a crate: the stride goes on
+  if (!P.on && !stepping && (P.vy < -.5 || P.airT > .12)) {
     AN.wasMoving = false; AN.stopT = -1; AN.landT = -1;
-    if (P.airT > .62 && P.vy > 1.5 && an.fall) return out(cyc('fall', 1));
+    if (P.y - P.topY > 40 && P.vy > 2 && an.fall && (AN.fallLong || (AN.fallLong = P.y - P.topY + dropBelow(P.x) > FALL.hard))) return out(cyc('fall', 1));   // a long way down
     const J = AN.airKind === 'leap' && an.leap ? an.leap : an.jump, name = AN.airKind === 'leap' && an.leap ? 'leap' : 'jump';
     const air = [...J.rise, ...J.fall]; if (!air.length) return out(at(name, 0));
     const p = Math.max(0, Math.min(.999, (P.vy - JUMP) / (6.8 - JUMP)));        // 0 at take-off, 1 when falling fast
@@ -717,15 +725,70 @@ function adjacentCrate(side) { // crate touching the player's side (side = ±1)
   }
   return null;
 }
+/* ---------- TRAVERSAL ----------
+   The move depends on what is in front, like the boy in LIMBO: a crate (knee high) is stepped onto with
+   the hands first, a wall at chest height is climbed with a foot against it, a ledge above the head is
+   jumped at, hung from and pulled up onto. Each move is a filmed clip; the body follows the clip's own
+   rest points (feet on the ground, hands on the edge, feet on top) scaled to this obstacle. */
+const MOVES = { stepup: { max: 34, from: 6, rate: 2.6 }, vault: { max: 60, from: 0, rate: 2.2 }, hang: { max: 86, from: 0, rate: 2.3 } };
+const HUG = .18;          // share of the horizontal way at which the body is against the wall
+function standable(x, y) { return !hitSolid(x, y, P.w, P.h, P) && (hitSolid(x, y + 2, P.w, P.h, P) || !!onewayBelow({ x, y, w: P.w, h: P.h }, 2)); }
+function ledgeAhead(dir, reach) { // the first place to stand on top of the obstacle in front, within reach
+  let d = -1;
+  for (let k = 1; k <= reach; k++) if (hitSolid(P.x + dir * k, P.y, P.w, P.h - STEP - 1, P)) { d = k; break; }
+  if (d < 0) return null;
+  const nx = P.x + dir * (d - 1 + P.w * .9);
+  for (let yt = Math.floor(P.y - STEP); yt >= P.y - MOVES.hang.max; yt--) {
+    if (!standable(nx, yt)) continue;
+    if (hitSolid(P.x, yt, P.w, P.h, P) || hitSolid(P.x + dir * (d - 1), yt, P.w, P.h, P)) return null;   // no room to climb up
+    return { h: P.y - yt, x1: nx, y1: yt, xh: P.x + dir * (d - 1) };
+  }
+  return null;
+}
+function startMove(type, lg, dir, from) {
+  const m = ATLAS.brother && ATLAS.brother.anims[type]; if (!m) return false;
+  P.act = { type, m, dir, f: from != null ? from : MOVES[type].from, x0: P.x, y0: P.y, xh: lg.xh, x1: lg.x1, y1: lg.y1 };
+  P.vx = P.vy = 0; P.on = false; P.face = AN.visFace = dir; AN.tail = null; AN.landT = -1; AN.stopT = -1; AN.wasMoving = false;
+  SFX.creak(); return true;
+}
+// on jump: climb what is right in front instead of hopping at it (a running boy still leaps a crate)
+function tryTraverse(dir) {
+  if (L.dream || !ATLAS.brother || !ATLAS.brother.anims.stepup) return false;
+  const side = dir || P.face, lg = ledgeAhead(side, dir ? 12 : 5); if (!lg) return false;
+  const type = lg.h < MOVES.stepup.max ? 'stepup' : lg.h < MOVES.vault.max ? 'vault' : 'hang';
+  if (type === 'stepup' && Math.abs(P.vx) > 1.2) return false;
+  return startMove(type, lg, side);
+}
+// in the air against a wall: grab the edge and pull up (mid-clip, from the hands or the foot on the edge)
 function tryMantle(dir) {
   const nx = P.x + dir * (P.w * .9);
   for (let yt = Math.floor(P.y - 6); yt >= P.y + 6 - P.h; yt--) {
     if (!hitSolid(nx, yt, P.w, P.h, P) && hitSolid(nx, yt + 2, P.w, P.h, P)) {
       if (hitSolid(P.x, yt, P.w, P.h, P)) return false; // no room to pull up
+      const A = ATLAS.brother && ATLAS.brother.anims, h = P.y - yt, lg = { x1: nx, y1: yt, xh: P.x };
+      if (A && A.hang && !L.dream) return h < 18 ? startMove('vault', lg, dir, A.vault.keys[0][0]) : startMove('hang', lg, dir, A.hang.keys[1][0] + 2);
       P.mantle = { t: 0, x0: P.x, y0: P.y, x1: nx, y1: yt }; P.vx = P.vy = 0; SFX.creak(); return true;
     }
   }
   return false;
+}
+const FALL = { step: 34, hard: 95, dead: 175 };   // px: step down / soft landing / heavy landing / death
+function dropBelow(x) { // distance from the feet to what is under x
+  for (let k = 0; k < 260; k++) if (hitSolid(x, P.y + k + 1, P.w, P.h, P) || onewayBelow({ x, y: P.y + k, w: P.w, h: P.h }, 1)) return k;
+  return 999;
+}
+function ease(t) { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); }
+function keyAt(keys, f, val) { // value along hand-marked keys, eased between them
+  if (f <= keys[0][0]) return val(keys[0][1]);
+  for (let i = 1; i < keys.length; i++) if (f <= keys[i][0]) { const a = keys[i - 1], b = keys[i], t = ease((f - a[0]) / Math.max(1, b[0] - a[0])); return val(a[1]) * (1 - t) + val(b[1]) * t; }
+  return val(keys[keys.length - 1][1]);
+}
+function actPose(a) { // where the body is at the clip's current frame
+  const m = a.m, i = Math.max(0, Math.min(m.frames - 1, Math.floor(a.f))), s = 40 / ATLAS.brother.bodyH, top = a.y1 + P.h;
+  const bottom = keyAt(m.keys, a.f, k => k === 'g0' ? a.y0 + P.h : k === 'g1' ? top : top + m.ext[i] * s - 2);
+  const v = keyAt(m.fwd, a.f, x => x);
+  const x = v <= HUG ? a.x0 + (a.xh - a.x0) * (v / HUG) : a.xh + (a.x1 - a.xh) * ((v - HUG) / (1 - HUG));
+  return { x, bottom, base: bottom + (ATLAS.brother.frameH - 3 - m.by[i]) * s };
 }
 function step() { stepCore(); animate(1 / 60); }
 function stepCore() {
@@ -781,6 +844,15 @@ function stepCore() {
   if (S.state !== 'play') return;
 
   P.animT += dt; P.landT = Math.max(0, P.landT - dt);
+  if (P.act) {
+    const a = P.act, chasing = chase && chase.started && !chase.done;
+    a.f += dt * a.m.fps * MOVES[a.type].rate * (chasing ? 1.3 : 1);
+    if (a.f >= a.m.frames - 1) {
+      P.x = a.x1; P.y = a.y1; P.act = null; P.on = true; P.vx = P.vy = 0; P.airT = 0; P.topY = P.y;
+      if (a.type === 'vault') AN.tail = { anim: 'stepup', f: match('brother', 'vault', a.m.frames - 1, 'stepup', .66, 1) };   // stands up from the crouch on top
+    } else { const q = actPose(a); P.x = q.x; P.y = q.bottom - P.h; }
+    shadowTick(); camFollow(); return;
+  }
   if (P.mantle) {
     const m = P.mantle; m.t += dt / .28; const k = Math.min(1, m.t);
     const e = k < .6 ? k / .6 : 1;                     // pull up first, then step over
@@ -809,6 +881,7 @@ function stepCore() {
   if (K.j && !jPrev && !L.dream && AN.standT < 0) P.buf = 7;
   jPrev = K.j;
   P.co = P.on ? 6 : P.co - 1;
+  if (P.buf > 0 && P.on && !pullC && !inWater && tryTraverse(dir)) { P.buf = 0; camFollow(); return; }
   if (P.buf > 0 && P.co > 0 && !pullC && (!inWater || P.y + 8 < inWater.y)) { P.vy = JUMP; P.buf = 0; P.co = 0; P.on = false; P.airT = 0; if (dir) P.vx = dir * Math.max(Math.abs(P.vx), RUNG) * 1.25; /* a held direction makes a full leap */ AN.airKind = dir ? 'leap' : 'jump'; noise(.08, .05, 'bandpass', 700, 1); }
   P.buf--;
   if (!K.j && P.vy < -2.6) P.vy = -2.6;
@@ -834,11 +907,20 @@ function stepCore() {
   P.x = Math.max(0, Math.min(L.w - P.w, P.x));
   // vertical
   const vr = moveY(P, P.vy);
-  if (vr === 'land') { if (!wasOn) { const J = ATLAS.brother && ATLAS.brother.anims; if (J && !L.dream) { AN.landT = 0; AN.landClip = P.vy > 6 && J.land ? 'land' : (AN.airKind === 'leap' && J.leap ? 'leap' : 'jump'); AN.landFrom = AN.landClip === 'land' && AN.cur ? match('brother', AN.cur.anim, AN.cur.f, 'land', 0, .4) : 0; } } if (!wasOn && P.vy > 3.2) { const J = ATLAS.brother && ATLAS.brother.anims.jump; P.landT = J && !L.dream ? Math.min(.35, J.land.length / J.fps) : .16; if (P.vy > 4.5) SFX.land(); } P.vy = 0; P.on = true; }
+  if (vr === 'land') {
+    const drop = P.y - P.topY;    // how far the body came down: a step, a drop, a fall, or too far
+    if (!wasOn && !L.dream && drop > FALL.dead && !inWater) { P.vy = 0; P.on = true; die('impact'); return; }
+    if (!wasOn) { const J = ATLAS.brother && ATLAS.brother.anims; if (J && !L.dream && drop > FALL.step) { AN.landT = 0; AN.landClip = drop > FALL.hard && J.land ? 'land' : (AN.airKind === 'leap' && J.leap ? 'leap' : 'jump'); AN.landFrom = AN.landClip === 'land' && AN.cur ? match('brother', AN.cur.anim, AN.cur.f, 'land', 0, .4) : 0; } }
+    if (!wasOn && drop > FALL.step && P.vy > 3.2) { const J = ATLAS.brother && ATLAS.brother.anims.jump; P.landT = J && !L.dream ? Math.min(drop > FALL.hard ? .5 : .3, J.land.length / J.fps) : .16; if (P.vy > 4.5) SFX.land(); }
+    P.vy = 0; P.on = true;
+  }
   else if (vr === 'ceil') { P.vy = 0; P.on = false; }
   else { P.on = false; if (wasOn && P.vy >= 0 && snapDown(P, STEP + 2)) { P.on = true; P.vy = 0; } }
-  if (!P.on) P.airT += dt; else { P.airT = 0; }
-  if (!P.on && wasOn && P.vy >= 0) AN.airKind = Math.abs(P.vx) > .8 ? 'leap' : 'jump';   // running off an edge keeps the stride pose
+  if (!P.on) { P.airT += dt; P.topY = Math.min(P.topY, P.y); } else { P.airT = 0; P.topY = P.y; }
+  if (!P.on && wasOn && P.vy >= 0) {   // off an edge: stepping down keeps the stride, a real drop takes the fall pose
+    const d = dropBelow(P.x + P.vx * 8);
+    AN.airKind = d <= FALL.step ? 'step' : Math.abs(P.vx) > .8 ? 'leap' : 'jump';
+  }
   if (P.on && Math.abs(P.vx) > .4) { P.stepT += Math.abs(P.vx) * dt; if (P.stepT > .38) { P.stepT = 0; SFX.step(); } }
   // what we stand on
   if (P.on) for (const b of supportUnder(P)) if (b.fragile && b.t < 0) { b.t = 0; SFX.creak(); }
@@ -846,21 +928,24 @@ function stepCore() {
   for (const t of L.traps) if (!t.shut && P.x + P.w > t.x + 5 && P.x < t.x + t.w - 5 && P.y + P.h > t.y - 4 && P.y + P.h < t.y + 3) { t.shut = true; P.x = t.x + t.w / 2 - P.w / 2; die('trap'); return; }
   if (inWater) { P.under = P.y + 6 > inWater.y ? P.under + dt : 0; if (P.under > .9) { die('drown'); return; } }
   if (P.y > VH + 20) { die('fall'); return; }
-  // the shadow
-  for (const c of L.chases) if (!c.started && !c.done && P.x > c.trigger) { c.started = true; c.x = P.x - 270; chase = c; SFX.whisper(); }
-  if (chase && !chase.done) {
-    chase.x += chase.speed; chase.x = Math.max(chase.x, P.x - 300);
-    const d = P.x - chase.x; if (d < 90) S.shake = Math.max(S.shake, (90 - d) / 90 * 1.4);
-    if (d < 0) { die('shadow'); return; }
-    if (P.x > chase.end) { chase.done = true; SFX.chord(); }
-  }
-  if (chase && chase.done) chase.x -= 3;
+  if (shadowTick()) return;
   // checkpoints, whispers, goal
   for (let i = S.cp + 1; i < L.checkpoints.length; i++) if (P.x > L.checkpoints[i]) S.cp = i;
   L.says.forEach(([x, who, text], i) => { if (!S.said.has(i) && P.x > x) { S.said.add(i); toast(who, text); } });
   if (!L.dream && P.x > L.goalX - 8 && P.on) { S.state = 'deliver'; S.delivered = true; S.timer = 0; P.vx = 0; P.face = 1; S.from = { x: P.x + 16, y: P.y + 14 }; SFX.chord(); }
   if (L.dream && P.x > L.goalX - 26) { S.state = 'meet'; S.timer = 0; P.vx = 0; }
   camFollow();
+}
+function shadowTick() { // the shadow keeps coming, even while he climbs
+  for (const c of L.chases) if (!c.started && !c.done && P.x > c.trigger) { c.started = true; c.x = P.x - 270; chase = c; SFX.whisper(); }
+  if (chase && !chase.done) {
+    chase.x += chase.speed; chase.x = Math.max(chase.x, P.x - 300);
+    const d = P.x - chase.x; if (d < 90) S.shake = Math.max(S.shake, (90 - d) / 90 * 1.4);
+    if (d < 0) { P.act = null; die('shadow'); return true; }
+    if (P.x > chase.end) { chase.done = true; SFX.chord(); }
+  }
+  if (chase && chase.done) chase.x -= 3;
+  return false;
 }
 function camFollow() { const target = P.x + P.w / 2 - VW * .42 + AN.visFace * 26; cam += (target - cam) * .06; cam = Math.max(0, Math.min(L.w - VW, cam)); }
 
@@ -1057,12 +1142,14 @@ function render() {
       const an = A.anims, col = frameOf(an.collapse, d.t * 1.15, 'once'), fl = frameOf(an.fall, d.t, 'loop');
       if (d.type === 'drown') drawSprite(c, 'brother', 'fall', fl, cx, base, d.face, .25, Math.max(0, 1 - d.t / 1.6));
       else if (d.type === 'fall') drawSprite(c, 'brother', 'fall', fl, cx, base, d.face);
+      else if (d.type === 'impact') drawSprite(c, 'brother', 'collapse', Math.min(an.collapse.frames - 1, an.collapse.frames * .6 + d.t * an.collapse.fps * 2.2), cx, base + 1.5, d.face);   // hits the ground already broken
       else if (d.type === 'shadow') drawSprite(c, 'brother', 'collapse', col, cx, base, d.face, 0, Math.max(0, 1 - d.t / 1.4));
       else drawSprite(c, 'brother', 'collapse', col, cx, base + 1.5, d.face);
       if (d.type === 'trap') { const tr = IMG.trapShut; if (tr) c.drawImage(tr, cx - 14, base - 12, 28, 12); }
     }
   } else if (S.state !== 'card' || P) {
-    const base = (P.on && !P.mantle ? feetY(P) : P.y + P.h) + 1.5, cx = P.x + P.w / 2;
+    const q = P.act ? actPose(P.act) : null;
+    const base = (q ? q.base : P.on && !P.mantle ? feetY(P) : P.y + P.h) + 1.5, cx = P.x + P.w / 2;
     if (AN.prev && AN.fade < 1) drawSprite(c, AN.prev.sheet, AN.prev.anim, AN.prev.f, cx, base, AN.prev.face, 0, 1 - AN.fade);
     if (AN.cur) drawSprite(c, AN.cur.sheet, AN.cur.anim, AN.cur.f, cx, base, AN.cur.face, 0, AN.prev && AN.fade < 1 ? AN.fade : 1);
   }
@@ -1146,4 +1233,5 @@ loadAll().then(() => {
 });
 })();
 </script>
+
 </body></html>
