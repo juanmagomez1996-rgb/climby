@@ -81,6 +81,14 @@ const anims = <String, AnimInfo>{
   'snail2': AnimInfo(300, 170),
   'banana': AnimInfo(131, 300),
   'chameleon': AnimInfo(300, 161),
+  'bartender': AnimInfo(214, 300),
+  'bombtech': AnimInfo(194, 300),
+  'pizzaiolo': AnimInfo(281, 300),
+  'bear': AnimInfo(226, 340),
+  'croc': AnimInfo(216, 320),
+  'bellhop': AnimInfo(266, 300),
+  'robot': AnimInfo(287, 300),
+  'walrus': AnimInfo(300, 298),
 };
 
 const spriteNames = [
@@ -117,6 +125,10 @@ const spriteNames = [
   'bg_theater', 'bg_nightroom', 'bg_photo', 'bg_pool', 'bg_ginger', 'bg_apple', 'bg_race', 'bg_spa',
   'bg_bands', 'bg_shadow', 'grandpa_awake', 'peel', 'cookiejar', 'beachball', 'audience', 'hawk',
   'partyhat', 'an_rabbit', 'an_elephant', 'an_giraffe', 'an_duck', 'an_crab', 'an_trex', 'an_pig',
+  'bg_monsterbar', 'bg_bombroom', 'bg_building', 'bg_forest', 'bg_cinema', 'bg_dentist', 'bg_hotel',
+  'bg_toyfloor', 'bg_labfloor', 'bg_market', 'cyclops', 'slime', 'horned', 'glass', 'bomb', 'pizza',
+  'hungry', 'spec1', 'spec2', 'spec3', 'spec4', 'tissue', 'tooth', 'tooth_bad', 'cabin', 'ghost', 'loco',
+  'station', 'battery', 'goo', 'pan', 'scalebase', 'watermelon', 'weight',
 ];
 
 class Gfx {

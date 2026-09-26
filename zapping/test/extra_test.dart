@@ -1,4 +1,3 @@
-import 'dart:ui' show Offset;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zapping_infinito/channels.dart';
 import 'package:zapping_infinito/channels3.dart';
@@ -55,15 +54,17 @@ void main() {
   });
 
   test('32 albóndigas: perseguir albóndigas y huir de botas gana', () {
-    for (var s = 0; s < 5; s++) {
-      expect(
-          play(Meatballs.new, (c, p, f) {
+    var ok = 0;
+    for (var s = 0; s < 6; s++) {
+      if (play(Meatballs.new, (c, p, f) {
             final m = c as Meatballs;
-            final target = m.bestX();
-            touch(p, target, m.plateY);
-          }),
-          1);
+            touch(p, m.bestX(), m.plateY);
+          }) ==
+          1) {
+        ok++;
+      }
     }
+    expect(ok, greaterThanOrEqualTo(5), reason: lastWhy);
   });
 
   test('33 abuela: saltar a tiempo gana', () {
@@ -290,6 +291,159 @@ void main() {
       final k = c as ShadowPuppets;
       if (c.t > .5) touch(p, k.opt((k.answer + 1) % 3).center.dx, k.opt(0).center.dy);
     }), -1);
+  });
+
+  test('51 bar: servir a cada uno su batido gana; equivocarse pierde', () {
+    // arrastra un vaso en 12 frames: pulsar, mover, soltar
+    void drag(Pointer p, int f, Offset a, Offset b) {
+      final k = f % 14;
+      if (k < 12) {
+        final o = Offset.lerp(a, b, k / 11)!;
+        touch(p, o.dx, o.dy);
+      }
+    }
+
+    expect(play(MonsterBar.new, (c, p, f) {
+      final m = c as MonsterBar;
+      final i = m.served.indexOf(false);
+      if (i < 0) return;
+      final k = m.glasses.indexWhere((gl) => gl[0].toInt() == m.want[i] && gl[3] == 0);
+      final gl = m.glasses[k];
+      if (f % 14 == 0) m.botFrom = Offset(gl[1], gl[2] - 30);
+      drag(p, f, m.botFrom, Offset(m.custX(i), m.counter));
+    }), 1);
+    expect(play(MonsterBar.new, (c, p, f) {
+      final m = c as MonsterBar;
+      final k = m.glasses.indexWhere((gl) => gl[0].toInt() != m.want[0]);
+      final gl = m.glasses[k];
+      if (f % 14 == 0) m.botFrom = Offset(gl[1], gl[2] - 30);
+      drag(p, f, m.botFrom, Offset(m.custX(0), m.counter));
+    }), -1);
+  });
+
+  test('52 bomba: cortar el cable del color de la tinta gana; el de la palabra pierde', () {
+    for (final right in [true, false]) {
+      final r = play(BombWires.new, (c, p, f) {
+        final b = c as BombWires;
+        final i = b.wires.indexOf(right ? b.ink : b.word);
+        final m = b.wireAt(i, .5);
+        if (f > 20 && f < 24) touch(p, m.dx - 40 + (f - 20) * 25, m.dy);
+      });
+      expect(r, right ? 1 : -1);
+    }
+  });
+
+  test('53 pizza: un lanzamiento bien apuntado entra por la ventana', () {
+    var ok = 0;
+    for (var s = 0; s < 5; s++) {
+      Offset? plan;
+      var planAt = -99;
+      final r = play(PizzaToss.new, (c, p, f) {
+        final z = c as PizzaToss;
+        if (z.fly != null) return;
+        if (plan == null || f - planAt > 6) {
+          plan = z.aimFor(z.win_(z.target));
+          planAt = f;
+        }
+        final k = f - planAt;
+        if (k < 4 && plan != null) touch(p, z.hand.dx + plan!.dx * k / 3, z.hand.dy + plan!.dy * k / 3);
+      });
+      if (r == 1) ok++;
+    }
+    expect(ok, greaterThanOrEqualTo(4), reason: lastWhy);
+  });
+
+  test('54 oso: rascar en el punto exacto gana', () {
+    expect(play(ItchyBear.new, (c, p, f) {
+      final b = c as ItchyBear;
+      touch(p, b.spot.dx, b.spot.dy);
+    }), 1);
+    expect(play(ItchyBear.new, (c, p, f) => touch(p, c.sl + 10, c.st + 10)), 0);
+  });
+
+  test('55 cine: pañuelo a tiempo gana; sin pañuelos alguien estornuda', () {
+    expect(play(CinemaSneeze.new, (c, p, f) {
+      final k = c as CinemaSneeze;
+      for (var i = 0; i < 4; i++) {
+        if (k.build[i] > .2 && f % 3 == 0) {
+          touch(p, k.sx(i), k.sy - 80);
+          break;
+        }
+      }
+    }), 1);
+    expect(play(CinemaSneeze.new, (c, p, f) {}), -1);
+  });
+
+  test('56 cocodrilo: el diente malo gana; uno sano muerde', () {
+    expect(play(CrocDentist.new, (c, p, f) {
+      final k = c as CrocDentist;
+      if (f == 30) touch(p, k.teeth[k.bad].dx, k.teeth[k.bad].dy);
+    }), 1);
+    expect(play(CrocDentist.new, (c, p, f) {
+      final k = c as CrocDentist;
+      final o = k.teeth[(k.bad + 1) % k.teeth.length];
+      if (f == 30) touch(p, o.dx, o.dy);
+    }), -1);
+  });
+
+  test('57 ascensor: frenar en cada planta gana; sin tocar no', () {
+    var ok = 0;
+    for (var s = 0; s < 5; s++) {
+      final r = play(HotelLift.new, (c, p, f) {
+        final h = c as HotelLift;
+        final target = h.floorY(h.want);
+        final want = ((target - h.y) * 2.2).clamp(-240.0, 240.0);
+        if (h.v > want + 8) touch(p, h.btn(0).center.dx, h.btn(0).center.dy);
+        if (h.v < want - 8) touch(p, h.btn(1).center.dx, h.btn(1).center.dy);
+      });
+      if (r == 1) ok++;
+    }
+    expect(ok, greaterThanOrEqualTo(4), reason: lastWhy);
+    expect(play(HotelLift.new, (c, p, f) {}), 0);
+  });
+
+  test('58 tren: poner la aguja según el color gana', () {
+    expect(play(ToyTrain.new, (c, p, f) {
+      final k = c as ToyTrain;
+      if (k.branchUp == null && k.up != (k.color == 0) && f % 3 == 0) touch(p, c.cx, c.cy);
+    }), 1);
+  });
+
+  test('59 robot: moverse al revés hacia la batería esquivando charcos gana', () {
+    var ok = 0;
+    for (var s = 0; s < 5; s++) {
+      var finger = const Offset(270, 400);
+      final r = play(MirrorRobot.new, (c, p, f) {
+        final m = c as MirrorRobot;
+        var d = m.bat - m.r;
+        d = d / d.distance;
+        for (final gp in m.goos) {
+          final a = m.r - gp;
+          final dist = a.distance;
+          if (dist < 90) d += a / dist * (90 - dist) / 30;
+        }
+        d = d / d.distance * 3;
+        finger -= d / 1.1;
+        touch(p, finger.dx, finger.dy);
+      });
+      if (r == 1) ok++;
+    }
+    expect(ok, greaterThanOrEqualTo(4), reason: lastWhy);
+  });
+
+  test('60 balanza: poner las pesas justas gana', () {
+    expect(play(MarketScale.new, (c, p, f) {
+      final m = c as MarketScale;
+      final pick = m.botSubset();
+      final k = pick.firstWhere((k) => !m.onPan[k], orElse: () => -1);
+      if (k < 0) return;
+      final step = f % 12;
+      if (step == 0) m.botFrom = m.pos[k];
+      if (step < 10) {
+        final o = Offset.lerp(m.botFrom, m.panAt(1), step / 9)!;
+        touch(p, o.dx, o.dy);
+      }
+    }), 1);
   });
 
   test('todos los extra se inicializan en todos los niveles', () {

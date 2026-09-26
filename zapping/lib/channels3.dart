@@ -14,6 +14,8 @@ final List<ChannelFactory> extraChannels = [
   SockPairs.new, Matryoshka.new, SausageThrow.new, Crossing.new, CloudSheep.new,
   DivaSpot.new, Grandpa.new, WhatChanged.new, SealBall.new, FireJelly.new,
   WormBand.new, SnailRace.new, PeelBanana.new, Chameleon.new, ShadowPuppets.new,
+  MonsterBar.new, BombWires.new, PizzaToss.new, ItchyBear.new, CinemaSneeze.new,
+  CrocDentist.new, HotelLift.new, ToyTrain.new, MirrorRobot.new, MarketScale.new,
 ];
 
 /// Decorado panorámico que se desplaza: se repite en espejo (sin costuras) y cubre la tele.
@@ -1970,5 +1972,1049 @@ class ShadowPuppets extends Channel {
       Gfx.clayPanel(c, rr, const Color(0xFFF7F1E3));
       Gfx.sprite(c, opts[i], r.center.dx, r.center.dy, 70);
     }
+  }
+}
+
+// ───────────────────────── 51. BAR DE MONSTRUOS (servir) ─────────────────────────
+class MonsterBar extends Channel {
+  MonsterBar(super.g);
+  @override
+  String get name => 'BAR DE MONSTRUOS';
+  @override
+  String get sub => 'Tres clientes con mucha sed';
+  @override
+  String get ins => '¡SIRVE!';
+  @override
+  String get hint => 'Arrastra a cada uno el batido que pide';
+  @override
+  String get bg => 'bg_monsterbar';
+  @override
+  double get dur => 7;
+
+  static const cols = [Color(0xFFFF6FA8), Color(0xFF7FD3FF), Color(0xFFB7F26A), Color(0xFFFFC04A)];
+  static const who = ['cyclops', 'slime', 'horned'];
+  final want = <int>[]; // color que pide cada cliente
+  final served = [false, false, false];
+  final glasses = <List<double>>[]; // [color, x, y, en uso]
+  int grab = -1;
+  double get counter => by(.535);
+  double custX(int i) => bx(.2 + i * .3);
+  Offset home(int k) => Offset(bx(.14 + k * .24), by(.86));
+  Offset botFrom = Offset.zero; // solo para los tests con bot
+
+  @override
+  void init(int l) {
+    final c = [0, 1, 2, 3]..shuffle(rng);
+    want.addAll(c.take(3));
+    final tray = [...c]..shuffle(rng);
+    for (var k = 0; k < 4; k++) {
+      glasses.add([tray[k].toDouble(), home(k).dx, home(k).dy, 0]);
+    }
+  }
+
+  @override
+  void update(double dt) {
+    if (res != 0) return;
+    if (p.pressed) {
+      for (var k = 0; k < glasses.length; k++) {
+        final gl = glasses[k];
+        if (gl[3] == 0 && (Offset(p.x, p.y) - Offset(gl[1], gl[2] - 30)).distance < 50) grab = k;
+      }
+    }
+    if (grab >= 0 && p.down) {
+      glasses[grab][1] = p.x;
+      glasses[grab][2] = p.y + 30;
+    }
+    if (grab >= 0 && !p.down) {
+      final gl = glasses[grab];
+      var hit = -1;
+      for (var i = 0; i < 3; i++) {
+        if (!served[i] && (gl[1] - custX(i)).abs() < 60 && gl[2] < counter + 40) hit = i;
+      }
+      if (hit >= 0) {
+        if (want[hit] == gl[0].toInt()) {
+          served[hit] = true;
+          gl[3] = 1;
+          gl[1] = custX(hit) + 40;
+          gl[2] = counter + 4;
+          Sfx.play('gulp');
+          g.fx.burst(custX(hit), counter - 60, cols[want[hit]], 14);
+          if (served.every((s) => s)) {
+            win();
+            Sfx.play('bonus');
+          }
+        } else {
+          lose('¡Ese batido no lo pidió!');
+          Sfx.play('boing');
+        }
+      } else {
+        final h = home(grab);
+        gl[1] = h.dx;
+        gl[2] = h.dy;
+      }
+      grab = -1;
+    }
+  }
+
+  @override
+  void render(Canvas c) {
+    drawBg(c);
+    for (var i = 0; i < 3; i++) {
+      final ok = served[i];
+      Gfx.sprite(c, who[i], custX(i), counter + 6, 118, ay: 1,
+          rot: ok ? math.sin(vt * 10 + i) * .05 : boil(vt, i.toDouble()) * .02);
+      if (!ok) {
+        // bocadillo con el batido que pide
+        final b = Offset(custX(i) + 20, counter - 150);
+        Gfx.clayPanel(c, Rect.fromCenter(center: b, width: 62, height: 70), const Color(0xFFF7F1E3));
+        Gfx.sprite(c, 'glass', b.dx, b.dy, 50, tint: cols[want[i]]);
+      }
+    }
+    Gfx.anim(c, 'bartender', vt, bx(.9), by(.97), 150, ay: 1);
+    for (var k = 0; k < glasses.length; k++) {
+      final gl = glasses[k];
+      Gfx.sprite(c, 'glass', gl[1], gl[2], k == grab ? 76 : 68, ay: 1, tint: cols[gl[0].toInt()],
+          drop: k == grab ? const Offset(8, 18) : const Offset(3, 5));
+    }
+  }
+}
+
+// ───────────────────────── 52. ARTIFICIERO CONFUSO (Stroop) ─────────────────────────
+class BombWires extends Channel {
+  BombWires(super.g);
+  @override
+  String get name => 'ARTIFICIERO CONFUSO';
+  @override
+  String get sub => 'La bomba de gelatina dice un color y lo pinta de otro';
+  @override
+  String get ins => '¡COLOR DE LA TINTA!';
+  @override
+  String get hint => 'Corta el cable del COLOR de la letra, no de la palabra';
+  @override
+  String get bg => 'bg_bombroom';
+  @override
+  double get dur => 5;
+
+  static const names = ['ROJO', 'AZUL', 'AMARILLO', 'VERDE'];
+  static const cols = [Color(0xFFE8413A), Color(0xFF2F63DA), Color(0xFFF5C530), Color(0xFF3FB950)];
+  final wires = <int>[]; // color de cada cable (de izquierda a derecha)
+  int word = 0, ink = 0, cutW = -1;
+  Offset get bombC => Offset(cx, by(.47));
+
+  @override
+  void init(int l) {
+    final pool = [0, 1, 2, 3]..shuffle(rng);
+    wires.addAll(pool.take(3));
+    ink = pick(wires);
+    word = pick([for (final w in wires) if (w != ink) w]);
+  }
+
+  // curva de cada cable: de la bomba a su borne del banco
+  Offset wireAt(int i, double u) {
+    final a = Offset(bombC.dx + (i - 1) * 34, bombC.dy + 60);
+    final b = Offset(bx(.2 + i * .3), by(.76));
+    final ctrl = Offset((a.dx + b.dx) / 2 + (i - 1) * 30, math.max(a.dy, b.dy) + 70);
+    final p1 = Offset.lerp(a, ctrl, u)!, p2 = Offset.lerp(ctrl, b, u)!;
+    return Offset.lerp(p1, p2, u)!;
+  }
+
+  bool _crosses(int i, Offset s0, Offset s1) {
+    // ¿el trazo del dedo cruza la curva del cable?
+    var prev = wireAt(i, 0);
+    for (var k = 1; k <= 20; k++) {
+      final cur = wireAt(i, k / 20);
+      if (_segX(s0, s1, prev, cur)) return true;
+      prev = cur;
+    }
+    return false;
+  }
+
+  static bool _segX(Offset a, Offset b, Offset c, Offset d) {
+    double cross(Offset o, Offset p, Offset q) => (p.dx - o.dx) * (q.dy - o.dy) - (p.dy - o.dy) * (q.dx - o.dx);
+    final d1 = cross(c, d, a), d2 = cross(c, d, b), d3 = cross(a, b, c), d4 = cross(a, b, d);
+    return (d1 > 0) != (d2 > 0) && (d3 > 0) != (d4 > 0);
+  }
+
+  Offset? _last;
+
+  @override
+  void update(double dt) {
+    if (res != 0) return;
+    final f = Offset(p.x, p.y);
+    if (p.down && _last != null) {
+      for (var i = 0; i < 3; i++) {
+        if (_crosses(i, _last!, f)) {
+          cutW = i;
+          Sfx.play('chop');
+          if (wires[i] == ink) {
+            win();
+            Sfx.play('bonus');
+          } else {
+            lose('¡BOOM! Era el color de la tinta');
+            Sfx.play('boom');
+            g.fx.shake(14, .4);
+            g.fx.burst(bombC.dx, bombC.dy, Pal.pink, 40, speed: 500);
+          }
+          break;
+        }
+      }
+    }
+    _last = p.down ? f : null;
+  }
+
+  @override
+  void render(Canvas c) {
+    drawBg(c);
+    for (var i = 0; i < 3; i++) {
+      final path = Path();
+      final cut = cutW == i;
+      for (var k = 0; k <= 24; k++) {
+        final o = wireAt(i, k / 24);
+        if (cut && k == 12) {
+          path.moveTo(o.dx, o.dy + 10);
+          continue;
+        }
+        k == 0 ? path.moveTo(o.dx, o.dy) : path.lineTo(o.dx, o.dy);
+      }
+      c.drawPath(path.shift(const Offset(3, 5)), Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 12
+        ..strokeCap = StrokeCap.round
+        ..color = const Color(0x44000000));
+      c.drawPath(path, Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 12
+        ..strokeCap = StrokeCap.round
+        ..color = cols[wires[i]]);
+      c.drawPath(path.shift(const Offset(-2, -2)), Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3
+        ..strokeCap = StrokeCap.round
+        ..color = const Color(0x55FFFFFF));
+      final b = wireAt(i, 1);
+      Gfx.clayBall(c, b.dx, b.dy, 13, const Color(0xFF55565E));
+    }
+    final shake = res == 0 ? math.sin(vt * 30) * clamp01(t / dur) * 3 : 0.0;
+    Gfx.sprite(c, 'bomb', bombC.dx + shake, bombC.dy, 150, drop: const Offset(6, 10));
+    // la palabra en la pantalla del reloj (pintada con la tinta engañosa)
+    Gfx.text(c, names[word], bombC.dx + shake, bombC.dy + 14, 22, color: cols[ink], maxW: 70);
+    final left = math.max(0, dur - t);
+    Gfx.text(c, left.toStringAsFixed(1), bombC.dx + 50, bombC.dy - 70, 20, color: Pal.pink);
+    Gfx.anim(c, 'bombtech', vt, bx(.12), by(.99), 150, ay: 1);
+  }
+}
+
+// ───────────────────────── 53. PIZZA VOLADORA (lanzar con el dedo) ─────────────────────────
+class PizzaToss extends Channel {
+  PizzaToss(super.g);
+  @override
+  String get name => 'PIZZA VOLADORA';
+  @override
+  String get sub => 'Reparto sin ascensor a un bloque de pisos';
+  @override
+  String get ins => '¡LANZA LA PIZZA!';
+  @override
+  String get hint => 'Desliza hacia arriba apuntando a la ventana';
+  @override
+  String get bg => 'bg_building';
+  @override
+  double get dur => 7;
+
+  int target = 0, got = 0, need = 2;
+  Offset? fly;
+  Offset v = Offset.zero;
+  double spin = 0, popT = 0;
+  final done = <int>{};
+  Offset win_(int i) => Offset(bx([.215, .5, .79][i % 3]), by([.13, .33, .52][i ~/ 3]));
+  Offset get hand => Offset(cx, by(.8));
+
+  /// Bot de prueba: busca un deslizamiento que lleve la pizza a [w] (simulando el vuelo).
+  Offset? aimFor(Offset w) {
+    for (var len = 60.0; len <= 320; len += 8) {
+      for (var a = -1.2; a <= 1.2; a += .04) {
+        final dir = Offset(math.sin(a), -math.cos(a));
+        var o = hand, vv = dir * (620 + len * 1.6);
+        for (var k = 0; k < 120; k++) {
+          vv = Offset(vv.dx, vv.dy + 900 / 60);
+          o += vv / 60;
+          if (vv.dy > -80 && (o - w).distance < 30) return dir * len;
+          if (o.dy > sb + 60) break;
+        }
+      }
+    }
+    return null;
+  }
+
+  @override
+  void init(int l) {
+    need = 2 + (l >= 3 ? 1 : 0);
+    target = 3 + rng.nextInt(6);
+  }
+
+  @override
+  void update(double dt) {
+    popT += dt;
+    if (fly != null) {
+      v = Offset(v.dx, v.dy + 900 * dt);
+      fly = fly! + v * dt;
+      spin += dt * 12;
+      final w = win_(target);
+      if (v.dy > -80 && (fly! - w).distance < 44 && res == 0) {
+        got++;
+        done.add(target);
+        Sfx.play('gulp');
+        g.fx.burst(w.dx, w.dy, Pal.gold, 16);
+        fly = null;
+        if (got >= need) {
+          win();
+          Sfx.play('bonus');
+        } else {
+          var n = target;
+          while (n == target || done.contains(n)) {
+            n = rng.nextInt(9);
+          }
+          target = n;
+          popT = 0;
+        }
+      } else if (fly!.dy > sb + 60) {
+        fly = null;
+        Sfx.play('splat', volume: .6);
+      }
+    }
+    if (res != 0 || fly != null) return;
+    final s = swipe(min: 30);
+    if (s != null && s.dy < -30) {
+      // la velocidad sale del gesto: dirección del deslizamiento y fuerza por su longitud
+      final len = s.distance.clamp(60.0, 320.0);
+      final dir = s / s.distance;
+      final power = 620 + len * 1.6;
+      fly = hand;
+      v = dir * power;
+      Sfx.play('click');
+    }
+  }
+
+  @override
+  void render(Canvas c) {
+    drawBg(c);
+    for (var i = 0; i < 9; i++) {
+      final w = win_(i);
+      if (done.contains(i)) {
+        Gfx.sprite(c, 'hungry', w.dx, w.dy + 30, 64, ay: 1);
+        Gfx.sprite(c, 'pizza', w.dx + 16, w.dy + 14, 26);
+      }
+    }
+    if (res == 0 || res == -1) {
+      final w = win_(target);
+      final up = clamp01(popT * 4);
+      c.save();
+      c.clipRect(Rect.fromCenter(center: w, width: 90, height: 84));
+      Gfx.sprite(c, 'hungry', w.dx, w.dy + 42 - up * 14, 70, ay: 1, rot: math.sin(vt * 8) * .06);
+      c.restore();
+      Gfx.text(c, '¡AQUÍ!', w.dx, w.dy - 50, 18, color: Pal.gold, scale: 1 + math.sin(vt * 10) * .08);
+    }
+    Gfx.anim(c, 'pizzaiolo', vt, cx, by(.99), 160, ay: 1);
+    if (fly != null) {
+      final k = clamp01((hand.dy - fly!.dy) / 400);
+      Gfx.sprite(c, 'pizza', fly!.dx, fly!.dy, 56 - k * 20, rot: spin, drop: const Offset(6, 12));
+    }
+    Gfx.text(c, '$got/$need', sr - 24, st + 34, 30, align: 1, color: Pal.gold);
+  }
+}
+
+// ───────────────────────── 54. EL OSO TIENE PICOR (buscar a ciegas) ─────────────────────────
+class ItchyBear extends Channel {
+  ItchyBear(super.g);
+  @override
+  String get name => 'EL OSO TIENE PICOR';
+  @override
+  String get sub => 'Encuentra el punto exacto donde le pica';
+  @override
+  String get ins => '¡RÁSCALE!';
+  @override
+  String get hint => 'Pasa el dedo por su espalda: cuanto más cerca, más se alegra';
+  @override
+  String get bg => 'bg_forest';
+  @override
+  double get dur => 7;
+
+  Offset spot = Offset.zero;
+  double hold = 0, warm = 0;
+  double get base => by(.97);
+  static const bh = 380.0;
+
+  @override
+  void init(int l) {
+    spot = Offset(cx + rnd(-70, 70), base - bh * rnd(.35, .62));
+  }
+
+  @override
+  void update(double dt) {
+    if (res != 0) return;
+    if (p.down && pointerIn) {
+      final d = (Offset(p.x, p.y) - spot).distance;
+      warm = clamp01(1 - d / 170);
+      if (d < 26) {
+        hold += dt;
+        Sfx.play('squish', volume: .3, minGapMs: 180);
+        if (hold > .9) {
+          win();
+          Sfx.play('bonus');
+          g.fx.burst(spot.dx, spot.dy, Pal.gold, 20);
+        }
+      } else {
+        hold = math.max(0, hold - dt);
+      }
+    } else {
+      warm = math.max(0, warm - dt * 2);
+      hold = math.max(0, hold - dt);
+    }
+  }
+
+  @override
+  void render(Canvas c) {
+    drawBg(c);
+    Gfx.shadow(c, cx, base - 4, 240, alpha: .45);
+    Gfx.anim(c, 'bear', vt, cx, base, bh, ay: 1, fps: 12 + warm * 10, rot: res == 1 ? math.sin(since * 16) * .03 : 0);
+    if (p.down && pointerIn && res == 0) {
+      final f = Offset(p.x, p.y);
+      // uñas rascando y termómetro de frío/caliente
+      for (var k = 0; k < 3; k++) {
+        c.drawLine(f.translate(-10 + k * 10.0, -10 + math.sin(vt * 30) * 4), f.translate(-6 + k * 10.0, 12 + math.sin(vt * 30) * 4),
+            Paint()
+              ..strokeWidth = 4
+              ..strokeCap = StrokeCap.round
+              ..color = const Color(0xCCFFFFFF));
+      }
+      final col = Color.lerp(const Color(0xFF7FD3FF), const Color(0xFFFF5C7A), warm)!;
+      c.drawCircle(f, 30 + warm * 16, Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 5
+        ..color = col.withValues(alpha: .8));
+      if (warm > .7) Gfx.text(c, warm > .9 ? '¡AHÍ, AHÍ!' : '¡CALIENTE!', f.dx, f.dy - 56, 22, color: col);
+    }
+    Gfx.clayBar(c, Rect.fromLTWH(sl + 70, st + 22, S.width - 140, 18), clamp01(hold / .9), Pal.pink);
+  }
+}
+
+// ───────────────────────── 55. ESTORNUDOS EN EL CINE (reaccionar) ─────────────────────────
+class CinemaSneeze extends Channel {
+  CinemaSneeze(super.g);
+  @override
+  String get name => 'ESTORNUDOS EN EL CINE';
+  @override
+  String get sub => 'Todo el público está resfriado';
+  @override
+  String get ins => '¡PAÑUELO!';
+  @override
+  String get hint => 'Toca al que va a estornudar antes de que lo haga';
+  @override
+  String get bg => 'bg_cinema';
+  @override
+  double get dur => 7;
+
+  final build = [-1.0, -1.0, -1.0, -1.0]; // -1 tranquilo, ≥0 cargando el estornudo
+  final saved = [-9.0, -9.0, -9.0, -9.0];
+  int got = 0, need = 4, blew = -1;
+  double next = .6, fuse = 1.3;
+  double sx(int i) => bx(.14 + i * .24);
+  double get sy => by(.93);
+
+  @override
+  void init(int l) {
+    need = 4 + math.min(l ~/ 2, 2);
+    fuse = math.max(.8, 1.35 - l * .1);
+  }
+
+  @override
+  void update(double dt) {
+    if (res != 0) return;
+    if ((next -= dt) <= 0) {
+      final calm = [for (var i = 0; i < 4; i++) if (build[i] < 0 && t - saved[i] > .6) i];
+      if (calm.isNotEmpty) build[pick(calm)] = 0;
+      next = rnd(.5, .9);
+    }
+    for (var i = 0; i < 4; i++) {
+      if (build[i] < 0) continue;
+      build[i] += dt;
+      if (build[i] > fuse) {
+        blew = i;
+        lose('¡AAACHÍS!');
+        Sfx.play('splat');
+        g.fx.burst(sx(i), sy - 110, const Color(0xFFB7F26A), 30, speed: 420);
+        g.fx.shake(8);
+        return;
+      }
+    }
+    if (tap) {
+      for (var i = 0; i < 4; i++) {
+        if ((p.x - sx(i)).abs() < 50 && p.y > sy - 170 && build[i] >= 0) {
+          build[i] = -1;
+          saved[i] = t;
+          got++;
+          Sfx.play('pop');
+          if (got >= need) {
+            win();
+            Sfx.play('bonus');
+          }
+        }
+      }
+    }
+  }
+
+  @override
+  void render(Canvas c) {
+    drawBg(c);
+    for (var i = 0; i < 4; i++) {
+      final b = build[i];
+      final k = b < 0 ? 0.0 : clamp01(b / fuse);
+      final shake = b >= 0 ? math.sin(vt * (20 + k * 40)) * k * 4 : 0.0;
+      Gfx.sprite(c, 'spec${i + 1}', sx(i) + shake, sy, 150, ay: 1, sy: 1 + k * .08, sx: 1 - k * .03);
+      if (b >= 0) {
+        final a = 'A' * (1 + (k * 3).floor());
+        Gfx.text(c, '$a...', sx(i), sy - 175, 20 + k * 10, color: Color.lerp(Pal.gold, Pal.pink, k)!);
+      }
+      if (t - saved[i] < .7) Gfx.sprite(c, 'tissue', sx(i), sy - 135, 50, alpha: clamp01(1 - (t - saved[i]) / .7));
+      if (blew == i) Gfx.sprite(c, 'splat', cx, cy - 40, 260 * clamp01(since * 5), tint: const Color(0xFFB7F26A), alpha: .85);
+    }
+    Gfx.text(c, '$got/$need', sr - 24, st + 34, 30, align: 1, color: Pal.gold);
+  }
+}
+
+// ───────────────────────── 56. DENTISTA DE COCODRILO (observar) ─────────────────────────
+class CrocDentist extends Channel {
+  CrocDentist(super.g);
+  @override
+  String get name => 'DENTISTA DE COCODRILO';
+  @override
+  String get sub => 'Uno de sus dientes está podrido';
+  @override
+  String get ins => '¡SACA EL MALO!';
+  @override
+  String get hint => 'Toca solo el diente podrido. ¡Cuidado, muerde!';
+  @override
+  String get bg => 'bg_dentist';
+  @override
+  double get dur => 5;
+
+  final teeth = <Offset>[];
+  final upper = <bool>[];
+  int bad = 0, picked = -1;
+  double subtle = 1;
+  double get base => by(.9);
+  static const ch = 300.0;
+  // dientes repartidos por el borde de la boca abierta (medido en el vídeo del cocodrilo)
+  static const upperJaw = [[.27, .435], [.39, .415], [.5, .405], [.61, .415], [.73, .435]];
+  static const lowerJaw = [[.31, .835], [.44, .855], [.57, .855], [.70, .835]];
+
+  @override
+  void init(int l) {
+    final w = ch * Gfx.aspect('croc');
+    final x0 = cx - w / 2, y0 = base - ch;
+    for (final j in upperJaw) {
+      teeth.add(Offset(x0 + j[0] * w, y0 + j[1] * ch));
+      upper.add(true);
+    }
+    for (final j in lowerJaw) {
+      teeth.add(Offset(x0 + j[0] * w, y0 + j[1] * ch));
+      upper.add(false);
+    }
+    bad = rng.nextInt(teeth.length);
+    subtle = math.max(.35, 1 - l * .15);
+  }
+
+  @override
+  void update(double dt) {
+    if (res != 0 || !tap) return;
+    for (var i = 0; i < teeth.length; i++) {
+      if ((Offset(p.x, p.y) - teeth[i]).distance < 24) {
+        picked = i;
+        if (i == bad) {
+          win();
+          Sfx.play('pop');
+          Sfx.play('bonus');
+        } else {
+          lose('¡ÑAM! Ese estaba sano');
+          Sfx.play('boing');
+          g.fx.shake(12, .3);
+        }
+        return;
+      }
+    }
+  }
+
+  @override
+  void render(Canvas c) {
+    drawBg(c);
+    final bite = res == -1 ? clamp01(since * 6) : 0.0;
+    Gfx.anim(c, 'croc', vt, cx, base, ch, ay: 1, sy: 1 - bite * .35);
+    if (bite > .8) return;
+    for (var i = 0; i < teeth.length; i++) {
+      final o = teeth[i];
+      if (res == 1 && i == bad) {
+        // el diente sale volando
+        Gfx.sprite(c, 'tooth_bad', o.dx + since * 120, o.dy - since * 300 + since * since * 600, 42, rot: since * 8);
+        continue;
+      }
+      final isBad = i == bad;
+      final wob = isBad ? math.sin(vt * 14) * .08 * subtle : 0.0;
+      Gfx.sprite(c, isBad ? 'tooth_bad' : 'tooth', o.dx, o.dy, 42,
+          ay: upper[i] ? 0 : 1, rot: wob + (upper[i] ? 0 : math.pi), alpha: isBad ? 1 : 1);
+    }
+  }
+}
+
+// ───────────────────────── 57. ASCENSOR DEL HOTEL (inercia) ─────────────────────────
+class HotelLift extends Channel {
+  HotelLift(super.g);
+  @override
+  String get name => 'ASCENSOR DEL HOTEL';
+  @override
+  String get sub => 'El botones lleva fantasmas a su planta';
+  @override
+  String get ins => '¡A SU PLANTA!';
+  @override
+  String get hint => 'Mantén las flechas y frena justo en la planta';
+  @override
+  String get bg => 'bg_hotel';
+  @override
+  double get dur => 9;
+
+  double y = 0, v = 0, still = 0, doorT = -9;
+  int want = 2, got = 0, need = 2;
+  static const floors = [.87, .70, .53, .36];
+  double floorY(int f) => by(floors[f]);
+  Rect btn(int i) => Rect.fromCenter(center: Offset(sr - 44, sb - 120 + i * 84), width: 72, height: 72);
+
+  @override
+  void init(int l) {
+    y = floorY(0);
+    want = 2 + rng.nextInt(2);
+  }
+
+  @override
+  void update(double dt) {
+    if (res != 0) return;
+    var acc = 0.0;
+    if (p.down && btn(0).inflate(10).contains(Offset(p.x, p.y))) acc = -520;
+    if (p.down && btn(1).inflate(10).contains(Offset(p.x, p.y))) acc = 520;
+    if (acc == 0) {
+      // freno suave: la cabina sigue un poco por inercia
+      final f = 260 * dt;
+      v = v.abs() <= f ? 0 : v - v.sign * f;
+    } else {
+      v = (v + acc * dt).clamp(-240.0, 240.0);
+      Sfx.play('ratchet', volume: .25, minGapMs: 160);
+    }
+    y += v * dt;
+    y = y.clamp(floorY(3), floorY(0));
+    if (y == floorY(3) || y == floorY(0)) v = 0;
+    if (vt - doorT < .7) return;
+    if ((y - floorY(want)).abs() < 9 && v.abs() < 30) {
+      still += dt;
+      if (still > .3) {
+        still = 0;
+        got++;
+        doorT = vt;
+        Sfx.play('bonus');
+        g.fx.burst(cx, y - 50, const Color(0xFFFFFFFF), 14);
+        if (got >= need) {
+          win();
+        } else {
+          var n = want;
+          while (n == want) {
+            n = rng.nextInt(4);
+          }
+          want = n;
+        }
+      }
+    } else {
+      still = 0;
+    }
+  }
+
+  @override
+  void render(Canvas c) {
+    drawBg(c);
+    for (var f = 0; f < 4; f++) {
+      final fy = floorY(f);
+      final isWant = f == want && res == 0;
+      Gfx.clayBall(c, bx(.3), fy - 60, 16, isWant ? Pal.gold : const Color(0xFF6A5A7A));
+      Gfx.text(c, '$f', bx(.3), fy - 60, 20, color: isWant ? Pal.ink : Pal.dim);
+      if (isWant) Gfx.sprite(c, 'arrow', bx(.3) - 34, fy - 60, 22, rot: 0, alpha: .6 + math.sin(vt * 8) * .4);
+    }
+    // cabina con el fantasma dentro (o saliendo)
+    final dk = vt - doorT;
+    Gfx.shadow(c, cx, y + 2, 70, alpha: .3);
+    Gfx.sprite(c, 'cabin', cx, y + 4, 96, ay: 1);
+    if (dk > .7 || res == 1) {
+      Gfx.sprite(c, 'ghost', cx, y - 40 + math.sin(vt * 4) * 3, 46);
+      Gfx.clayBall(c, cx + 24, y - 78, 13, Pal.gold);
+      Gfx.text(c, '$want', cx + 24, y - 78, 16);
+    } else {
+      Gfx.sprite(c, 'ghost', cx + dk * 160, y - 40 - dk * 30, 46, alpha: clamp01(1 - dk / .7));
+    }
+    Gfx.anim(c, 'bellhop', vt, bx(.1), by(.97), 110, ay: 1);
+    Gfx.button(c, 'btn_teal', '', btn(0), size: 30);
+    Gfx.sprite(c, 'arrow', btn(0).center.dx, btn(0).center.dy - 4, 30, rot: -math.pi / 2);
+    Gfx.button(c, 'btn_pink', '', btn(1), size: 30);
+    Gfx.sprite(c, 'arrow', btn(1).center.dx, btn(1).center.dy - 4, 30, rot: math.pi / 2);
+    Gfx.text(c, '$got/$need', sr - 24, st + 34, 30, align: 1, color: Pal.gold);
+  }
+}
+
+// ───────────────────────── 58. EL TREN DE JUGUETE (agujas) ─────────────────────────
+class ToyTrain extends Channel {
+  ToyTrain(super.g);
+  @override
+  String get name => 'EL TREN DE JUGUETE';
+  @override
+  String get sub => 'Cada tren a la estación de su color';
+  @override
+  String get ins => '¡CAMBIA LAS AGUJAS!';
+  @override
+  String get hint => 'Toca para desviar el tren arriba o abajo';
+  @override
+  String get bg => 'bg_toyfloor';
+  @override
+  double get dur => 9;
+
+  static const cols = [Color(0xFFFF5C7A), Color(0xFF53D8C3)];
+  bool up = true;
+  double d = -1, spd = 0, flip = 0;
+  int color = 0, got = 0, need = 3;
+  late List<Offset> trunk, top, bottom;
+
+  @override
+  void init(int l) {
+    spd = 200 + l * 20;
+    final j = Offset(bx(.4), by(.52));
+    trunk = [Offset(ZappingGame.bleed.left - 60, j.dy), j];
+    top = _curve(j, Offset(bx(.62), by(.52)), Offset(bx(.84), by(.26)));
+    bottom = _curve(j, Offset(bx(.62), by(.52)), Offset(bx(.84), by(.78)));
+    _newTrain();
+  }
+
+  List<Offset> _curve(Offset a, Offset ctrl, Offset b) => [
+        for (var k = 0; k <= 16; k++)
+          Offset.lerp(Offset.lerp(a, ctrl, k / 16)!, Offset.lerp(ctrl, b, k / 16)!, k / 16)!,
+      ];
+
+  void _newTrain() {
+    d = 40;
+    color = rng.nextInt(2);
+  }
+
+  double _len(List<Offset> pts) {
+    var s = 0.0;
+    for (var i = 1; i < pts.length; i++) {
+      s += (pts[i] - pts[i - 1]).distance;
+    }
+    return s;
+  }
+
+  (Offset, double) _at(List<Offset> pts, double dist) {
+    for (var i = 1; i < pts.length; i++) {
+      final seg = (pts[i] - pts[i - 1]).distance;
+      if (dist <= seg) {
+        final o = Offset.lerp(pts[i - 1], pts[i], dist / seg)!;
+        final dd = pts[i] - pts[i - 1];
+        return (o, math.atan2(dd.dy, dd.dx));
+      }
+      dist -= seg;
+    }
+    final dd = pts.last - pts[pts.length - 2];
+    return (pts.last, math.atan2(dd.dy, dd.dx));
+  }
+
+  // la rama se decide al pasar por la aguja
+  bool? branchUp;
+
+  @override
+  void update(double dt) {
+    flip = math.max(0, flip - dt * 4);
+    if (res != 0) return;
+    if (tap) {
+      up = !up;
+      flip = 1;
+      Sfx.play('tick');
+    }
+    d += spd * dt;
+    final lt = _len(trunk);
+    if (d > lt && branchUp == null) branchUp = up;
+    if (branchUp != null && d > lt + _len(branchUp! ? top : bottom)) {
+      final station = branchUp! ? 0 : 1;
+      if (station == color) {
+        got++;
+        Sfx.play('bonus');
+        g.fx.burst((branchUp! ? top : bottom).last.dx, (branchUp! ? top : bottom).last.dy, cols[color], 16);
+        if (got >= need) {
+          win();
+          return;
+        }
+        branchUp = null;
+        _newTrain();
+      } else {
+        lose('¡Estación equivocada!');
+        Sfx.play('boing');
+      }
+    }
+  }
+
+  void _track(Canvas c, List<Offset> pts) {
+    final path = Path()..moveTo(pts.first.dx, pts.first.dy);
+    for (final o in pts.skip(1)) {
+      path.lineTo(o.dx, o.dy);
+    }
+    // traviesas
+    for (var s = 0.0; s < _len(pts); s += 18) {
+      final (o, a) = _at(pts, s);
+      c.save();
+      c.translate(o.dx, o.dy);
+      c.rotate(a);
+      c.drawRRect(RRect.fromRectAndRadius(Rect.fromCenter(center: Offset.zero, width: 8, height: 34), const Radius.circular(3)),
+          Paint()..color = const Color(0xFF7A4A2A));
+      c.restore();
+    }
+    for (final off in [-10.0, 10.0]) {
+      c.drawPath(path.shift(Offset(0, off)), Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 5
+        ..color = const Color(0xFF9AA0AA));
+    }
+  }
+
+  @override
+  void render(Canvas c) {
+    drawBg(c);
+    _track(c, trunk);
+    _track(c, top);
+    _track(c, bottom);
+    Gfx.sprite(c, 'station', top.last.dx + 26, top.last.dy - 10, 86, tint: cols[0], drop: const Offset(4, 6));
+    Gfx.sprite(c, 'station', bottom.last.dx + 26, bottom.last.dy - 10, 86, tint: cols[1], drop: const Offset(4, 6));
+    // palanca de la aguja
+    final j = trunk.last;
+    c.save();
+    c.translate(j.dx, j.dy + 40);
+    c.rotate((up ? -.5 : .5) * (1 - flip * .3));
+    c.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(-5, -40, 10, 40), const Radius.circular(5)), Paint()..color = const Color(0xFF55565E));
+    c.restore();
+    Gfx.clayBall(c, j.dx + (up ? -20 : 20), j.dy + 4, 12, Pal.gold);
+    Gfx.sprite(c, 'arrow', j.dx + 30, j.dy + (up ? -22 : 22), 26, rot: up ? -.6 : .6);
+    // tren
+    if (res != 1) {
+      final lt = _len(trunk);
+      final (o, a) = d <= lt ? _at(trunk, d) : _at((branchUp ?? up) ? top : bottom, d - lt);
+      Gfx.sprite(c, 'loco', o.dx, o.dy, 38, rot: a, tint: cols[color], drop: const Offset(4, 6));
+    }
+    Gfx.text(c, '$got/$need', sr - 24, st + 34, 30, align: 1, color: Pal.gold);
+  }
+}
+
+// ───────────────────────── 59. ROBOT AL REVÉS (control invertido) ─────────────────────────
+class MirrorRobot extends Channel {
+  MirrorRobot(super.g);
+  @override
+  String get name => 'ROBOT AL REVÉS';
+  @override
+  String get sub => 'Al robot le han cruzado los cables';
+  @override
+  String get ins => '¡TODO AL REVÉS!';
+  @override
+  String get hint => 'Arrastra: el robot va justo al contrario';
+  @override
+  String get bg => 'bg_labfloor';
+  @override
+  double get dur => 7;
+
+  Offset r = Offset.zero, bat = Offset.zero;
+  final goos = <Offset>[];
+  Offset? last;
+  double walk = 0;
+  bool face = false;
+
+  @override
+  void init(int l) {
+    r = Offset(bx(.22), by(.82));
+    bat = Offset(bx(.8), by(.25));
+    final n = 2 + math.min(l, 2);
+    for (var i = 0; i < n; i++) {
+      final u = (i + 1) / (n + 1);
+      final base = Offset.lerp(r, bat, u)!;
+      goos.add(base + Offset(rnd(-50, 50), rnd(-30, 30)));
+    }
+  }
+
+  @override
+  void update(double dt) {
+    if (res != 0) return;
+    final f = Offset(p.x, p.y);
+    if (p.down && last != null) {
+      final d = f - last!;
+      final nr = r - d * 1.1;
+      if ((nr - r).distance > .5) {
+        walk += dt;
+        face = nr.dx < r.dx;
+      }
+      r = Offset(nr.dx.clamp(sl + 20, sr - 20), nr.dy.clamp(st + 40, sb - 10));
+    }
+    last = p.down ? f : null;
+    for (final gp in goos) {
+      if ((Offset((r.dx - gp.dx) / 46, (r.dy - gp.dy) / 26)).distance < 1) {
+        lose('¡Al charco de moco!');
+        Sfx.play('splat');
+        return;
+      }
+    }
+    if ((r - bat).distance < 38) {
+      win();
+      Sfx.play('bonus');
+      g.fx.burst(bat.dx, bat.dy - 30, Pal.gold, 24);
+    }
+  }
+
+  @override
+  void render(Canvas c) {
+    drawBg(c);
+    for (final gp in goos) {
+      Gfx.sprite(c, 'goo', gp.dx, gp.dy, 56, sx: 1 + boil(vt, gp.dx) * .04);
+    }
+    Gfx.shadow(c, bat.dx, bat.dy + 2, 60, alpha: .4);
+    Gfx.sprite(c, 'battery', bat.dx, bat.dy + 4, 70, ay: 1, sy: 1 + math.sin(vt * 6) * .03);
+    final sink = res == -1 ? clamp01(since * 3) : 0.0;
+    Gfx.shadow(c, r.dx, r.dy + 2, 60, alpha: .4 * (1 - sink));
+    Gfx.anim(c, 'robot', walk, r.dx, r.dy + 4 + sink * 30, 80 * (1 - sink * .5), ay: 1, flip: face, alpha: 1 - sink * .6);
+    if (p.down && pointerIn && res == 0) {
+      // eco del dedo: flecha fantasma hacia donde va de verdad
+      Gfx.text(c, '¡AL REVÉS!', r.dx, r.dy - 96, 16, color: Pal.pink, alpha: .8);
+    }
+  }
+}
+
+// ───────────────────────── 60. LA BALANZA DEL MERCADO (equilibrar) ─────────────────────────
+class MarketScale extends Channel {
+  MarketScale(super.g);
+  @override
+  String get name => 'LA BALANZA DEL MERCADO';
+  @override
+  String get sub => 'La morsa frutera pesa una sandía';
+  @override
+  String get ins => '¡EQUILÍBRALA!';
+  @override
+  String get hint => 'Arrastra pesas al platillo hasta que quede recta';
+  @override
+  String get bg => 'bg_market';
+  @override
+  double get dur => 8;
+
+  static const kinds = [1, 1, 2, 2, 5];
+  final onPan = [false, false, false, false, false];
+  final pos = <Offset>[];
+  int melon = 0, grab = -1;
+  double tilt = 0, tv = 0, level = 0;
+  Offset get pivot => Offset(cx, by(.33));
+  static const arm = 118.0;
+  Offset tray(int k) => Offset(bx(.14 + k * .18), by(.86));
+  Offset panAt(double side) => pivot + Offset(side * arm * math.cos(tilt), side * arm * math.sin(tilt)) + const Offset(0, 96);
+  int get right => [for (var k = 0; k < 5; k++) if (onPan[k]) kinds[k]].fold(0, (a, b) => a + b);
+  Offset botFrom = Offset.zero; // solo para los tests con bot
+
+  /// Bot de prueba: pesas que suman exactamente lo que pesa la sandía.
+  List<int> botSubset() {
+    for (var mask = 1; mask < 32; mask++) {
+      var sum = 0;
+      for (var k = 0; k < 5; k++) {
+        if (mask & (1 << k) != 0) sum += kinds[k];
+      }
+      if (sum == melon) return [for (var k = 0; k < 5; k++) if (mask & (1 << k) != 0) k];
+    }
+    return [];
+  }
+
+  @override
+  void init(int l) {
+    melon = pick([3, 4, 6, 7, 8, 9]);
+    for (var k = 0; k < 5; k++) {
+      pos.add(tray(k));
+    }
+  }
+
+  @override
+  void update(double dt) {
+    // el brazo gira hacia el lado que más pesa (muelle con rozamiento)
+    final target = ((melon - right) * .07).clamp(-.32, .32);
+    tv += ((target - tilt) * 60 - tv * 9) * dt;
+    tilt += tv * dt;
+    if (res != 0) return;
+    if (p.pressed) {
+      for (var k = 0; k < 5; k++) {
+        if ((Offset(p.x, p.y) - pos[k]).distance < 44) grab = k;
+      }
+    }
+    if (grab >= 0 && p.down) pos[grab] = Offset(p.x, p.y);
+    if (grab >= 0 && !p.down) {
+      final pan = panAt(1);
+      onPan[grab] = (pos[grab] - pan).distance < 80;
+      Sfx.play(onPan[grab] ? 'squish' : 'click', volume: .7);
+      grab = -1;
+    }
+    for (var k = 0; k < 5; k++) {
+      if (k == grab) continue;
+      if (onPan[k]) {
+        final i = [for (var j = 0; j < 5; j++) if (onPan[j]) j].indexOf(k);
+        pos[k] = panAt(1) + Offset((i - 1.5) * 20, -18 - (i ~/ 3) * 18);
+      } else {
+        pos[k] = Offset.lerp(pos[k], tray(k), 1 - math.exp(-dt * 12))!;
+      }
+    }
+    if (right == melon && tilt.abs() < .03) {
+      level += dt;
+      if (level > .4) {
+        win();
+        Sfx.play('bonus');
+        g.fx.burst(pivot.dx, pivot.dy, Pal.gold, 24);
+      }
+    } else {
+      level = 0;
+    }
+  }
+
+  @override
+  void render(Canvas c) {
+    drawBg(c);
+    Gfx.anim(c, 'walrus', vt, bx(.9), by(.62), 125, ay: 1);
+    Gfx.sprite(c, 'scalebase', pivot.dx, by(.64), by(.64) - pivot.dy + 16, ay: 1);
+    // brazo de la balanza (latón)
+    c.save();
+    c.translate(pivot.dx, pivot.dy);
+    c.rotate(tilt);
+    c.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(-arm - 6, -7, arm * 2 + 12, 14), const Radius.circular(7)),
+        Paint()..color = const Color(0xFFB8862E));
+    c.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(-arm - 6, -7, arm * 2 + 12, 5), const Radius.circular(4)),
+        Paint()..color = const Color(0x55FFFFFF));
+    c.restore();
+    Gfx.clayBall(c, pivot.dx, pivot.dy, 10, const Color(0xFFD9A441));
+    for (final side in [-1.0, 1.0]) {
+      final pa = panAt(side);
+      Gfx.sprite(c, 'pan', pa.dx, pa.dy + 8, 112, ay: .92);
+    }
+    final lp = panAt(-1);
+    Gfx.sprite(c, 'watermelon', lp.dx, lp.dy - 6, 64, ay: 1);
+    // aguja
+    c.save();
+    c.translate(pivot.dx, pivot.dy);
+    c.rotate(tilt);
+    c.drawLine(Offset.zero, const Offset(0, -46), Paint()
+      ..strokeWidth = 5
+      ..strokeCap = StrokeCap.round
+      ..color = level > 0 ? Pal.lime : Pal.pink);
+    c.restore();
+    for (var k = 0; k < 5; k++) {
+      final o = pos[k];
+      final h = 40.0 + kinds[k] * 7;
+      Gfx.sprite(c, 'weight', o.dx, o.dy + h / 2, h, ay: 1, drop: k == grab ? const Offset(6, 14) : const Offset(2, 4));
+      Gfx.text(c, '${kinds[k]}', o.dx, o.dy + h * .1, 14 + kinds[k] * 1.5, color: Pal.gold);
+    }
+    Gfx.text(c, 'PESAS: $right', bx(.72), st + 34, 20, color: Pal.gold);
   }
 }
