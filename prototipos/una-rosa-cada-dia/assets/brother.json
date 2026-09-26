@@ -1,9 +1,9 @@
 {
- "frameW": 128,
- "frameH": 128,
- "anchorX": 64.0,
- "anchorY": 125,
- "bodyH": 102,
+ "frameW": 160,
+ "frameH": 160,
+ "anchorX": 80.0,
+ "anchorY": 157,
+ "bodyH": 128,
  "anims": {
   "idle": {
    "row": 0,
@@ -21,7 +21,8 @@
    "row": 2,
    "frames": 39,
    "kind": "cycle",
-   "fps": 24
+   "fps": 24,
+   "ground": 57.85
   },
   "walk_start": {
    "row": 3,
@@ -39,7 +40,8 @@
    "row": 5,
    "frames": 19,
    "kind": "cycle",
-   "fps": 24
+   "fps": 24,
+   "ground": 126.32
   },
   "run_start": {
    "row": 6,
@@ -64,7 +66,11 @@
    "frames": 48,
    "kind": "jump",
    "fps": 14.77,
-   "crouch": [
+   "crouch": [],
+   "rise": [
+    0,
+    1,
+    2,
     3,
     4,
     5,
@@ -72,23 +78,14 @@
     7,
     8
    ],
-   "rise": [
+   "fall": [
     9,
     10,
-    21,
-    22,
-    23
-   ],
-   "fall": [
-    24,
-    25,
-    26,
-    32,
+    11,
+    12,
     33,
     34,
-    35
-   ],
-   "land": [
+    35,
     36,
     37,
     38,
@@ -96,20 +93,27 @@
     40,
     41,
     42,
-    43
-   ]
+    43,
+    44,
+    45,
+    46,
+    47
+   ],
+   "land": []
   },
   "push": {
    "row": 10,
    "frames": 28,
    "kind": "cycle",
-   "fps": 24
+   "fps": 24,
+   "ground": 75.43
   },
   "pull": {
    "row": 11,
    "frames": 14,
    "kind": "cycle",
-   "fps": 24
+   "fps": 24,
+   "ground": 116.57
   },
   "climb": {
    "row": 12,
@@ -121,7 +125,8 @@
    "row": 13,
    "frames": 12,
    "kind": "cycle",
-   "fps": 24
+   "fps": 24,
+   "ground": 84.0
   },
   "collapse": {
    "row": 14,

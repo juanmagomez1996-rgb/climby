@@ -5,13 +5,22 @@ from PIL import Image, ImageFilter
 from collections import deque
 
 OUT = sys.argv[1]
+import os
+ONLY = os.environ.get('ONLY')
 SHEETS = {
+    'l_props_forest2': ['stump', 'mushrooms', 'fern', 'deadBush', 'branch', 'sign', 'reeds', 'rockPile'],
+    'l_props_grave': ['cross', 'tomb', 'crow', 'tireSwing', 'scarecrow', 'wheel', 'well', 'birdhouse'],
+    'l_props_mine': ['cart', 'rail', 'barrels', 'ladder', 'planks', 'rootCurtain', 'crystals', 'pickaxe'],
+    'l_props_town': ['lamp', 'pole', 'trashcan', 'fenceBroken', 'bicycle', 'doghouse', 'clothesline', 'steps'],
     'l_props_forest': ['treeTall', 'treeSmall', 'grass', 'thorns', 'log', 'rock', 'roots', 'fence'],
     'l_props_cave': ['stalL', 'stalM', 'stalS', 'mineFrame', 'stagL', 'stagM', 'chain', 'lantern'],
     'l_props_play': ['crate', 'trapOpen', 'trapShut', 'boulder', 'gate', 'lever', 'plate', 'rope'],
 }
 meta = {}
+meta = json.load(open(f'{OUT}/props.json')) if os.path.exists(f'{OUT}/props.json') else {}
 for sheet, names in SHEETS.items():
+    if ONLY and sheet not in ONLY.split(','):
+        continue
     im = Image.open(sheet + '.png').convert('RGBA')
     a = np.asarray(im)[..., 3] > 25
     # join thin parts (chain links, grass blades) before labelling

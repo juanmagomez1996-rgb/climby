@@ -1,9 +1,9 @@
 {
- "frameW": 128,
- "frameH": 128,
- "anchorX": 64.0,
- "anchorY": 125,
- "bodyH": 101,
+ "frameW": 160,
+ "frameH": 160,
+ "anchorX": 80.0,
+ "anchorY": 157,
+ "bodyH": 126,
  "anims": {
   "idle": {
    "row": 0,
@@ -15,7 +15,8 @@
    "row": 1,
    "frames": 38,
    "kind": "cycle",
-   "fps": 24
+   "fps": 24,
+   "ground": 45.47
   },
   "walk_start": {
    "row": 2,

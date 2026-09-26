@@ -94,7 +94,7 @@ button:focus-visible,input:focus-visible{outline:1px solid #bbb;outline-offset:3
    screen tall and several screens wide, designed by hand below.
    ========================================================================= */
 const VW = 480, VH = 270, GROUND = 230;
-const GRAV = .36, JUMP = -6.0, RUN = 2.0, WALK = 1.25, PUSHV = 1.0, STEP = 5;
+const GRAV = .36, JUMP = -6.0, RUN = 2.0, RUNG = 1.6, WALK = .55, MOMV = .65, PUSHV = .8, STEP = 5;
 const $ = s => document.querySelector(s);
 const cv = $('#game'), ctx = cv.getContext('2d');
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -107,9 +107,11 @@ const Ms = () => names.m.trim() || 'mamá';
 const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
 
 /* ---------- assets ---------- */
-const PROPS = ['treeTall', 'treeSmall', 'grass', 'thorns', 'log', 'rock', 'roots', 'fence', 'stalL', 'stalM', 'stalS', 'mineFrame', 'stagL', 'stagM', 'chain', 'lantern', 'crate', 'trapOpen', 'trapShut', 'boulder', 'gate', 'lever', 'plate', 'rope'];
+const PROPS = ['treeTall', 'treeSmall', 'grass', 'thorns', 'log', 'rock', 'roots', 'fence', 'stalL', 'stalM', 'stalS', 'mineFrame', 'stagL', 'stagM', 'chain', 'lantern', 'crate', 'trapOpen', 'trapShut', 'boulder', 'gate', 'lever', 'plate', 'rope',
+  'stump', 'mushrooms', 'fern', 'deadBush', 'branch', 'sign', 'reeds', 'rockPile', 'cross', 'tomb', 'crow', 'tireSwing', 'scarecrow', 'wheel', 'well', 'birdhouse',
+  'cart', 'rail', 'barrels', 'ladder', 'planks', 'rootCurtain', 'crystals', 'pickaxe', 'lamp', 'pole', 'trashcan', 'fenceBroken', 'bicycle', 'doghouse', 'clothesline', 'steps'];
 const SRC = { brother: 'assets/brother.png', mother: 'assets/mother.png', forest_far: 'assets/forest_far.webp', cave_far: 'assets/cave_far.webp', rain_far: 'assets/rain_far.webp',
-  forest_mid: 'assets/forest_mid.webp', cave_ceil: 'assets/cave_ceil.webp', grass: 'assets/grass.png', house: 'assets/house.png', shadow: 'assets/shadow.webp', fog: 'assets/fog.png' };
+  forest_mid: 'assets/forest_mid.webp', cave_ceil: 'assets/cave_ceil.webp', grass: 'assets/grass.png', house: 'assets/house.png', shadow: 'assets/shadow.webp', fog: 'assets/fog.png', hang: 'assets/hang.png', fgrass: 'assets/fgrass.png' };
 for (const p of PROPS) SRC[p] = `assets/props/${p}.png`;
 const IMG = {}, ATLAS = {}; let META = {};
 function loadAll() {
@@ -155,7 +157,7 @@ const box = (x, y, w, h, kind, o = {}) => Object.assign({ x, y, w, h, kind, onew
 const deco = (k, x, base, h, layer = 'play', flip = false) => ({ k, x, base, h, layer, flip });
 
 function level1() { // EL BOSQUE
-  const L = { name: 'El bosque', theme: 'forest', w: 3300, rough: 7, flat: [[1186, 1430, 1.2], [2630, 2830, 0], [2880, 2945, 0]],
+  const L = { name: 'El bosque', theme: 'forest', w: 3300, rough: 9, flat: [[1186, 1430, 1.2], [2630, 2830, 0], [2880, 2945, 0]],
     terrain: [
       { pts: [[0, 224], [120, 228], [220, 236], [300, 240], [380, 236], [470, 228], [560, 232], [640, 232], [640, 172], [700, 170], [760, 174], [760, 232], [860, 234], [1000, 234], [1100, 230], [1130, 231]] },
       { pts: [[1186, 230], [1300, 228], [1420, 230], [1420, 130], [1560, 128], [1600, 140], [1680, 170], [1760, 200], [1840, 226], [1900, 230], [2150, 230], [2150, 208], [2200, 206], [2200, 230], [2380, 232]] },
@@ -166,7 +168,7 @@ function level1() { // EL BOSQUE
     traps: [{ x: 920, y: 234 }, { x: 2000, y: 230 }, { x: 2290, y: 231 }],
     plates: [{ id: 'plate0', x: 2760, y: 230, w: 34 }],
     levers: [], stal: [], water: [],
-    chases: [{ trigger: 1905, end: 2520, speed: 1.55 }],
+    chases: [{ trigger: 1905, end: 2520, speed: 1.3 }],
     checkpoints: [20, 790, 1470, 1880, 2560, 2940],
     goalX: 3140, houseX: 3070,
     says: [[30, 'h', 'Te lo prometí, ma. Una rosa todos los días.'], [560, 'n', 'Salta contra una pared baja para trepar.'], [1225, 'n', 'Empuja la caja.'],
@@ -183,7 +185,7 @@ function level1() { // EL BOSQUE
   return L;
 }
 function level2() { // LA CUEVA
-  return { name: 'La cueva', theme: 'cave', w: 3400, caveEnd: 2950, rough: 6, flat: [[1270, 1560, .8]],
+  return { name: 'La cueva', theme: 'cave', w: 3400, caveEnd: 2950, rough: 8, flat: [[1270, 1560, .8]],
     terrain: [
       { pts: [[0, 200], [140, 204], [260, 220], [380, 232], [440, 236], [440, 300]] },
       { pts: [[620, 300], [620, 236], [700, 232], [820, 230], [1700, 230]] },
@@ -191,7 +193,7 @@ function level2() { // LA CUEVA
       { pts: [[2650, 205], [2750, 190], [2900, 170], [3000, 165], [3150, 170], [3400, 172]] },
     ],
     boxes: [
-      box(478, 236, 30, 70, 'stone'), box(540, 238, 28, 70, 'stone', { fragile: true, sink: true }),
+      box(474, 236, 34, 70, 'stone'), box(540, 238, 36, 70, 'stone', { fragile: true, sink: true }),
       box(1520, 110, 16, 120, 'gate', { y0: 110, openH: 108, open: 0, by: 'lever0' }),
       ...Array.from({ length: 9 }, (_, i) => box(1702 + i * 29, 230, 27, 5, 'plank', { fragile: true })),
     ],
@@ -199,9 +201,9 @@ function level2() { // LA CUEVA
     crates: [],
     traps: [{ x: 1420, y: 230 }, { x: 2230, y: 230 }],
     plates: [],
-    levers: [{ id: 'lever0', x: 1300, y: 230, timed: 4.2 }],
+    levers: [{ id: 'lever0', x: 1300, y: 230, timed: 4.8 }],
     stal: [{ x: 905, len: 44 }, { x: 1015, len: 52 }, { x: 1125, len: 40 }, { x: 2300, len: 48 }, { x: 2560, len: 44 }],
-    chases: [{ trigger: 2050, end: 2900, speed: 1.6 }],
+    chases: [{ trigger: 2050, end: 2900, speed: 1.35 }],
     checkpoints: [20, 640, 1220, 1560, 1980, 2940],
     goalX: 3175, houseX: 3100,
     says: [[30, 'h', 'Aquí abajo no se ve nada.'], [420, 'n', 'El agua es profunda.'], [850, 'h', 'Algo cruje arriba.'], [1240, 'n', 'Shift o E junto a la palanca.'],
@@ -217,7 +219,7 @@ function level2() { // LA CUEVA
   };
 }
 function level3() { // LA LLUVIA
-  return { name: 'La lluvia', theme: 'rain', w: 3200, closed: true, rough: 7, flat: [[860, 1120, .8], [1230, 1520, .8]],
+  return { name: 'La lluvia', theme: 'rain', w: 3200, closed: true, rough: 9, flat: [[860, 1120, .8], [1230, 1520, .8]],
     terrain: [
       { pts: [[0, 228], [300, 230], [420, 226], [520, 230], [700, 160], [740, 160], [740, 230], [820, 230], [820, 188], [850, 188], [850, 230], [1850, 230]] },
       { pts: [[1905, 230], [2000, 230], [2000, 172], [2080, 170], [2130, 200], [2200, 230], [2400, 230]] },
@@ -232,8 +234,8 @@ function level3() { // LA LLUVIA
     crates: [{ x: 890, y: 204 }],
     traps: [{ x: 1000, y: 230 }, { x: 1024, y: 230 }, { x: 1048, y: 230 }, { x: 1750, y: 230 }, { x: 2255, y: 230 }],
     plates: [],
-    levers: [{ id: 'lever0', x: 1250, y: 230, timed: 3.4 }],
-    chases: [{ trigger: 1600, end: 2760, speed: 1.72 }],
+    levers: [{ id: 'lever0', x: 1250, y: 230, timed: 4.4 }],
+    chases: [{ trigger: 1600, end: 2760, speed: 1.45 }],
     checkpoints: [20, 870, 1120, 1540, 2600],
     goalX: 2890, houseX: 2820,
     says: [[30, 'h', 'Hoy está difícil, ¿verdad? Igual te la llevo.'], [860, 'n', 'Las trampas se cierran con cualquier peso.'], [1230, 'n', 'La reja se cierra rápido.'],
@@ -293,7 +295,11 @@ function roughen(d, seed) {
         for (let x = x1 + 14; x < x2 - 14; x += 11 + hash(x * .37 + seed) * 13) {
           const base = y1 + (y2 - y1) * (x - x1) / len, taper = Math.min(1, (x - x1) / 26, (x2 - x) / 26);
           const n = Math.sin(x * .0105 + seed) * .55 + Math.sin(x * .031 + seed * 2.3) * .3 + (hash(x * 1.7 + seed) - .5) * .3;
-          out.push([Math.round(x), base + n * ampAt(x) * taper]);
+          const amp = ampAt(x);
+          // an occasional mound or hollow, 70-130 px wide
+          const cell = Math.floor(x / 160), c0 = cell * 160 + 40 + hash(cell + seed) * 80, w = 35 + hash(cell * 3 + seed) * 30;
+          const bump = hash(cell * 7 + seed) > .45 ? (hash(cell * 11 + seed) > .5 ? -1 : .7) * (8 + hash(cell * 13) * 9) * Math.exp(-Math.pow((x - c0) / w, 2)) : 0;
+          out.push([Math.round(x), base + (n * amp + bump * Math.min(1, amp / 6)) * taper]);
         }
       }
       out.push([x2, y2]);
@@ -301,16 +307,42 @@ function roughen(d, seed) {
     p.pts = out;
   }
 }
-function dress(d, seed) { // stones, roots and grass half-buried along the ground
-  const keep = [...d.traps.map(t => t.x + 12), ...d.plates.map(p => p.x + p.w / 2), ...d.levers.map(l => l.x), ...d.crates.map(c => c.x + 13), ...d.boxes.filter(b => b.kind === 'gate').map(b => b.x), d.goalX, d.houseX + 60, ...d.checkpoints];
-  const kinds = ['grass', 'rock', 'roots', 'grass', 'thorns', 'rock'];
-  for (let x = 40; x < d.w - 40; x += 55 + hash(x + seed) * 90) {
-    if (keep.some(k => Math.abs(k - x) < 34)) continue;
-    const y = surfaceY(x); if (!isFinite(y) || y > VH) continue;
-    if (Math.abs(surfaceY(x - 8) - y) > 6 || Math.abs(surfaceY(x + 8) - y) > 6) continue;   // not on wall edges
-    const k = kinds[Math.floor(hash(x * 3 + seed) * kinds.length)], h = k === 'rock' ? 6 + hash(x) * 6 : 9 + hash(x * 5) * 10;
-    d.decor.push(deco(k, x, y + (k === 'rock' ? 3 : 2), h, 'play', hash(x * 7) > .5));
+const POOLS = {
+  forest: { bg: ['treeTall', 'treeSmall', 'treeTall', 'deadBush', 'stump', 'scarecrow', 'cross', 'sign', 'well'], mid: ['treeSmall', 'deadBush', 'stump', 'cross', 'tomb', 'reeds', 'fence', 'fern', 'birdhouse'],
+    play: ['grass', 'rock', 'roots', 'mushrooms', 'fern', 'reeds', 'rockPile', 'branch', 'thorns', 'grass', 'stump', 'cross'], fg: ['fern', 'reeds', 'grass', 'deadBush', 'thorns', 'branch'] },
+  cave: { bg: ['stagL', 'stagM', 'crystals', 'mineFrame', 'stagL'], mid: ['stagM', 'crystals', 'barrels', 'mineFrame', 'cart', 'ladder'],
+    play: ['rock', 'rockPile', 'crystals', 'barrels', 'planks', 'pickaxe', 'rail', 'roots', 'mushrooms'], fg: ['stagM', 'crystals', 'rockPile', 'rock'] },
+  rain: { bg: ['pole', 'treeTall', 'lamp', 'clothesline', 'doghouse', 'well', 'pole', 'treeSmall'], mid: ['fenceBroken', 'pole', 'lamp', 'trashcan', 'doghouse', 'bicycle', 'clothesline'],
+    play: ['grass', 'trashcan', 'rock', 'fenceBroken', 'bicycle', 'reeds', 'rockPile', 'wheel', 'branch'], fg: ['reeds', 'grass', 'fenceBroken', 'deadBush'] },
+  dream: { bg: ['treeTall', 'treeSmall', 'cross', 'deadBush'], mid: ['treeSmall', 'fern', 'reeds', 'tomb'], play: ['grass', 'fern', 'mushrooms', 'reeds', 'rock'], fg: ['fern', 'reeds', 'grass'] },
+};
+const PROP_H = { treeTall: [150, 230], treeSmall: [110, 170], deadBush: [30, 55], stump: [22, 40], scarecrow: [60, 80], cross: [24, 40], sign: [30, 44], well: [40, 56], tomb: [18, 28], reeds: [22, 40],
+  fence: [22, 30], fern: [18, 32], birdhouse: [40, 56], grass: [10, 20], rock: [6, 12], roots: [10, 20], mushrooms: [8, 14], rockPile: [8, 14], branch: [5, 9], thorns: [12, 22],
+  stagL: [90, 150], stagM: [70, 120], crystals: [16, 34], mineFrame: [60, 90], barrels: [22, 30], cart: [22, 28], ladder: [40, 60], planks: [8, 12], pickaxe: [12, 18], rail: [5, 7],
+  pole: [110, 170], lamp: [70, 100], clothesline: [40, 55], doghouse: [24, 32], trashcan: [18, 24], fenceBroken: [22, 30], bicycle: [18, 24], wheel: [16, 22] };
+function dress(d, seed) {
+  const pool = POOLS[d.theme] || POOLS.forest, H = k => { const r = PROP_H[k] || [12, 20]; return r; };
+  const keep = [...d.traps.map(t => t.x + 12), ...d.plates.map(p => p.x + p.w / 2), ...d.levers.map(l => l.x), ...d.crates.map(c => c.x + 13), ...d.boxes.filter(b => b.kind === 'gate').map(b => b.x + 8), d.goalX, d.houseX + 60];
+  const pickK = (list, x) => list[Math.floor(hash(x * 3.1 + seed) * list.length)];
+  // far and middle depth: rows of silhouettes standing on their own ground band
+  for (const [layer, step, spread] of [['bg', 95, 70], ['mid', 120, 90]]) {
+    for (let x = 30; x < d.w * (layer === 'bg' ? .62 : .86) + VW; x += step + hash(x + seed + (layer === 'bg' ? 1 : 2)) * spread) {
+      const k = pickK(pool[layer], x + (layer === 'bg' ? 0 : 500)), [a, b] = H(k), h = (a + hash(x * 5) * (b - a)) * (layer === 'bg' ? 1 : .8);
+      d.decor.push({ k, x, base: 0, h, layer, flip: hash(x * 7 + seed) > .5, band: true });
+    }
   }
+  // on the ground, around the play
+  for (let x = 30; x < d.w - 30; x += 22 + hash(x + seed) * 46) {
+    if (keep.some(k => Math.abs(k - x) < 30)) continue;
+    const k = pickK(pool.play, x), [a, b] = H(k), h = a + hash(x * 5) * (b - a);
+    const im = IMG[k], w = im ? im.width * h / im.height : h;
+    const ys = [surfaceY(x - w * .4), surfaceY(x), surfaceY(x + w * .4)];
+    if (ys.some(y => !isFinite(y) || y > VH)) continue;
+    if (Math.max(...ys) - Math.min(...ys) > 10) continue;                  // not across a wall edge
+    d.decor.push(deco(k, x, Math.max(...ys) + Math.max(2, h * .12), h, 'play', hash(x * 7) > .5));
+  }
+  // close to the camera, dark and large
+  for (let x = 200; x < d.w * 1.35 + VW; x += 260 + hash(x + seed) * 260) { const k = pickK(pool.fg, x), [a, b] = H(k); d.decor.push(deco(k, x, VH + 14, (a + hash(x) * (b - a)) * 2.6, 'fg', hash(x * 9) > .5)); }
 }
 function build(i) {
   const d = LEVELS[i](), prevL = L;
@@ -590,6 +622,8 @@ function chooseAnim(dt) {
   const sheet = L.dream ? 'mother' : 'brother', A = ATLAS[sheet]; if (!A) return null;
   const an = A.anims, clk = AN.clk, v = Math.abs(P.vx);
   const tick = (name, rate = 1) => (clk[name] = (clk[name] || 0) + dt * rate);
+  // play a gait exactly as fast as the body moves: measured treadmill speed -> game px/s
+  const gait = (name, speed) => { const m = an[name]; if (!m || !m.ground) return 1; const g = m.ground * (sheet === 'mother' ? 43 : 40) / A.bodyH; return Math.max(.3, Math.min(3.2, speed * 60 / g)); };
   const use = (name, f) => ({ sheet, anim: name, f: Math.max(0, Math.min(an[name].frames - 1, f)) });
   const chasing = chase && chase.started && !chase.done;
   // facing: turn in place when reversing slowly on the ground; instant in the air or in a chase
@@ -607,7 +641,7 @@ function chooseAnim(dt) {
     else if (AN.wasMoving) { AN.wasMoving = false; AN.stopT = 0; AN.stopClip = 'walk_stop'; }
     if (moving) {
       if (AN.moveT < an.walk_start.frames / an.walk_start.fps * .8) return out(use('walk_start', AN.moveT * an.walk_start.fps));
-      return out(use('walk', frameOf(an.walk, tick('walk', v / 1.1), 'loop')));
+      return out(use('walk', frameOf(an.walk, tick('walk', gait('walk', v)), 'loop')));
     }
     if (AN.stopT >= 0) { AN.stopT += dt; const m = an.walk_stop, f = AN.stopT * m.fps; if (f < m.frames - 1) return out(use('walk_stop', f)); AN.stopT = -1; }
     return out(use('idle', frameOf(an.idle, tick('idle'), 'pingpong')));
@@ -624,18 +658,18 @@ function chooseAnim(dt) {
     const p = Math.max(0, Math.min(.999, P.vy / 6.5)); return out(use('jump', J.fall[Math.floor(p * J.fall.length)]));
   }
   if (P.landT > 0 && J.land.length) { const p = 1 - P.landT / (J.land.length / J.fps); return out(use('jump', J.land[Math.max(0, Math.min(J.land.length - 1, Math.floor(p * J.land.length)))])); }
-  if (P.pushing > 0 && an.push) { AN.wasMoving = false; return out(use('push', frameOf(an.push, tick('push', .9), 'loop'))); }
-  if (P.pulling > 0 && an.pull) { AN.wasMoving = false; return out(use('pull', frameOf(an.pull, tick('pull', .9), 'loop'))); }
+  if (P.pushing > 0 && an.push) { AN.wasMoving = false; return out(use('push', frameOf(an.push, tick('push', gait('push', PUSHV)), 'loop'))); }
+  if (P.pulling > 0 && an.pull) { AN.wasMoving = false; return out(use('pull', frameOf(an.pull, tick('pull', gait('pull', PUSHV)), 'loop'))); }
   const moving = v > .18;
   if (moving) {
     if (!AN.wasMoving) AN.moveT = 0; AN.wasMoving = true; AN.stopT = -1; AN.moveT += dt; AN.lastSpeed = v;
-    const running = v > 1.55;
+    const running = v > 1.05;
     const st = running ? an.run_start : an.walk_start, stName = running ? 'run_start' : 'walk_start';
     if (st && AN.moveT < st.frames / st.fps * .75) return out(use(stName, AN.moveT * st.fps));
     // cycles advance with the distance covered, so the feet never slide
-    return running ? out(use('run', frameOf(an.run, tick('run', v / RUN), 'loop'))) : out(use('walk', frameOf(an.walk, tick('walk', Math.max(.55, v / WALK)), 'loop')));
+    return running ? out(use('run', frameOf(an.run, tick('run', gait('run', v)), 'loop'))) : out(use('walk', frameOf(an.walk, tick('walk', gait('walk', Math.max(.3, v))), 'loop')));
   }
-  if (AN.wasMoving) { AN.wasMoving = false; AN.stopT = 0; AN.stopClip = AN.lastSpeed > 1.55 ? 'run_stop' : 'walk_stop'; }
+  if (AN.wasMoving) { AN.wasMoving = false; AN.stopT = 0; AN.stopClip = AN.lastSpeed > 1.05 ? 'run_stop' : 'walk_stop'; }
   if (AN.stopT >= 0 && an[AN.stopClip]) { AN.stopT += dt; const m = an[AN.stopClip], f = AN.stopT * m.fps; if (f < m.frames - 1) return out(use(AN.stopClip, f)); AN.stopT = -1; }
   // standing still: sad breathing (forth and back, never restarting), a look back now and then, then kneeling
   if (P.idleT > 16 && an.kneel) { const f = frameOf(an.kneel, P.idleT - 16, 'hold'); AN.kneelF = f; return out(use('kneel', f)); }
@@ -738,19 +772,19 @@ function stepCore() {
   if (dir && dir === P.holdDir) P.holdT += dt; else { P.holdT = 0; P.holdDir = dir; }
   if (dir || K.j || !P.on) P.idleT = 0; else P.idleT += dt;
   const chasing = chase && chase.started && !chase.done;
-  let maxv = L.dream ? 1.1 : !P.on || chasing ? RUN : P.holdT < .45 ? WALK : Math.min(RUN, WALK + (P.holdT - .45) * 2.2);
+  let maxv = L.dream ? MOMV : !P.on ? RUN : chasing ? RUNG : P.holdT < .45 ? WALK : Math.min(RUNG, WALK + (P.holdT - .45) * 2.6);
   if (!L.dream && P.on && !chasing && P.x > L.goalX - 170) maxv = Math.min(maxv, WALK);
   const pullC = grab && dir ? adjacentCrate(-dir) : null;
   if (pullC || P.pushing > 0) maxv = PUSHV;
   if (inWater) maxv = .8;
-  const acc = P.on ? .32 : .22;
+  const acc = P.on ? .32 : .12;
   if (dir) { P.vx += dir * acc; P.face = dir; } else if (P.on) P.vx *= .68; else P.vx *= .96;
   if (Math.abs(P.vx) < .04) P.vx = 0;
   P.vx = Math.max(-maxv, Math.min(maxv, P.vx));
   if (K.j && !jPrev && !L.dream && AN.standT < 0) P.buf = 7;
   jPrev = K.j;
   P.co = P.on ? 6 : P.co - 1;
-  if (P.buf > 0 && P.co > 0 && !pullC && (!inWater || P.y + 8 < inWater.y)) { P.vy = JUMP; P.buf = 0; P.co = 0; P.on = false; P.airT = 0; noise(.08, .05, 'bandpass', 700, 1); }
+  if (P.buf > 0 && P.co > 0 && !pullC && (!inWater || P.y + 8 < inWater.y)) { P.vy = JUMP; P.buf = 0; P.co = 0; P.on = false; P.airT = 0; if (dir) P.vx = dir * Math.max(Math.abs(P.vx), RUNG) * 1.25; /* a held direction makes a full leap */ noise(.08, .05, 'bandpass', 700, 1); }
   P.buf--;
   if (!K.j && P.vy < -2.6) P.vy = -2.6;
   P.vy = Math.min(inWater ? .7 : 7, P.vy + (inWater ? .05 : GRAV));
@@ -829,11 +863,23 @@ function drawProp(c, d, par, color) {
   if (x > VW + 20 || x + w < -20) return;
   if (d.flip) { c.save(); c.translate(x + w, 0); c.scale(-1, 1); c.drawImage(im, 0, d.base - h, w, h); c.restore(); } else c.drawImage(im, x, d.base - h, w, h);
 }
+// a soft rolling ground line for a depth layer (in that layer's own coordinates)
+function bandY(x, par, y0, amp) { return y0 + Math.sin(x * .011 + par * 9) * amp + Math.sin(x * .037 + par * 3) * amp * .35; }
+function groundBand(c, par, y0, color, amp) {
+  if (L.theme === 'cave' && par < .6) return;
+  c.fillStyle = color; c.beginPath(); c.moveTo(0, VH);
+  for (let sx = 0; sx <= VW + 8; sx += 8) { const wx = sx + cam * par; c.lineTo(sx, bandY(wx, par, y0, amp)); }
+  c.lineTo(VW, VH); c.closePath(); c.fill();
+}
 function drawTerrain(c) {
   c.fillStyle = '#050505';
   for (const p of L.terrain) {
     c.beginPath(); c.moveTo(p.pts[0][0], VH + 60);
-    for (const [x, y] of p.pts) c.lineTo(x, y);
+    for (let i = 0; i < p.pts.length; i++) {
+      const [x, y] = p.pts[i]; c.lineTo(x, y);
+      const nx = p.pts[i + 1]; if (!nx || nx[0] - x < 6 || x > cam + VW + 20 || nx[0] < cam - 20) continue;
+      for (let xx = x + 4; xx < nx[0] - 2; xx += 4) c.lineTo(xx, y + (nx[1] - y) * (xx - x) / (nx[0] - x) + (hash(xx * .91) - .5) * 2.4);
+    }
     c.lineTo(p.pts[p.pts.length - 1][0], VH + 60); c.closePath(); c.fill();
   }
   const G = IMG.grass; if (!G) return;
@@ -961,9 +1007,11 @@ function render() {
   if (th !== 'cave') layer(c, tinted('forest_mid', '#5c5c5c'), .3, VH - 10, VH * 1.05, th === 'rain' ? .18 : .32);
   else layer(c, tinted('cave_ceil', '#3c3c3c'), .45, 0, 70, .9, true);
   layer(c, tinted('fogA', '#d2d2d2'), .38, 236, 110, .35);
-  for (const d of L.decor) if (d.layer === 'bg') drawProp(c, d, .55, '#2e2e2e');
+  groundBand(c, .55, 246, '#2c2c2c', 7);
+  for (const d of L.decor) if (d.layer === 'bg') drawProp(c, d.band ? { ...d, base: bandY(d.x - cam * .55 + cam * .55, .55, 246, 7) + 6 } : d, .55, '#2e2e2e');
   layer(c, tinted('fogA', '#bdbdbd'), .6, 262, 70, .25);
-  for (const d of L.decor) if (d.layer === 'mid') drawProp(c, d, .82, '#151515');
+  groundBand(c, .82, 252, '#141414', 9);
+  for (const d of L.decor) if (d.layer === 'mid') drawProp(c, d.band ? { ...d, base: bandY(d.x, .82, 252, 9) + 6 } : { ...d, base: d.base + 44 }, .82, '#151515');
   // play layer
   c.save(); c.translate(-cam, 0);
   drawHouse(c);
@@ -1017,6 +1065,10 @@ function render() {
   }
   c.restore();
   for (const dd of L.decor) if (dd.layer === 'fg') drawProp(c, dd, 1.35, '#000');
+  if (IMG.fgrass) layer(c, IMG.fgrass, 1.25, VH + 16, 46, .96);
+  if (IMG.hang && th !== 'cave') layer(c, IMG.hang, 1.3, 0, 64, .95, true);
+  if (th === 'cave' && IMG.rootCurtain) for (let i = Math.floor(cam * 1.3 / 170) - 1; i < Math.floor(cam * 1.3 / 170) + 5; i++) { if (hash(i * 3) < .4) continue; const im = IMG.rootCurtain, h = 50 + hash(i) * 40, w = im.width * h / im.height; c.drawImage(im, i * 170 - cam * 1.3, -8, w, h); }
+  ambience(c, t);
   if (th === 'rain') {
     c.strokeStyle = 'rgba(210,210,215,.28)'; c.lineWidth = .8; c.beginPath();
     for (let i = 0; i < 140; i++) { const x = ((i * 137.5 - t * 60 - cam * .2) % 560 + 560) % 560 - 40, y = ((i * 71.3 + t * 480) % (VH + 20)) - 10; c.moveTo(x, y); c.lineTo(x - 2.5, y + 10); }
@@ -1035,6 +1087,20 @@ function render() {
     if (Math.random() < .06) { c.strokeStyle = `rgba(230,230,225,${.06 + Math.random() * .08})`; c.lineWidth = .5; const x = Math.random() * VW; c.beginPath(); c.moveTo(x, 0); c.lineTo(x + (Math.random() - .5) * 5, VH); c.stroke(); }
   }
   if (S.dead) { const k = Math.max(0, (S.dead.t - .9) / 1.1); c.fillStyle = `rgba(0,0,0,${Math.min(1, k)})`; c.fillRect(-10, -10, VW + 20, VH + 20); }
+}
+
+function ambience(c, t) {
+  const th = L.theme;
+  if (th === 'forest' || th === 'dream') { // leaves drifting down
+    c.fillStyle = 'rgba(8,8,8,.85)';
+    for (let i = 0; i < 18; i++) {
+      const sp = 14 + hash(i) * 16, y = ((t * sp + hash(i * 3) * 400) % (VH + 40)) - 20, x = ((hash(i * 7) * 700 - cam * (.6 + hash(i) * .6) + Math.sin(t * .8 + i) * 22) % 560 + 560) % 560 - 40;
+      c.save(); c.translate(x, y); c.rotate(t * (1 + hash(i)) + i); c.beginPath(); c.ellipse(0, 0, 2.4, 1.1, 0, 0, 7); c.fill(); c.restore();
+    }
+  }
+  if (th === 'cave') { c.fillStyle = 'rgba(210,210,205,.35)'; for (let i = 0; i < 26; i++) { const x = ((hash(i * 5) * 600 - cam * .7 + Math.sin(t * .3 + i) * 12) % 540 + 540) % 540 - 30, y = hash(i * 9) * VH + Math.sin(t * .4 + i) * 8; c.fillRect(x, y, .8, .8); } }
+  // a crow now and then, crossing the sky
+  const cw = IMG.crow; if (cw && th !== 'cave') { const per = 19, k = (t % per) / per, n = Math.floor(t / per); if (k < .35) { const x = VW + 30 - k / .35 * (VW + 90), y = 40 + hash(n) * 60 + Math.sin(k * 40) * 3, h = 12; c.save(); c.globalAlpha = .8; c.translate(x, y); c.scale(-1, 1); c.drawImage(cw, 0, 0, cw.width * h / cw.height, h); c.restore(); } }
 }
 
 /* ---------- loop ---------- */

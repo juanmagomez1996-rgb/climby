@@ -20,7 +20,7 @@ import imageio_ffmpeg
 FF = imageio_ffmpeg.get_ffmpeg_exe()
 OUT = sys.argv[1]
 os.makedirs(OUT, exist_ok=True)
-F = 128          # square frame (px); anchor at bottom centre
+F = 160          # square frame (px); anchor at bottom centre, with head-room for raised arms
 MAXF = 48
 FPS = 24
 _cache = {}
@@ -99,6 +99,32 @@ def pick(spec):
     return raw[a:e]           # clip, hold, jump
 
 
+def uncut(seq):
+    """Replace frames where the video cropped the figure (touches the top/side edge) with the nearest clean one."""
+    bad = []
+    for f in seq:
+        a = f[..., 3] > 60
+        bad.append(a[:3].any() or a[:, :3].any() or a[:, -3:].any())
+    if not any(bad) or all(bad):
+        return seq
+    good = [i for i, b in enumerate(bad) if not b]
+    return [seq[i] if not bad[i] else seq[min(good, key=lambda g: abs(g - i))] for i in range(len(seq))]
+
+
+def ground_speed(row, fps):
+    """Treadmill speed of a gait cycle in sheet px per second: a cycle is two steps,
+    and a step is how far the feet spread apart (widest leg span minus narrowest)."""
+    ws = []
+    for cell in row:
+        a = np.asarray(cell)[..., 3] > 80
+        ys = np.where(a.any(axis=1))[0]
+        if not len(ys):
+            continue
+        band = a[ys.max() - int((ys.max() - ys.min()) * .12): ys.max() + 1]
+        xs = np.where(band.any(axis=0))[0]; ws.append(xs.max() - xs.min())
+    return 2 * (max(ws) - min(ws)) / (len(row) / fps) if ws else 0.0
+
+
 def thin(seq):
     if len(seq) <= MAXF:
         return seq, FPS
@@ -109,7 +135,7 @@ def thin(seq):
 def process(name, specs):
     data = []
     for anim, spec in specs.items():
-        seq, fps = thin(pick(spec))
+        seq, fps = thin(uncut(pick(spec)))
         data.append((anim, spec, seq, fps))
         print(name, anim, spec['kind'], len(seq), round(fps, 1))
     ref = next(s for a, sp, s, f in data if a == 'idle')
@@ -146,6 +172,8 @@ def process(name, specs):
             m['land'] = [int(i) for i in range(air.max() + 1, min(len(L), air.max() + 9))]
         if kind == 'hold':
             m['loopFrom'] = int(len(row) * .62)
+        if kind == 'cycle':
+            m['ground'] = round(ground_speed(row, fps), 2)
         meta[anim] = m
 
     cols = max(len(r) for r in rows)
