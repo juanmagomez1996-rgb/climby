@@ -245,8 +245,7 @@ class _MenuOverlayState extends State<MenuOverlay> {
             ),
           const SizedBox(height: 14),
           ClayButton('ENCENDER LA TELE', onTap: widget.game.startRun, width: 250),
-          const SizedBox(height: 4),
-          ClayButton('PROBAR CANALES', image: 'btn_teal', onTap: widget.game.openSandbox, width: 190),
+          // «Probar canales» (sandbox) queda oculto por ahora; el código sigue en SandboxOverlay.
           const SizedBox(height: 6),
           ClayText('Récord: ${Prefs.best} canales', size: 22, color: Pal.gold),
           const SizedBox(height: 12),
