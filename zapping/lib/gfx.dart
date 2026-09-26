@@ -70,6 +70,17 @@ const anims = <String, AnimInfo>{
   'dogchef': AnimInfo(226, 300),
   'pigcop': AnimInfo(300, 278),
   'shepherd': AnimInfo(253, 300),
+  'diva': AnimInfo(253, 300),
+  'grandpa': AnimInfo(248, 300),
+  'kid': AnimInfo(211, 300),
+  'seal': AnimInfo(189, 300),
+  'flame': AnimInfo(141, 220),
+  'gummy': AnimInfo(213, 300),
+  'worms': AnimInfo(360, 210),
+  'snail': AnimInfo(300, 143),
+  'snail2': AnimInfo(300, 170),
+  'banana': AnimInfo(131, 300),
+  'chameleon': AnimInfo(300, 161),
 };
 
 const spriteNames = [
@@ -103,6 +114,9 @@ const spriteNames = [
   'bg_russian', 'bg_sausage', 'bg_cross', 'bg_clouds',
   'thief', 'lens', 'meatball2', 'boot', 'plate', 'cat', 'gnome', 'trashcan', 'fork', 'cup',
   'sock_a', 'sock_b', 'sock_c', 'matryoshka', 'cheese', 'sausage', 'snailcar', 'fence', 'sheep',
+  'bg_theater', 'bg_nightroom', 'bg_photo', 'bg_pool', 'bg_ginger', 'bg_apple', 'bg_race', 'bg_spa',
+  'bg_bands', 'bg_shadow', 'grandpa_awake', 'peel', 'cookiejar', 'beachball', 'audience', 'hawk',
+  'partyhat', 'an_rabbit', 'an_elephant', 'an_giraffe', 'an_duck', 'an_crab', 'an_trex', 'an_pig',
 ];
 
 class Gfx {

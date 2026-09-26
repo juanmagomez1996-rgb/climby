@@ -1,6 +1,4 @@
-import 'dart:math' as math;
-import 'dart:ui';
-
+import 'dart:ui' show Offset;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zapping_infinito/channels.dart';
 import 'package:zapping_infinito/channels3.dart';
@@ -178,6 +176,122 @@ void main() {
     expect(ok, greaterThanOrEqualTo(3), reason: lastWhy);
   });
 
+  test('41 diva: el foco sobre ella gana; sin foco no', () {
+    expect(play(DivaSpot.new, (c, p, f) {
+      final d = (c as DivaSpot).diva;
+      touch(p, d.dx, d.dy - 80);
+    }), 1);
+    expect(play(DivaSpot.new, (c, p, f) {}), 0);
+  });
+
+  test('42 abuelo: andar solo cuando duerme gana; andar siempre pierde', () {
+    var ok = 0;
+    for (var s = 0; s < 6; s++) {
+      if (play(Grandpa.new, (c, p, f) {
+            if ((c as Grandpa).state == 0) touch(p, c.cx, c.cy);
+          }) ==
+          1) {
+        ok++;
+      }
+    }
+    expect(ok, greaterThanOrEqualTo(5), reason: lastWhy);
+    expect(play(Grandpa.new, (c, p, f) => touch(p, c.cx, c.cy)), -1);
+  });
+
+  test('43 qué ha cambiado: tocar al cambiado gana y a otro pierde', () {
+    expect(play(WhatChanged.new, (c, p, f) {
+      final w = c as WhatChanged;
+      if (w.showAfter) touch(p, w.slotX(w.changed), w.row - 50);
+    }), 1);
+    expect(play(WhatChanged.new, (c, p, f) {
+      final w = c as WhatChanged;
+      if (w.showAfter) touch(p, w.slotX((w.changed + 1) % w.n), w.row - 50);
+    }), -1);
+  });
+
+  test('44 foca: golpear la pelota al bajar gana; sin tocar cae', () {
+    var ok = 0;
+    for (var s = 0; s < 5; s++) {
+      var last = -99;
+      if (play(SealBall.new, (c, p, f) {
+            final k = c as SealBall;
+            if (k.v.dy > 0 && k.b.dy > k.water - 150 && f - last > 8) {
+              touch(p, k.b.dx, k.b.dy);
+              last = f;
+            }
+          }) ==
+          1) {
+        ok++;
+      }
+    }
+    expect(ok, greaterThanOrEqualTo(4), reason: lastWhy);
+    expect(play(SealBall.new, (c, p, f) {}), -1);
+  });
+
+  test('45 bombero: apuntar a cada llama gana', () {
+    expect(play(FireJelly.new, (c, p, f) {
+      final k = c as FireJelly;
+      final alive = k.flames.where((q) => q[2] > 0);
+      if (alive.isNotEmpty) touch(p, alive.first[0], alive.first[1]);
+    }), 1);
+  });
+
+  test('46 gusanos: tocar a tiempo gana; sin tocar pierde', () {
+    expect(play(WormBand.new, (c, p, f) {
+      final k = c as WormBand;
+      for (final n in k.notes) {
+        if (n[2] == 0 && (n[1] - c.t).abs() < .03) {
+          touch(p, k.laneX(n[0].toInt()), c.cy);
+          break;
+        }
+      }
+    }), 1);
+    expect(play(WormBand.new, (c, p, f) {}), -1);
+  });
+
+  test('47 caracoles: alternar rápido gana; lento pierde', () {
+    expect(play(SnailRace.new, (c, p, f) {
+      final k = c as SnailRace;
+      if (f % 6 < 3) touch(p, k.btn((f ~/ 6) % 2).center.dx, k.btn(0).center.dy);
+    }), 1);
+    expect(play(SnailRace.new, (c, p, f) {
+      final k = c as SnailRace;
+      if (f % 30 < 3) touch(p, k.btn((f ~/ 30) % 2).center.dx, k.btn(0).center.dy);
+    }), -1);
+  });
+
+  test('48 plátano: arrastrar las tres cáscaras gana', () {
+    expect(play(PeelBanana.new, (c, p, f) {
+      final k = c as PeelBanana;
+      final i = k.done.indexOf(false);
+      if (i < 0) return;
+      final step = f % 16;
+      if (step >= 13) return; // soltar
+      final tip = Offset(c.cx + (i - 1) * 24, k.top.dy + 20);
+      final d = k.dirOf(i);
+      touch(p, tip.dx + d.dx / d.distance * step * 13, tip.dy + d.dy / d.distance * step * 13);
+    }), 1);
+  });
+
+  test('49 camaleón: cambiar de color al cambiar de franja gana; sin tocar pierde', () {
+    expect(play(Chameleon.new, (c, p, f) {
+      final k = c as Chameleon;
+      if (k.colIdx != k.zone && f % 4 == 0) touch(p, c.cx, c.cy);
+    }), 1);
+    expect(play(Chameleon.new, (c, p, f) {}), -1);
+  });
+
+  test('50 sombras: elegir el animal correcto gana', () {
+    expect(play(ShadowPuppets.new, (c, p, f) {
+      final k = c as ShadowPuppets;
+      if (c.t > .5) touch(p, k.opt(k.answer).center.dx, k.opt(k.answer).center.dy);
+    }), 1);
+    expect(play(ShadowPuppets.new, (c, p, f) {
+      final k = c as ShadowPuppets;
+      if (c.t > .5) touch(p, k.opt((k.answer + 1) % 3).center.dx, k.opt(0).center.dy);
+    }), -1);
+  });
+
   test('todos los extra se inicializan en todos los niveles', () {
     final g = ZappingGame();
     for (final f in extraChannels) {
@@ -193,6 +307,3 @@ void main() {
     }
   });
 }
-
-// evita el aviso de import no usado si algún bot no usa math/Offset
-final _unused = [math.pi, Offset.zero];

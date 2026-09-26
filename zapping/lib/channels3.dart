@@ -12,6 +12,8 @@ import 'sfx.dart';
 final List<ChannelFactory> extraChannels = [
   Inspector.new, Meatballs.new, GrannyScooter.new, JetChicken.new, ShellGame.new,
   SockPairs.new, Matryoshka.new, SausageThrow.new, Crossing.new, CloudSheep.new,
+  DivaSpot.new, Grandpa.new, WhatChanged.new, SealBall.new, FireJelly.new,
+  WormBand.new, SnailRace.new, PeelBanana.new, Chameleon.new, ShadowPuppets.new,
 ];
 
 /// Decorado panorámico que se desplaza: se repite en espejo (sin costuras) y cubre la tele.
@@ -1101,5 +1103,872 @@ class CloudSheep extends Channel {
     }
     final inN = sheep.where((s) => s.inPen).length;
     Gfx.text(c, '$inN/${sheep.length}', sr - 24, st + 34, 30, align: 1, color: Pal.gold);
+  }
+}
+
+// ───────────────────────── 41. EL FOCO DE LA DIVA (seguir) ─────────────────────────
+class DivaSpot extends Channel {
+  DivaSpot(super.g);
+  @override
+  String get name => 'EL FOCO DE LA DIVA';
+  @override
+  String get sub => 'La diva no para de moverse por el escenario';
+  @override
+  String get ins => '¡ILUMÍNALA!';
+  @override
+  String get hint => 'Mantén el foco encima de ella';
+  @override
+  String get bg => 'bg_theater';
+  @override
+  double get dur => 7;
+
+  Offset diva = Offset.zero, to = Offset.zero, spot = Offset.zero;
+  double fill = 0, need = 2.4, spd = 0, next = 0;
+  bool left = false;
+
+  @override
+  void init(int l) {
+    diva = Offset(cx, by(.84));
+    to = diva;
+    spot = Offset(cx, cy);
+    spd = 90 + l * 18;
+    need = 2.2 + l * .15;
+  }
+
+  bool get lit => (spot - diva.translate(0, -80)).distance < 70;
+
+  @override
+  void update(double dt) {
+    if (p.down && pointerIn) spot = Offset.lerp(spot, Offset(p.x, p.y), 1 - math.exp(-dt * 14))!;
+    if (res != 0) return;
+    if ((next -= dt) <= 0 || (to - diva).distance < 4) {
+      next = rnd(.7, 1.6);
+      to = Offset(bx(rnd(.18, .82)), by(rnd(.8, .88)));
+    }
+    final d = to - diva;
+    if (d.distance > 1) {
+      final step = d / d.distance * math.min(d.distance, spd * dt);
+      diva += step;
+      if (step.dx.abs() > .2) left = step.dx < 0;
+    }
+    if (lit) {
+      fill += dt;
+      Sfx.play('note${rng.nextInt(4)}', volume: .25, minGapMs: 260);
+      if (fill >= need) {
+        win();
+        Sfx.play('bonus');
+        g.fx.burst(diva.dx, diva.dy - 120, Pal.gold, 24);
+      }
+    } else {
+      fill = math.max(0, fill - dt * .6);
+    }
+  }
+
+  @override
+  void render(Canvas c) {
+    drawBg(c);
+    Gfx.shadow(c, diva.dx, diva.dy - 2, 110, alpha: .5);
+    Gfx.anim(c, 'diva', vt, diva.dx, diva.dy, 170, ay: 1, flip: left);
+    // oscuridad y el cono del foco
+    c.saveLayer(ZappingGame.bleed, Paint());
+    c.drawRect(ZappingGame.bleed, Paint()..color = Color.fromRGBO(5, 3, 12, res == 1 ? .2 : .66));
+    final dst = Paint()
+      ..blendMode = BlendMode.dstOut
+      ..shader = Gradient.radial(spot, 78, [const Color(0xFFFFFFFF), const Color(0xEEFFFFFF), const Color(0x00FFFFFF)], [0, .75, 1]);
+    c.drawCircle(spot, 78, dst);
+    c.restore();
+    final beam = Path()
+      ..moveTo(spot.dx - 10, st - 20)
+      ..lineTo(spot.dx + 10, st - 20)
+      ..lineTo(spot.dx + 70, spot.dy)
+      ..lineTo(spot.dx - 70, spot.dy)
+      ..close();
+    c.drawPath(beam, Paint()..color = Color.fromRGBO(255, 236, 170, lit ? .18 : .1));
+    c.drawCircle(spot, 78, Paint()..color = Color.fromRGBO(255, 230, 150, lit ? .16 : .06));
+    Gfx.sprite(c, 'audience', cx, sb + 14, 96, ay: 1, sx: 1.05);
+    Gfx.clayBar(c, Rect.fromLTWH(sl + 70, st + 22, S.width - 140, 18), clamp01(fill / need), Pal.gold);
+    Gfx.text(c, 'APLAUSOS', cx, st + 52, 16, color: Pal.gold);
+  }
+}
+
+// ───────────────────────── 42. NO DESPIERTES AL ABUELO (luz roja) ─────────────────────────
+class Grandpa extends Channel {
+  Grandpa(super.g);
+  @override
+  String get name => 'NO DESPIERTES AL ABUELO';
+  @override
+  String get sub => 'Galletas a medianoche y el abuelo tiene el sueño ligero';
+  @override
+  String get ins => '¡DE PUNTILLAS!';
+  @override
+  String get hint => 'Mantén para andar. ¡Suelta si abre los ojos!';
+  @override
+  String get bg => 'bg_nightroom';
+  @override
+  double get dur => 8;
+
+  double kx = 0, walkT = 0, phaseT = 0, sleepFor = 0, caught = 0;
+  int state = 0; // 0 duerme, 1 se remueve (aviso), 2 despierto
+  bool moving = false;
+  double get floor => by(.92);
+  double get jarX => bx(.87);
+
+  @override
+  void init(int l) {
+    kx = bx(.08);
+    sleepFor = rnd(1.4, 2.4) / (1 + l * .1);
+  }
+
+  @override
+  void update(double dt) {
+    if (res != 0) return;
+    phaseT += dt;
+    switch (state) {
+      case 0:
+        if (phaseT > sleepFor) {
+          state = 1;
+          phaseT = 0;
+        }
+      case 1:
+        if (phaseT > .45) {
+          state = 2;
+          phaseT = 0;
+          Sfx.play('eh');
+        }
+      default:
+        if (phaseT > rnd(1.0, 1.4)) {
+          state = 0;
+          phaseT = 0;
+          sleepFor = rnd(1.2, 2.2);
+        }
+    }
+    moving = p.down && pointerIn;
+    if (moving) {
+      kx += 95 * dt;
+      walkT += dt;
+      if (state == 2 && phaseT > .12) {
+        lose('¡Te ha pillado!');
+        Sfx.play('boing');
+        g.fx.shake(8);
+      }
+    }
+    if (kx >= jarX - 40) {
+      win();
+      Sfx.play('bonus');
+      g.fx.burst(jarX, floor - 70, Pal.gold, 20);
+    }
+  }
+
+  @override
+  void render(Canvas c) {
+    drawBg(c);
+    // abuelo en su sillón
+    final gx = bx(.5), gy = by(.74);
+    Gfx.shadow(c, gx, gy - 4, 190, alpha: .5);
+    if (state == 2 || res == -1) {
+      Gfx.sprite(c, 'grandpa_awake', gx, gy, 200, ay: 1, rot: res == -1 ? math.sin(vt * 30) * .02 : 0);
+      Gfx.text(c, '!', gx + 70, gy - 190, 44, color: Pal.pink, scale: 1 + math.sin(vt * 12) * .1);
+    } else {
+      final twitch = state == 1 ? math.sin(vt * 50) * 3 : 0.0;
+      Gfx.anim(c, 'grandpa', vt, gx + twitch, gy, 200, ay: 1);
+      if (state == 0) {
+        for (var i = 0; i < 3; i++) {
+          final k = (vt * .6 + i / 3) % 1;
+          Gfx.text(c, 'Z', gx + 40 + k * 50, gy - 170 - k * 60, 16 + k * 14, color: Pal.teal, alpha: 1 - k);
+        }
+      } else {
+        Gfx.text(c, '?', gx + 70, gy - 190, 36, color: Pal.gold);
+      }
+    }
+    Gfx.shadow(c, jarX, floor - 2, 80, alpha: .45);
+    Gfx.sprite(c, 'cookiejar', jarX, floor, 86, ay: 1);
+    Gfx.shadow(c, kx, floor - 2, 70, alpha: .45);
+    Gfx.anim(c, 'kid', moving && res == 0 ? walkT : 0, kx, floor, 110, ay: 1);
+    // indicador de avance
+    Gfx.clayBar(c, Rect.fromLTWH(sl + 60, st + 22, S.width - 120, 16), clamp01((kx - bx(.08)) / (jarX - 40 - bx(.08))), Pal.teal);
+  }
+}
+
+// ───────────────────────── 43. ¿QUÉ HA CAMBIADO? (observar) ─────────────────────────
+class _Pose {
+  String spr;
+  Color? tint;
+  bool hat, flip;
+  double scale;
+  _Pose(this.spr, this.tint, this.hat, this.flip, this.scale);
+  _Pose copy() => _Pose(spr, tint, hat, flip, scale);
+}
+
+class WhatChanged extends Channel {
+  WhatChanged(super.g);
+  @override
+  String get name => '¿QUÉ HA CAMBIADO?';
+  @override
+  String get sub => 'Foto de grupo: se va la luz y alguien cambia';
+  @override
+  String get ins => '¡FÍJATE BIEN!';
+  @override
+  String get hint => 'Toca al que ha cambiado';
+  @override
+  String get bg => 'bg_photo';
+  @override
+  double get dur => look + 3.6;
+
+  final before = <_Pose>[], after = <_Pose>[];
+  int changed = 0, n = 5;
+  double look = 1.8;
+  double get row => by(.62);
+  double slotX(int i) => lerp(bx(.17), bx(.83), i / (n - 1));
+  bool get showAfter => t > look + .45;
+
+  @override
+  void init(int l) {
+    n = l >= 3 ? 6 : 5;
+    look = math.max(1.1, 1.9 - l * .15);
+    final pool = ['player', 'rival', 'cloneA', 'cloneB', 'guest_bald', 'guest_curly', 'guest_top', 'sheep']..shuffle(rng);
+    for (var i = 0; i < n; i++) {
+      before.add(_Pose(pool[i], null, rng.nextDouble() < .35, rng.nextBool(), 1));
+    }
+    after.addAll(before.map((p) => p.copy()));
+    changed = rng.nextInt(n);
+    final a = after[changed];
+    switch (rng.nextInt(4)) {
+      case 0:
+        a.hat = !a.hat;
+      case 1:
+        a.tint = pick(const [Color(0xFFFF9AA2), Color(0xFF9AD0FF), Color(0xFFFFE08A)]);
+      case 2:
+        a.flip = !a.flip;
+      default:
+        a.spr = pool[n];
+    }
+  }
+
+  @override
+  void update(double dt) {
+    if (res != 0 || !showAfter || !tap) return;
+    for (var i = 0; i < n; i++) {
+      if ((p.x - slotX(i)).abs() < 34 && p.y > row - 110 && p.y < row + 10) {
+        if (i == changed) {
+          win();
+          Sfx.play('bonus');
+          g.fx.burst(slotX(i), row - 60, Pal.gold, 18);
+        } else {
+          lose('¡No era ese!');
+          Sfx.play('boing');
+        }
+        return;
+      }
+    }
+  }
+
+  @override
+  void render(Canvas c) {
+    drawBg(c);
+    final list = showAfter ? after : before;
+    for (var i = 0; i < n; i++) {
+      final ps = list[i];
+      const h = 92.0;
+      Gfx.shadow(c, slotX(i), row - 2, 60, alpha: .4);
+      Gfx.sprite(c, ps.spr, slotX(i), row, h * ps.scale, ay: 1, flip: ps.flip, tint: ps.tint,
+          sy: 1 + boil(vt, i.toDouble()) * .02);
+      if (ps.hat) Gfx.sprite(c, 'partyhat', slotX(i), row - h * .9, 34, ay: 1, rot: -.15);
+      if (res == -1 && i == changed) {
+        c.drawCircle(Offset(slotX(i), row - 46), 52,
+            Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 5
+              ..color = Pal.lime);
+      }
+    }
+    // flash de la cámara (apagón)
+    final ft = t - look;
+    if (ft > 0 && ft < .45) {
+      c.drawRect(ZappingGame.bleed, Paint()..color = Color.fromRGBO(255, 255, 255, 1 - ft / .45));
+    }
+    if (!showAfter) {
+      Gfx.text(c, 'MEMORIZA', cx, st + 40, 30, color: Pal.gold, scale: 1 + math.sin(vt * 6) * .04);
+    } else if (res == 0) {
+      Gfx.text(c, '¿QUIÉN HA CAMBIADO?', cx, st + 40, 26, color: Pal.gold, maxW: S.width - 40);
+    }
+  }
+}
+
+// ───────────────────────── 44. LA FOCA MALABARISTA (mantener en el aire) ─────────────────────────
+class SealBall extends Channel {
+  SealBall(super.g);
+  @override
+  String get name => 'LA FOCA MALABARISTA';
+  @override
+  String get sub => 'Que la pelota no toque el agua';
+  @override
+  String get ins => '¡ARRIBA!';
+  @override
+  String get hint => 'Toca la pelota para golpearla';
+  @override
+  String get bg => 'bg_pool';
+  @override
+  double get dur => 8;
+
+  Offset b = Offset.zero, v = Offset.zero;
+  double spin = 0, grav = 0;
+  int hits = 0, need = 5;
+  double splashAt = -9;
+  static const r = 30.0;
+  double get water => by(.64);
+
+  @override
+  void init(int l) {
+    // la foca la lanza hacia arriba al empezar
+    b = Offset(bx(.28), by(.6));
+    v = Offset(rnd(90, 150), -620);
+    grav = 650 + l * 70;
+    need = 5 + math.min(l, 3);
+  }
+
+  @override
+  void update(double dt) {
+    if (res == -1) return;
+    if (tap && res == 0 && (Offset(p.x, p.y) - b).distance < r + 42) {
+      v = Offset((b.dx - p.x) * 5 + rnd(-80, 80) + (cx - b.dx) * .8, -rnd(560, 640));
+      hits++;
+      spin = v.dx / 60;
+      Sfx.play('pop');
+      g.fx.burst(b.dx, b.dy + r, const Color(0xFFFFFFFF), 6, size: 4);
+      if (hits >= need) {
+        win();
+        Sfx.play('bonus');
+      }
+    }
+    v = Offset(v.dx, v.dy + grav * dt);
+    b += v * dt;
+    if (b.dx < sl + r || b.dx > sr - r) {
+      v = Offset(-v.dx * .8, v.dy);
+      b = Offset(b.dx.clamp(sl + r, sr - r), b.dy);
+    }
+    if (b.dy < st + r) {
+      v = Offset(v.dx, v.dy.abs() * .5);
+    }
+    if (b.dy > water - 6 && res == 0) {
+      lose('¡Al agua!');
+      splashAt = vt;
+      Sfx.play('splat');
+      g.fx.burst(b.dx, water, const Color(0xFF7FD3FF), 24);
+    }
+  }
+
+  @override
+  void render(Canvas c) {
+    drawBg(c);
+    Gfx.anim(c, 'seal', vt, bx(.23), by(.735), 130, ay: 1);
+    final hk = clamp01((water - b.dy) / 300);
+    Gfx.shadow(c, b.dx, water + 6, 70 * (1 - hk * .5), alpha: .3 * (1 - hk * .5));
+    Gfx.sprite(c, 'beachball', b.dx, b.dy, r * 2, rot: vt * spin);
+    Gfx.text(c, '$hits/$need', sr - 24, st + 34, 30, align: 1, color: Pal.gold);
+  }
+}
+
+// ───────────────────────── 45. BOMBERO DE GELATINA (apuntar y mantener) ─────────────────────────
+class FireJelly extends Channel {
+  FireJelly(super.g);
+  @override
+  String get name => 'BOMBERO DE GELATINA';
+  @override
+  String get sub => 'La casa de jengibre está ardiendo';
+  @override
+  String get ins => '¡APAGA EL FUEGO!';
+  @override
+  String get hint => 'Mantén el chorro sobre cada llama';
+  @override
+  String get bg => 'bg_ginger';
+  @override
+  double get dur => 7;
+
+  final flames = <List<double>>[]; // [x, y, vida]
+  Offset aim = Offset.zero;
+  bool spraying = false;
+  Offset get nozzle => Offset(bx(.27), by(.8));
+  double burn = .75;
+
+  @override
+  void init(int l) {
+    for (final f in const [[.37, .38], [.57, .38], [.66, .58]]) {
+      flames.add([bx(f[0]), by(f[1]), 1]);
+    }
+    burn = .7 + l * .08;
+    aim = Offset(cx, cy);
+  }
+
+  @override
+  void update(double dt) {
+    spraying = p.down && pointerIn && res == 0;
+    if (spraying) aim = Offset(p.x, p.y);
+    if (res != 0) return;
+    for (final f in flames) {
+      if (f[2] <= 0) continue;
+      if (spraying && (aim - Offset(f[0], f[1])).distance < 48) {
+        f[2] -= dt / burn;
+        Sfx.play('shake', volume: .25, minGapMs: 100);
+        if (f[2] <= 0) {
+          g.fx.burst(f[0], f[1], const Color(0xFFDDEEFF), 16);
+          Sfx.play('pop');
+        }
+      } else {
+        f[2] = math.min(1, f[2] + dt * .25);
+      }
+    }
+    if (flames.every((f) => f[2] <= 0)) {
+      win();
+      Sfx.play('bonus');
+    }
+  }
+
+  @override
+  void render(Canvas c) {
+    drawBg(c);
+    for (var i = 0; i < flames.length; i++) {
+      final f = flames[i];
+      if (f[2] <= 0) {
+        // humo al apagarse
+        Gfx.clayBall(c, f[0] + math.sin(vt * 2 + i) * 6, f[1] - 20 - (vt * 30) % 30, 10, const Color(0xFFB8B8C0));
+        continue;
+      }
+      Gfx.anim(c, 'flame', vt + i * .7, f[0], f[1] + 26, 64 * (.45 + .55 * f[2]), ay: 1);
+    }
+    // chorro: gotas a lo largo de una curva desde la boquilla
+    if (spraying) {
+      final ctrl = Offset((nozzle.dx + aim.dx) / 2, math.min(nozzle.dy, aim.dy) - 60);
+      for (var k = 0; k < 16; k++) {
+        final u = ((k / 16) + vt * 3) % 1;
+        final a = Offset.lerp(nozzle, ctrl, u)!, b2 = Offset.lerp(ctrl, aim, u)!;
+        final o = Offset.lerp(a, b2, u)!;
+        Gfx.clayBall(c, o.dx, o.dy, 5 + u * 3, const Color(0xFF7FC8FF));
+      }
+    }
+    Gfx.anim(c, 'gummy', vt, bx(.2), by(.95), 150, ay: 1);
+  }
+}
+
+// ───────────────────────── 46. LA BANDA DE GUSANOS (ritmo) ─────────────────────────
+class WormBand extends Channel {
+  WormBand(super.g);
+  @override
+  String get name => 'LA BANDA DE GUSANOS';
+  @override
+  String get sub => 'Concierto dentro de una manzana';
+  @override
+  String get ins => '¡AL RITMO!';
+  @override
+  String get hint => 'Toca la columna cuando la nota llegue a la raya';
+  @override
+  String get bg => 'bg_apple';
+  @override
+  double get dur => notes.isEmpty ? 6 : notes.last[1] + 1.4;
+
+  final notes = <List<double>>[]; // [carril, tiempo de llegada, estado 0/1 acierto/-1 fallo]
+  final flashAt = [-9.0, -9.0, -9.0];
+  int misses = 0, maxMiss = 2;
+  double fall = 0;
+  double laneX(int i) => cx + (i - 1) * 104;
+  double get lineY => by(.64);
+  double get topY => st + 20;
+
+  @override
+  void init(int l) {
+    fall = 1.4 / (1 + l * .12);
+    final n = 6 + math.min(l, 4);
+    var tt = 1.4;
+    for (var i = 0; i < n; i++) {
+      notes.add([rng.nextInt(3).toDouble(), tt, 0]);
+      tt += rnd(.4, .7) / (1 + l * .08);
+    }
+  }
+
+  double noteY(List<double> n) => lineY - (n[1] - t) / fall * (lineY - topY);
+
+  @override
+  void update(double dt) {
+    if (res != 0) return;
+    for (final n in notes) {
+      if (n[2] == 0 && t - n[1] > .22) {
+        n[2] = -1;
+        misses++;
+        Sfx.play('eh', volume: .6);
+      }
+    }
+    if (tap) {
+      final lane = ((p.x - laneX(0)) / 104).round().clamp(0, 2);
+      flashAt[lane] = vt;
+      List<double>? best;
+      for (final n in notes) {
+        if (n[2] == 0 && n[0] == lane && (n[1] - t).abs() < .2) best = n;
+      }
+      if (best != null) {
+        best[2] = 1;
+        Sfx.play('note${lane + 1}');
+        g.fx.burst(laneX(lane), lineY, [Pal.pink, Pal.gold, Pal.teal][lane], 10, size: 4);
+      } else {
+        misses++;
+        Sfx.play('eh', volume: .6);
+      }
+    }
+    if (misses >= maxMiss) {
+      lose('¡Desafinado!');
+    } else if (notes.every((n) => n[2] != 0) && t > notes.last[1] + .25) {
+      win();
+      Sfx.play('bonus');
+    }
+  }
+
+  @override
+  void render(Canvas c) {
+    drawBg(c);
+    const cols = [Pal.pink, Pal.gold, Pal.teal];
+    for (var i = 0; i < 3; i++) {
+      final f = clamp01(1 - (vt - flashAt[i]) / .2);
+      c.drawRRect(RRect.fromRectAndRadius(Rect.fromLTRB(laneX(i) - 44, topY, laneX(i) + 44, lineY + 30), const Radius.circular(22)),
+          Paint()..color = cols[i].withValues(alpha: .1 + f * .25));
+    }
+    c.drawLine(Offset(laneX(0) - 50, lineY), Offset(laneX(2) + 50, lineY),
+        Paint()
+          ..strokeWidth = 6
+          ..strokeCap = StrokeCap.round
+          ..color = const Color(0xDDFFF4E6));
+    for (final n in notes) {
+      if (n[2] != 0) continue;
+      final y = noteY(n);
+      if (y < topY - 20 || y > lineY + 40) continue;
+      Gfx.note(c, laneX(n[0].toInt()), y, 44, cols[n[0].toInt()]);
+    }
+    Gfx.anim(c, 'worms', vt, cx, by(.93), 150, ay: 1, fps: 14);
+    for (var k = 0; k < maxMiss; k++) {
+      Gfx.mark(c, k >= misses, sr - 30 - k * 36, st + 32, 30);
+    }
+  }
+}
+
+// ───────────────────────── 47. CARRERA DE CARACOLES (alternar) ─────────────────────────
+class SnailRace extends Channel {
+  SnailRace(super.g);
+  @override
+  String get name => 'CARRERA DE CARACOLES';
+  @override
+  String get sub => 'La gran final contra el caracol chulito';
+  @override
+  String get ins => '¡IZQUIERDA, DERECHA!';
+  @override
+  String get hint => 'Pulsa los dos botones alternando';
+  @override
+  String get bg => 'bg_race';
+  @override
+  double get dur => 7;
+
+  double me = 0, rival = 0, rivalSpd = 0, stumble = 0, push = 0;
+  int last = -1;
+  double get start => bx(.1);
+  double get finish => bx(.86);
+  Rect btn(int i) => Rect.fromCenter(center: Offset(i == 0 ? bx(.24) : bx(.76), sb - 44), width: 150, height: 150 * kButtonAspect);
+
+  @override
+  void init(int l) {
+    me = rival = start;
+    rivalSpd = (finish - start) / (5.6 - math.min(l, 4) * .35);
+  }
+
+  @override
+  void update(double dt) {
+    stumble = math.max(0, stumble - dt);
+    push = math.max(0, push - dt * 6);
+    if (res != 0) return;
+    rival += rivalSpd * dt;
+    if (tap) {
+      for (var i = 0; i < 2; i++) {
+        if (!btn(i).inflate(8).contains(Offset(p.x, p.y))) continue;
+        if (i != last && stumble <= 0) {
+          me += 15;
+          push = 1;
+          Sfx.play('squish', volume: .5);
+        } else {
+          stumble = .25;
+          Sfx.play('boing', volume: .5);
+        }
+        last = i;
+      }
+    }
+    if (me >= finish) {
+      win();
+      Sfx.play('bonus');
+      g.fx.burst(finish, by(.66), Pal.gold, 20);
+    } else if (rival >= finish) {
+      lose('¡Te ganó el chulito!');
+      Sfx.play('lose');
+    }
+  }
+
+  @override
+  void render(Canvas c) {
+    drawBg(c);
+    Gfx.shadow(c, rival, by(.56), 90, alpha: .4);
+    Gfx.anim(c, 'snail2', vt, rival, by(.565), 74, ay: 1, fps: 16);
+    Gfx.shadow(c, me, by(.7), 100, alpha: .45);
+    Gfx.anim(c, 'snail', vt * (1 + push), me, by(.705), 84, ay: 1, sx: 1 + push * .08, rot: stumble > 0 ? math.sin(vt * 40) * .08 : 0);
+    Gfx.button(c, last == 0 ? 'btn_teal' : 'btn_gold', 'IZQ', btn(0), scale: last == 0 ? .94 : 1, size: 40);
+    Gfx.button(c, last == 1 ? 'btn_teal' : 'btn_gold', 'DER', btn(1), scale: last == 1 ? .94 : 1, size: 40);
+  }
+}
+
+// ───────────────────────── 48. PELA EL PLÁTANO (arrastrar en dirección) ─────────────────────────
+class PeelBanana extends Channel {
+  PeelBanana(super.g);
+  @override
+  String get name => 'PELA EL PLÁTANO';
+  @override
+  String get sub => 'Un plátano con muchas cosquillas en el spa';
+  @override
+  String get ins => '¡PÉLALO!';
+  @override
+  String get hint => 'Arrastra cada cáscara hacia fuera y abajo';
+  @override
+  String get bg => 'bg_spa';
+  @override
+  double get dur => 6;
+
+  final open = [0.0, 0.0, 0.0]; // izquierda, centro, derecha (0 cerrada, 1 abierta)
+  final done = [false, false, false];
+  int grab = -1;
+  double get base => by(.755);
+  static const bh = 200.0;
+  Offset get top => Offset(cx, base - bh + 30);
+  Offset dirOf(int i) => [const Offset(-1, .6), const Offset(0, 1), const Offset(1, .6)][i];
+
+  @override
+  void init(int l) {}
+
+  @override
+  void update(double dt) {
+    if (res != 0) return;
+    if (p.pressed) {
+      grab = -1;
+      var best = 90.0;
+      for (var i = 0; i < 3; i++) {
+        if (done[i]) continue;
+        final tip = Offset(cx + (i - 1) * 24, top.dy + 20);
+        final d = (Offset(p.x, p.y) - tip).distance;
+        if (d < best) {
+          best = d;
+          grab = i;
+        }
+      }
+    }
+    if (grab >= 0 && p.down) {
+      final d = Offset(p.x - p.sx, p.y - p.sy);
+      final dir = dirOf(grab);
+      final proj = (d.dx * dir.dx + d.dy * dir.dy) / dir.distance;
+      open[grab] = clamp01(proj / 120);
+      if (open[grab] >= 1) {
+        done[grab] = true;
+        grab = -1;
+        Sfx.play('squish');
+      }
+    }
+    if (!p.down) {
+      if (grab >= 0 && open[grab] > .7) {
+        done[grab] = true;
+        Sfx.play('squish');
+      }
+      grab = -1;
+    }
+    for (var i = 0; i < 3; i++) {
+      if (done[i]) {
+        open[i] = math.min(1, open[i] + dt * 6);
+      } else if (grab != i) {
+        open[i] = math.max(0, open[i] - dt * 4);
+      }
+    }
+    if (done.every((d) => d)) {
+      win();
+      Sfx.play('bonus');
+      g.fx.burst(cx, top.dy, Pal.gold, 20);
+    }
+  }
+
+  @override
+  void render(Canvas c) {
+    drawBg(c);
+    final wig = res == 1 ? math.sin(since * 20) * .04 * clamp01(1 - since) : 0.0;
+    Gfx.anim(c, 'banana', vt, cx, base, bh, ay: 1, rot: wig, fps: 14);
+    // cáscaras: cuelgan desde abajo y tapan la fruta; al abrir giran hacia fuera
+    void peel(int i) {
+      final o = open[i];
+      final pivot = Offset(cx + (i - 1) * 25, base - 14);
+      c.save();
+      c.translate(pivot.dx, pivot.dy);
+      if (i == 1) {
+        // la del centro se dobla hacia delante (se acorta y cae)
+        c.scale(1, 1 - o * 1.7);
+      } else {
+        c.rotate((i == 0 ? -1 : 1) * o * 2.4);
+      }
+      Gfx.sprite(c, 'peel', 0, 0, bh - 24, ay: 1, sx: i == 1 ? 2.0 : 1.8, flip: i == 2);
+      c.restore();
+    }
+
+    peel(0);
+    peel(2);
+    peel(1);
+    if (res == 0 && t < 1.5) {
+      final k = (vt * 1.2) % 1;
+      Gfx.sprite(c, 'finger', cx - 60 - k * 60, top.dy + 40 + k * 40, 50, rot: -.5, alpha: 1 - k);
+    }
+    final n = done.where((d) => d).length;
+    Gfx.text(c, '$n/3', sr - 24, st + 34, 30, align: 1, color: Pal.gold);
+  }
+}
+
+// ───────────────────────── 49. CAMALEÓN DESPISTADO (camuflaje) ─────────────────────────
+class Chameleon extends Channel {
+  Chameleon(super.g);
+  @override
+  String get name => 'CAMALEÓN DESPISTADO';
+  @override
+  String get sub => 'Un halcón vigila la pared de colores';
+  @override
+  String get ins => '¡CAMÚFLATE!';
+  @override
+  String get hint => 'Toca para cambiar de color como la pared';
+  @override
+  String get bg => 'bg_bands';
+  @override
+  double get dur => (bx(.93) - bx(.05)) / spd + 1;
+
+  static const zoneCols = [Color(0xFFE8413A), Color(0xFF2F63DA), Color(0xFFF5C530)];
+  final cycle = [0, 1, 2];
+  int ci = 0;
+  double x = 0, spd = 0, exposed = 0, changeAt = -9;
+  double get ledge => by(.495);
+  int get zone => ((x - bx(0)) / (449 / 3)).floor().clamp(0, 2);
+  int get colIdx => cycle[ci];
+
+  @override
+  void init(int l) {
+    spd = 62 + l * 10;
+    x = bx(.05);
+    cycle.shuffle(rng);
+    ci = cycle.indexOf(0);
+  }
+
+  @override
+  void update(double dt) {
+    if (res != 0) return;
+    x += spd * dt;
+    if (tap) {
+      ci = (ci + 1) % 3;
+      changeAt = vt;
+      Sfx.play('pop', volume: .6);
+    }
+    if (colIdx != zone) {
+      exposed += dt;
+      if (exposed > .6) {
+        lose('¡El halcón te ha visto!');
+        Sfx.play('boing');
+        g.fx.shake(8);
+      }
+    } else {
+      exposed = 0;
+    }
+    if (x >= bx(.93)) {
+      win();
+      Sfx.play('bonus');
+    }
+  }
+
+  @override
+  void render(Canvas c) {
+    drawBg(c);
+    final pop = clamp01(1 - (vt - changeAt) / .2);
+    Gfx.anim(c, 'chameleon', vt, x, ledge + 4, 70 * (1 + pop * .12), ay: 1, tint: zoneCols[colIdx]);
+    // halcón vigilando, más cerca cuanto más expuesto
+    final e = clamp01(exposed / .6);
+    Gfx.sprite(c, 'hawk', cx + math.sin(vt * .8) * 120, st + 30 + e * 40, 110 + e * 30, ay: .6);
+    if (e > 0) Gfx.text(c, '!', cx + math.sin(vt * .8) * 120 + 60, st + 20, 40, color: Pal.pink, alpha: e);
+    // orden de colores: cuál viene al tocar
+    for (var k = 0; k < 3; k++) {
+      final idx = cycle[(ci + k) % 3];
+      Gfx.clayBall(c, sl + 36 + k * 30, sb - 30, k == 0 ? 13 : 9, zoneCols[idx]);
+    }
+  }
+}
+
+// ───────────────────────── 50. SOMBRAS CHINESCAS (emparejar) ─────────────────────────
+class ShadowPuppets extends Channel {
+  ShadowPuppets(super.g);
+  @override
+  String get name => 'SOMBRAS CHINESCAS';
+  @override
+  String get sub => 'El titiritero hace sombras con la lámpara';
+  @override
+  String get ins => '¿QUÉ ANIMAL ES?';
+  @override
+  String get hint => 'Toca el animal de la sombra';
+  @override
+  String get bg => 'bg_shadow';
+  @override
+  double get dur => 4.5;
+
+  static const animals = ['an_rabbit', 'an_elephant', 'an_giraffe', 'an_duck', 'an_crab', 'an_trex', 'an_pig'];
+  final opts = <String>[];
+  int answer = 0, picked = -1;
+  bool flip = false;
+  double rot = 0;
+  Rect opt(int i) => Rect.fromCenter(center: Offset(cx + (i - 1) * 130, by(.84)), width: 112, height: 112);
+
+  @override
+  void init(int l) {
+    final pool = [...animals]..shuffle(rng);
+    opts.addAll(pool.take(3));
+    answer = rng.nextInt(3);
+    flip = rng.nextBool();
+    rot = l >= 2 ? rnd(-.35, .35) : 0;
+  }
+
+  @override
+  void update(double dt) {
+    if (res != 0 || !tap) return;
+    for (var i = 0; i < 3; i++) {
+      if (opt(i).contains(Offset(p.x, p.y))) {
+        picked = i;
+        if (i == answer) {
+          win();
+          Sfx.play('bonus');
+        } else {
+          lose('¡Era otro animal!');
+          Sfx.play('boing');
+        }
+      }
+    }
+  }
+
+  @override
+  void render(Canvas c) {
+    drawBg(c);
+    // sombra sobre la pantalla de papel (silueta exacta del animal, borrosa y temblona)
+    final sx = cx + math.sin(vt * 1.3) * 10, sy = by(.4);
+    c.save();
+    c.translate(sx, sy);
+    c.rotate(rot + math.sin(vt * 2) * .03);
+    c.scale(flip ? -1 : 1, 1);
+    for (var k = 0; k < 2; k++) {
+      Gfx.silhouette(c, opts[answer], 0, 0, 190);
+    }
+    c.restore();
+    if (res != 0) Gfx.sprite(c, opts[answer], sx, sy, 150, flip: flip, alpha: clamp01(since * 3));
+    for (var i = 0; i < 3; i++) {
+      final r = opt(i);
+      final s = picked == i ? 1.08 : 1 + math.sin(vt * 5 + i) * .02;
+      final rr = Rect.fromCenter(center: r.center, width: r.width * s, height: r.height * s);
+      Gfx.shadow(c, r.center.dx, r.bottom, r.width * .9, alpha: .4);
+      Gfx.clayPanel(c, rr, const Color(0xFFF7F1E3));
+      Gfx.sprite(c, opts[i], r.center.dx, r.center.dy, 70);
+    }
   }
 }
