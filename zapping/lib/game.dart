@@ -314,7 +314,7 @@ class ZappingGame extends FlameGame {
       // Modo demostración: Tito presentando, con cortes de estática.
       Gfx.cover(c, 'bg_screw', bleed);
       Gfx.sprite(c, 'host_body', S.center.dx, S.bottom + 12, 230, ay: 1);
-      Gfx.anim(c, 'host_head', time, S.center.dx, S.bottom - 247, 150, rot: math.sin(time * 1.3) * .08);
+      Gfx.anim(c, 'host_head', time, S.center.dx, Screw.seatY(S.bottom), 150, rot: math.sin(time * 1.3) * .04);
       if ((time % 6) > 5.6) _noise(c, 1);
       return;
     }
@@ -331,7 +331,7 @@ class ZappingGame extends FlameGame {
     if (phase == Phase.play && ch.t < .8) {
       final k = 1 + math.max(0.0, .4 - ch.t) * 1.5;
       Gfx.text(c, ch.ins, S.center.dx, S.top + 70, 42,
-          scale: k, rot: math.sin(ch.t * 30) * .04, maxW: S.width - 30);
+          scale: k, rot: math.sin(ch.t * 30) * .04, maxW: S.width - 30, fitH: 110);
     }
     if (phase == Phase.result) {
       c.drawRect(bleed, Paint()..color = ok ? const Color(0x3353D8C3) : const Color(0x44FF5C7A));
@@ -364,13 +364,17 @@ class ZappingGame extends FlameGame {
     final panel = Rect.fromLTWH(S.left + 18, S.center.dy - 140, S.width - 36, 280);
     c.saveLayer(null, Paint()..color = Color.fromRGBO(0, 0, 0, a));
     Gfx.clayPanel(c, panel, const Color(0xEE1A1424), radius: 22);
-    Gfx.text(c, 'CANAL ${ch.toString().padLeft(2, '0')}', S.center.dx, panel.top + 44, 42,
-        color: chn.boss ? Pal.pink : Pal.lime);
-    Gfx.text(c, chn.name, S.center.dx, panel.top + 104, 25, color: Pal.gold, maxW: panel.width - 30);
-    Gfx.text(c, chn.sub, S.center.dx, panel.top + 170, 21,
-        font: kBody, color: Pal.ink, maxW: panel.width - 30, outline: false);
-    Gfx.text(c, chn.hint, S.center.dx, panel.bottom - 48, 18,
-        font: kBody, color: Pal.teal, maxW: panel.width - 30, outline: false);
+    // cada texto tiene su franja dentro de la cara plana de la placa y se encoge hasta caber
+    final inner = panel.deflate(26);
+    void slot(String txt, double top, double h, double size, Color col) {
+      Gfx.text(c, txt, inner.center.dx, inner.top + top + h / 2, size,
+          color: col, maxW: inner.width, fitW: inner.width, fitH: h);
+    }
+
+    slot('CANAL ${ch.toString().padLeft(2, '0')}', 0, 44, 40, chn.boss ? Pal.pink : Pal.lime);
+    slot(chn.name, 50, 56, 26, Pal.gold);
+    slot(chn.sub, 112, 62, 21, Pal.ink);
+    slot(chn.hint, 180, inner.height - 180, 19, Pal.teal);
     c.restore();
   }
 

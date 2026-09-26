@@ -221,6 +221,7 @@ class Slingshot extends Channel {
     Gfx.sprite(c, 'board', cx, shelfY + 8, S.width * .95 / Gfx.aspect('board'));
     for (final cn in cans) {
       final fallY = cn.fall * cn.fall * 900;
+      if (!cn.hit) Gfx.shadow(c, cn.x, shelfY - 2, 70, ratio: .18);
       Gfx.sprite(c, cn.hit ? 'can_hit' : 'can', cn.x, shelfY + fallY, 100,
           ay: 1, rot: cn.hit ? cn.fall * 6 : boil(vt, cn.vx) * .03);
     }
@@ -232,6 +233,7 @@ class Slingshot extends Channel {
       ..strokeCap = StrokeCap.round
       ..color = const Color(0xFFB0302A);
     if (pos != null) c.drawLine(tipL, pos, band);
+    Gfx.shadow(c, cx, sb + 6, 90, alpha: .4);
     Gfx.sprite(c, 'slingshot', cx, sb + 14, slH, ay: 1);
     if (pos != null) {
       c.drawLine(tipR, pos, band);
@@ -249,7 +251,8 @@ class Slingshot extends Channel {
       }
     }
     if (ball != null) {
-      Gfx.sprite(c, 'meatball', ball!.dx, ball!.dy, 34 * lerp(1, .55, clamp01(flight / .6)), rot: flight * 10);
+      Gfx.sprite(c, 'meatball', ball!.dx, ball!.dy, 34 * lerp(1, .55, clamp01(flight / .6)), rot: flight * 10,
+          drop: Offset(6, 10 + flight * 20));
     }
   }
 }
@@ -339,13 +342,14 @@ class Signature extends Channel {
     Gfx.clayBall(c, pts[0].dx, pts[0].dy, 12, Pal.lime);
     Gfx.clayBall(c, pts.last.dx, pts.last.dy, 12, Pal.pink);
     // el funcionario vigila
+    Gfx.shadow(c, bx(.83), by(.93) - 4, 120, alpha: .3);
     Gfx.anim(c, 'notary', vt, bx(.83), by(.93), 150, ay: 1, rot: res == -1 ? math.sin(vt * 20) * .08 : 0);
     if (res == 1) {
       Gfx.text(c, 'APROBADO', cx, by(.3), 40,
           color: const Color(0xFFD02030), rot: -.2, scale: 1 + math.max(0.0, .2 - since) * 3);
     }
     final pen = drawing ? Offset(p.x, p.y) : pts[k];
-    Gfx.sprite(c, 'pen', pen.dx, pen.dy, 110, ax: .04, ay: .96);
+    Gfx.sprite(c, 'pen', pen.dx, pen.dy, 110, ax: .04, ay: .96, drop: drawing ? const Offset(12, 16) : const Offset(6, 8));
   }
 }
 
@@ -586,6 +590,7 @@ class CakeStack extends Channel {
     drawBg(c);
     Gfx.shadow(c, bx(.84), by(.97), 120);
     Gfx.anim(c, 'baker', vt, bx(.84), by(.97), 170, ay: 1);
+    Gfx.shadow(c, cx, by(.62) + 16, 170, alpha: .35);
     Gfx.sprite(c, 'cakeplate', cx, by(.62) + 20, 70, ay: 1);
     for (var i = 0; i < stack.length; i++) {
       Gfx.sprite(c, 'cake', stack[i], levelY(i + 1) + lh * .5, lh, sy: 1 + boil(vt, i.toDouble()) * .01);
@@ -816,7 +821,7 @@ class Moles extends Channel {
     }
     if (tap && res == 0) {
       for (final h in holes) {
-        if (h.state == 1 && h.up > .4 && Rect.fromCenter(center: h.o.translate(0, -50), width: 110, height: 110).contains(Offset(p.x, p.y))) {
+        if (h.state == 1 && h.up > .4 && Rect.fromCenter(center: h.o.translate(0, -48), width: 110, height: 115).contains(Offset(p.x, p.y))) {
           h.state = 3;
           h.t = 0;
           hits++;
@@ -834,12 +839,23 @@ class Moles extends Channel {
   @override
   void render(Canvas c) {
     drawBg(c);
+    // El agujero se pinta en dos capas: primero entero (fondo y borde trasero), luego el topo recortado
+    // por encima de la mitad de la boca y, delante, otra vez la mitad inferior del agujero (borde delantero).
+    const hw = 120.0;
+    final hh = hw / Gfx.aspect('hole');
     for (final h in holes) {
-      Gfx.sprite(c, 'hole', h.o.dx, h.o.dy, 120 / Gfx.aspect('hole'));
+      Gfx.sprite(c, 'hole', h.o.dx, h.o.dy, hh);
+      final mouthY = h.o.dy - hh / 2 + hh * .407;
       if (h.up > 0) {
         c.save();
-        c.clipRect(Rect.fromLTRB(h.o.dx - 80, h.o.dy - 200, h.o.dx + 80, h.o.dy + 4));
-        Gfx.sprite(c, h.state == 3 ? 'mole_hit' : 'mole', h.o.dx, h.o.dy + 70 - h.up * 78, 95, ay: 1);
+        c.clipRect(Rect.fromLTRB(h.o.dx - 90, h.o.dy - 220, h.o.dx + 90, mouthY));
+        final bottom = mouthY + 100 - h.up * 82;
+        Gfx.sprite(c, h.state == 3 ? 'mole_hit' : 'mole', h.o.dx + 2, bottom, 95,
+            ay: 1, sy: 1 + (h.state == 3 ? -.06 : boil(vt, h.o.dx) * .015));
+        c.restore();
+        c.save();
+        c.clipRect(Rect.fromLTRB(h.o.dx - 90, mouthY, h.o.dx + 90, h.o.dy + hh));
+        Gfx.sprite(c, 'hole', h.o.dx, h.o.dy, hh);
         c.restore();
       }
     }
@@ -1264,6 +1280,7 @@ class Doorman extends Channel {
     // cola al fondo
     for (var i = queue.length - 1; i > idx; i--) {
       final k = i - idx;
+      Gfx.shadow(c, sl + 40 - k * 6 + (k * 22.0), floorY - k * 6, 60 - k * 5, alpha: .3);
       Gfx.sprite(c, queue[i], sl + 40 - k * 6 + (k * 22.0), floorY - k * 6, 92 - k * 8, ay: 1, alpha: .9);
     }
     if (idx < queue.length) {
@@ -1376,11 +1393,17 @@ class Vault extends Channel {
     }
     // llave: la punta señala el ángulo actual
     final open = res == 1 ? clamp01(since * 2) : 0.0;
-    c.save();
-    c.translate(center.dx, center.dy);
-    c.rotate(ang - math.pi / 2);
-    Gfx.sprite(c, 'key', 0, 0, 170 / Gfx.aspect('key'), ax: .12);
-    c.restore();
+    for (final shadowPass in [true, false]) {
+      c.save();
+      c.translate(center.dx + (shadowPass ? 5 : 0), center.dy + (shadowPass ? 8 : 0));
+      c.rotate(ang - math.pi / 2);
+      if (shadowPass) {
+        Gfx.silhouette(c, 'key', 0, 0, 170 / Gfx.aspect('key'), ax: .12);
+      } else {
+        Gfx.sprite(c, 'key', 0, 0, 170 / Gfx.aspect('key'), ax: .12);
+      }
+      c.restore();
+    }
     for (var i = 0; i < targets.length; i++) {
       Gfx.clayBall(c, cx - (targets.length - 1) * 16 + i * 32, sb - 30, 10, i < k ? Pal.lime : const Color(0xFF3A3A3A));
     }
@@ -1649,6 +1672,6 @@ class PingPong extends Channel {
     // sombra de la pelota y la pelota (más grande cuanto más alta)
     c.drawOval(Rect.fromCenter(center: b.translate(6, 8), width: 22, height: 10), Paint()..color = const Color(0x55000000));
     Gfx.clayBall(c, b.dx, b.dy - z * 26, 12 + z * 5, const Color(0xFFFFF4E6));
-    Gfx.sprite(c, 'paddle', px, padY, padW / Gfx.aspect('paddle'));
+    Gfx.sprite(c, 'paddle', px, padY, padW / Gfx.aspect('paddle'), drop: const Offset(5, 8));
   }
 }

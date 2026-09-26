@@ -117,10 +117,35 @@ class Gfx {
       bool flip = false,
       double ax = .5,
       double ay = .5,
-      Rect? src}) {
+      Rect? src,
+      Offset? drop}) {
     final im = img[name]!;
     final s = src ?? Rect.fromLTWH(0, 0, im.width.toDouble(), im.height.toDouble());
+    if (drop != null) _silhouette(c, im, s, x + drop.dx, y + drop.dy, h, rot, sx, sy, flip, ax, ay);
     _draw(c, im, s, x, y, h, rot, sx, sy, alpha, flip, ax, ay);
+  }
+
+  /// Solo la sombra con la silueta del sprite (cuando el sprite se dibuja dentro de un lienzo girado).
+  static void silhouette(Canvas c, String name, double x, double y, double h, {double rot = 0, double ax = .5, double ay = .5}) {
+    final im = img[name]!;
+    _silhouette(c, im, Rect.fromLTWH(0, 0, im.width.toDouble(), im.height.toDouble()), x, y, h, rot, 1, 1, false, ax, ay);
+  }
+
+  static final Paint _sp = Paint()
+    ..filterQuality = FilterQuality.low
+    ..colorFilter = const ColorFilter.mode(Color(0x5A000000), BlendMode.srcIn)
+    ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
+
+  /// Sombra proyectada con la silueta exacta del sprite (para objetos que flotan o vistos desde arriba).
+  static void _silhouette(Canvas c, ui.Image im, Rect src, double x, double y, double h, double rot,
+      double sx, double sy, bool flip, double ax, double ay) {
+    final w = h * src.width / src.height;
+    c.save();
+    c.translate(x, y);
+    if (rot != 0) c.rotate(rot);
+    c.scale(flip ? -sx : sx, sy);
+    c.drawImageRect(im, src, Rect.fromLTWH(-w * ax, -h * ay, w, h), _sp);
+    c.restore();
   }
 
   /// Frame de una animación a 12 fps.
@@ -261,7 +286,9 @@ class Gfx {
     }
     final h = lines.length * lh;
     var sc = scale;
-    if (fitW != null && w * sc > fitW) sc = fitW / w;
+    // por defecto, nunca más ancho que la pantalla de la tele
+    fitW ??= maxW ?? 420;
+    if (w * sc > fitW) sc = fitW / w;
     if (fitH != null && h * sc > fitH) sc = math.min(sc, fitH / h);
     final tt = t ?? time;
     final paint = Paint()
@@ -305,8 +332,8 @@ class Gfx {
 
   // ---------- Formas de plastilina ----------
   /// Sombra de contacto bajo un personaje apoyado en el suelo.
-  static void shadow(Canvas c, double x, double y, double w, {double alpha = .35}) {
-    final r = Rect.fromCenter(center: Offset(x, y), width: w, height: w * .2);
+  static void shadow(Canvas c, double x, double y, double w, {double alpha = .35, double ratio = .2}) {
+    final r = Rect.fromCenter(center: Offset(x, y), width: w, height: w * ratio);
     c.drawOval(
         r,
         Paint()
@@ -374,6 +401,7 @@ class Gfx {
   static void button(Canvas c, String img, String label, Rect r, {double scale = 1, double size = 44}) {
     final h = r.width * kButtonAspect;
     final cy = r.center.dy;
+    shadow(c, r.center.dx, cy + h * scale * .46, r.width * .85 * scale, alpha: .45, ratio: .16);
     sprite(c, img, r.center.dx, cy, h * scale);
     final face = Rect.fromLTRB(r.left + r.width * kButtonFace.left, cy - h / 2 + h * kButtonFace.top,
         r.left + r.width * kButtonFace.right, cy - h / 2 + h * kButtonFace.bottom);

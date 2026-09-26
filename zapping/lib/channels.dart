@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui';
 
+import 'boss_data.dart';
 import 'game.dart';
 import 'gfx.dart';
 import 'sfx.dart';
@@ -109,8 +110,19 @@ class Screw extends Channel {
   double? pa;
 
   double get f => clamp01(a / need);
+  // Cuerpo de 230 px apoyado en sb+12: el cuello (fin del tornillo) está al 21 % de su altura.
+  // La base de la cabeza está al 93 % de su fotograma: así la cabeza tapa el tornillo y apoya en el cuello.
+  static double seatY(double sb) => sb + 12 - 230 + 230 * .21 + 4 - 150 * (.93 - .5);
   double get bodyTop => sb - 205;
-  double get headY => lerp(st + 105, bodyTop - 42, f);
+  double get headY => lerp(st + 105, seatY(sb), f);
+  double winA = 0;
+  double get shownRot {
+    if (res != 1) return a;
+    // al ganar gira suavemente hasta quedar derecho (vuelta completa más cercana)
+    final target = (winA / tau).roundToDouble() * tau;
+    final k = clamp01(since / .3);
+    return lerp(winA, target, 1 - (1 - k) * (1 - k));
+  }
 
   @override
   void init(int l) => need = tau * (1.8 + l * .3);
@@ -138,6 +150,7 @@ class Screw extends Channel {
     }
     if (tap) a += .3;
     if (a >= need) {
+      winA = a;
       win();
       g.fx.burst(cx, headY, Pal.gold, 22);
       Sfx.play('pop');
@@ -150,7 +163,8 @@ class Screw extends Channel {
     Gfx.shadow(c, cx, sb - 4, 150);
     Gfx.sprite(c, 'host_body', cx, sb + 12, 230, ay: 1, sx: 1 + boil(vt, 1) * .01);
     final hy = headY;
-    Gfx.anim(c, 'host_head', vt, cx, hy, 150, rot: a);
+    // al terminar, fotograma de reposo (cara de frente)
+    Gfx.anim(c, 'host_head', res == 1 ? 0 : vt, cx, hy, 150, rot: shownRot);
     // guía giratoria
     if (res == 0) {
       final pnt = Paint()
@@ -319,6 +333,8 @@ class Gazpacho extends Channel {
       Gfx.sprite(c, 'splat', s.dx, s.dy, 96, rot: .3);
     }
     for (final o in tom) {
+      final near = clamp01((o.y - st) / (sb - st));
+      Gfx.shadow(c, o.x, sb - 10, o.r * 2 * (.4 + .6 * near), alpha: .1 + .3 * near);
       Gfx.sprite(c, 'tomato', o.x, o.y, o.r * 2.3, rot: o.rot);
     }
     // rótulo de noticias
@@ -414,6 +430,7 @@ class Kitchen extends Channel {
       if (it.x < sl - 70 || it.x > sr + 70) continue;
       final h = it.finger ? 36.0 : 42.0;
       if (!it.cut) {
+        Gfx.shadow(c, it.x, iy + h * .42, h * Gfx.aspect(it.spr) * .85, ratio: .22);
         Gfx.sprite(c, it.spr, it.x, iy + boil(vt, it.x) * 1.5, h);
       } else {
         // dos mitades separadas
@@ -554,24 +571,45 @@ class Chairs extends Channel {
   @override
   void render(Canvas c) {
     drawBg(c);
-    Gfx.shadow(c, cx, cy + 150, 130);
-    Gfx.sprite(c, 'chair', cx, cy + 150, 165, ay: 1);
+    // Los dos corren en círculo alrededor de la silla: cuando pasan por detrás (más arriba en el suelo)
+    // se dibujan antes que la silla y algo más pequeños; cuando pasan por delante, encima y más grandes.
+    final floorY = cy + 150;
     final rv = on ? 0.0 : clamp01((t - stop) / window);
     final a = t * 3;
     double hop(double s) => -(math.sin(vt * 14 + s).abs()) * 10;
+    final items = <(double, void Function())>[];
+    void runner(String spr, double x, double depth, double h, double seed, {double? yOverride, bool bounce = true}) {
+      final y = yOverride ?? floorY + depth * 34;
+      final k = 1 + depth * .1;
+      items.add((depth, () {
+        Gfx.shadow(c, x, y, h * .7 * k);
+        Gfx.sprite(c, spr, x, y + (bounce ? hop(seed) : 0), h * k, ay: 1);
+      }));
+    }
+
+    items.add((0, () {
+      Gfx.shadow(c, cx, floorY, 130);
+      Gfx.sprite(c, 'chair', cx, floorY, 165, ay: 1);
+    }));
     if (me) {
-      Gfx.sprite(c, 'player', cx, seatY + 6, 92, ay: 1, sy: 1 - clamp01(since * 5) * .08);
+      items.add((.5, () => Gfx.sprite(c, 'player', cx, seatY + 6, 92, ay: 1, sy: 1 - clamp01(since * 5) * .08)));
+    } else if (on) {
+      runner('player', cx + math.cos(a) * 140, math.sin(a), 88, 0);
     } else {
-      final x = on ? cx + math.cos(a) * 140 : lerp(cx + 140, cx + 110, rv);
-      final y = on ? cy + 70 + math.sin(a) * 40 : cy + 110;
-      Gfx.shadow(c, x, y, 60);
-      Gfx.sprite(c, 'player', x, y + (on ? hop(0) : 0), 88, ay: 1);
+      runner('player', lerp(cx + math.cos(stop * 3) * 140, cx + 120, rv), lerp(math.sin(stop * 3), .6, rv), 88, 0, bounce: false);
     }
     if (!me) {
-      final x = on ? cx - math.cos(a) * 140 : lerp(cx - 140, cx, rv);
-      final y = on ? cy + 70 - math.sin(a) * 40 : lerp(cy + 110, seatY + 6, rv);
-      Gfx.shadow(c, x, y, 64);
-      Gfx.sprite(c, 'rival', x, y + (on ? hop(1) : 0), 94, ay: 1);
+      if (on) {
+        runner('rival', cx - math.cos(a) * 140, -math.sin(a), 94, 1);
+      } else {
+        final x0 = cx - math.cos(stop * 3) * 140, d0 = -math.sin(stop * 3);
+        final y = lerp(floorY + d0 * 34, seatY + 6, rv);
+        runner('rival', lerp(x0, cx, rv), rv > .5 ? .5 : d0, 94, 1, yOverride: y, bounce: false);
+      }
+    }
+    items.sort((p, q) => p.$1.compareTo(q.$1));
+    for (final it in items) {
+      it.$2();
     }
     if (on) {
       for (var i = 0; i < 4; i++) {
@@ -621,6 +659,7 @@ class Forbidden extends Channel {
     drawBg(c);
     final pulse = 1 + math.sin(vt * 5) * .05;
     final squash = res == -1 ? 1 - clamp01(since * 6) * .35 : 1.0;
+    Gfx.shadow(c, cx, sb - 72, 230 * pulse, alpha: .45);
     Gfx.anim(c, 'redbutton', vt, cx + math.sin(vt * 30) * 3, sb - 70, 220 * pulse,
         ay: 1, sy: squash, sx: 2 - squash);
     Gfx.text(c, msg, cx, st + 70, 44, color: Pal.gold, rot: math.sin(vt * 4) * .05);
@@ -760,6 +799,8 @@ class EyeFishing extends Channel {
           ..strokeCap = StrokeCap.round
           ..color = const Color(0xFFC0203A));
     final sq = res == 1 ? clamp01(1 - since * 4) : 1.0;
+    final near = clamp01((y - st) / (sb - st));
+    Gfx.shadow(c, x, by(.9), 80 * (.4 + .6 * near) * sq, alpha: .1 + .25 * near);
     Gfx.sprite(c, 'eyeball', x, y, 92 * sq,
         rot: math.atan2(vy, vx) * .15 + boil(vt, 4) * .05);
   }
@@ -817,12 +858,14 @@ class Glutton extends Channel {
     drawBg(c);
     if (res == 1) {
       final b = 1 + math.sin(since * 22) * .05 * clamp01(1 - since);
+      Gfx.shadow(c, mx, gy + gh - 6, 150);
       Gfx.sprite(c, 'glutton_chew', mx, gy, gh, ay: 0, sx: b, sy: 2 - b);
     } else {
+      Gfx.shadow(c, mx, gy + gh - 6, 150);
       Gfx.anim(c, 'glutton_open', vt, mx, gy, gh, ay: 0);
     }
     if (res != 1) {
-      Gfx.sprite(c, 'burger', hx, hy, grab ? 86 : 78, rot: boil(vt, 5) * .04);
+      Gfx.sprite(c, 'burger', hx, hy, grab ? 86 : 78, rot: boil(vt, 5) * .04, drop: grab ? const Offset(10, 26) : const Offset(4, 8));
     }
     Gfx.text(c, 'MÉTELA EN LA BOCA', cx, sb - 18, 16, font: kBody, color: Pal.ink);
   }
@@ -890,10 +933,10 @@ class Bugs extends Channel {
   void render(Canvas c) {
     drawBg(c);
     for (final b in bugs.where((b) => b.dead)) {
-      Gfx.sprite(c, 'bug_dead', b.x, b.y, 78, rot: b.rot);
+      Gfx.sprite(c, 'bug_dead', b.x, b.y, 78, rot: b.rot, drop: const Offset(2, 3));
     }
     for (final b in bugs.where((b) => !b.dead)) {
-      Gfx.sprite(c, 'bug', b.x, b.y, 72,
+      Gfx.sprite(c, 'bug', b.x, b.y, 72, drop: const Offset(5, 8),
           rot: b.a + math.pi / 2 + boil(vt * 2, b.s) * .12, sx: 1 + boil(vt * 2, b.y) * .05);
     }
     Gfx.text(c, 'QUEDAN ${bugs.where((b) => !b.dead).length}', cx, st + 40, 26, color: Pal.pink);
@@ -980,11 +1023,17 @@ class Boss extends Channel {
 
   int hp = 0, maxHp = 0;
   double flash = 0;
-  // Posición de las cuencas medida sobre la animación (fracción del frame).
-  final eyes = [BossEye(.32, .448), BossEye(.50, .278), BossEye(.694, .452)];
+  // Las cuencas son huecos de la animación; su posición en cada fotograma está en boss_data.dart.
+  final eyes = [BossEye(.314, .435), BossEye(.493, .268), BossEye(.686, .435)];
   static const bh = 330.0;
   double get bw => bh * Gfx.aspect('boss');
-  Offset eyePos(BossEye e) => Offset(cx - bw / 2 + e.fx * bw, cy + 20 - bh / 2 + e.fy * bh);
+  int get frame => (vt * 12).floor() % kBossSockets.length;
+  Offset eyePos(BossEye e) {
+    final s = kBossSockets[frame][eyes.indexOf(e)];
+    return Offset(cx - bw / 2 + s.$1 * bw, cy + 20 - bh / 2 + s.$2 * bh);
+  }
+
+  double eyeSize(BossEye e) => kBossSockets[frame][eyes.indexOf(e)].$3 * bw * 2 * 1.3;
 
   @override
   void init(int l) {
@@ -1004,7 +1053,7 @@ class Boss extends Channel {
     if (tap && res == 0) {
       for (final e in eyes) {
         final o = eyePos(e);
-        if (e.open && dist(p.x, p.y, o.dx, o.dy) < 54) {
+        if (e.open && dist(p.x, p.y, o.dx, o.dy) < 50) {
           e.open = false;
           e.t = rnd(.5, 1.1);
           hp--;
@@ -1030,15 +1079,20 @@ class Boss extends Channel {
     c.rotate(dying * math.sin(vt * 40) * .1);
     c.scale(1 - dying * .4);
     c.translate(-cx, -(cy + 20));
-    Gfx.anim(c, 'boss', vt, cx, cy + 20, bh, sx: 1 + flash * .05, sy: 1 - flash * .04);
+    // el golpe aplasta toda la cara (ojos incluidos)
+    c.translate(cx, cy + 20);
+    c.scale(1 + flash * .05, 1 - flash * .04);
+    c.translate(-cx, -(cy + 20));
+    // primero los ojos, detrás: se ven a través de las cuencas huecas
     for (final e in eyes) {
-      final o = eyePos(e);
+      final o = eyePos(e), d = eyeSize(e);
       if (e.open) {
-        Gfx.sprite(c, 'boss_eye', o.dx, o.dy, 58, rot: math.sin(vt * 3 + e.fx * 9) * .5);
+        Gfx.sprite(c, 'boss_eye', o.dx, o.dy, d, rot: math.sin(vt * 3 + e.fx * 9) * .5);
       } else {
-        Gfx.sprite(c, 'boss_eye_closed', o.dx, o.dy, 58);
+        Gfx.sprite(c, 'boss_eye_closed', o.dx, o.dy, d);
       }
     }
+    Gfx.anim(c, 'boss', vt, cx, cy + 20, bh);
     c.restore();
     Gfx.clayBar(c, Rect.fromLTWH(sl + 36, st + 20, S.width - 72, 20), hp / maxHp, Pal.pink);
   }
