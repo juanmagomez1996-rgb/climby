@@ -26,10 +26,10 @@ canvas{display:block;width:100%;max-width:100%;aspect-ratio:16/9}
 #toast small{display:block;font-family:'Figtree',system-ui,sans-serif;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)}
 .help{margin:0;font-size:12px;color:var(--muted);line-height:1.9;letter-spacing:.02em}
 .help kbd{font:600 11px 'Figtree',system-ui,sans-serif;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:1px 6px;color:#bcbcb8}
-.pad{display:none;justify-content:space-between;gap:12px;user-select:none;-webkit-user-select:none}
+.pad{display:none;flex-wrap:wrap;justify-content:space-between;gap:12px;user-select:none;-webkit-user-select:none}
 .pad div{display:flex;gap:10px}
 .pad button{width:64px;height:64px;border-radius:50%;font-size:20px;padding:0;background:#0d0d0d;border:1px solid var(--line);color:#bbb;touch-action:none}
-.pad button.wide{width:84px;font-size:12px;letter-spacing:.08em}
+.pad button.wide{width:68px;font-size:11px;letter-spacing:.04em}
 .pad button.held{background:#262626}
 @media (pointer:coarse){.pad{display:flex}.help{display:none}}
 button{font:600 13px 'Figtree',system-ui,sans-serif;letter-spacing:.16em;text-transform:uppercase;background:transparent;color:#e6e2dc;border:1px solid #3a3a38;border-radius:2px;padding:11px 22px;cursor:pointer}
@@ -63,10 +63,10 @@ button:focus-visible,input:focus-visible{outline:1px solid #bbb;outline-offset:3
     <canvas id="game" aria-label="Juego de plataformas en blanco y negro. Un niño lleva una rosa roja a la ventana de su mamá."></canvas>
     <div id="toast"></div>
   </div>
-  <p class="help"><kbd>←</kbd> <kbd>→</kbd> caminar · <kbd>↑</kbd> o <kbd>Espacio</kbd> saltar; pegado a una caja, un muro o un borde alto, trepa · mantén <kbd>Shift</kbd> o <kbd>E</kbd> para jalar cajas y usar palancas · <kbd>C</kbd> ver colisiones</p>
+  <p class="help"><kbd>←</kbd> <kbd>→</kbd> caminar · <kbd>↑</kbd> o <kbd>Espacio</kbd> saltar, trepar y soltarte de la cuerda · <kbd>↓</kbd> o <kbd>R</kbd> dejar o recoger la rosa · mantén <kbd>Shift</kbd> o <kbd>E</kbd> para jalar cajas, usar palancas y tomar la mano de mamá · <kbd>C</kbd> ver colisiones</p>
   <div class="pad">
     <div><button data-k="l" aria-label="Izquierda">◀</button><button data-k="r" aria-label="Derecha">▶</button></div>
-    <div><button class="wide" data-k="g">Agarrar</button><button class="wide" data-k="j">Saltar</button></div>
+    <div><button class="wide" data-k="d">Rosa</button><button class="wide" data-k="g">Agarrar</button><button class="wide" data-k="j">Saltar</button></div>
   </div>
 </div>
 
@@ -110,7 +110,7 @@ const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
 const PROPS = ['treeTall', 'treeSmall', 'grass', 'thorns', 'log', 'rock', 'roots', 'fence', 'stalL', 'stalM', 'stalS', 'mineFrame', 'stagL', 'stagM', 'chain', 'lantern', 'crate', 'trapOpen', 'trapShut', 'boulder', 'gate', 'lever', 'plate', 'rope',
   'stump', 'mushrooms', 'fern', 'deadBush', 'branch', 'sign', 'reeds', 'rockPile', 'cross', 'tomb', 'crow', 'tireSwing', 'scarecrow', 'wheel', 'well', 'birdhouse',
   'cart', 'rail', 'barrels', 'ladder', 'planks', 'rootCurtain', 'crystals', 'pickaxe', 'lamp', 'pole', 'trashcan', 'fenceBroken', 'bicycle', 'doghouse', 'clothesline', 'steps'];
-const SRC = { brother: 'assets/brother.png', mother: 'assets/mother.png', forest_far: 'assets/forest_far.webp', cave_far: 'assets/cave_far.webp', rain_far: 'assets/rain_far.webp',
+const SRC = { brother: 'assets/brother.png', brother_nr: 'assets/brother_nr.png', mother: 'assets/mother.png', forest_far: 'assets/forest_far.webp', cave_far: 'assets/cave_far.webp', rain_far: 'assets/rain_far.webp',
   forest_mid: 'assets/forest_mid.webp', cave_ceil: 'assets/cave_ceil.webp', grass: 'assets/grass.png', house: 'assets/house.png', shadow: 'assets/shadow.webp', fog: 'assets/fog.png', hang: 'assets/hang.png', fgrass: 'assets/fgrass.png' };
 for (const p of PROPS) SRC[p] = `assets/props/${p}.png`;
 const IMG = {}, ATLAS = {}; let META = {};
@@ -156,99 +156,151 @@ const grain = document.createElement('canvas'); grain.width = grain.height = 128
 const box = (x, y, w, h, kind, o = {}) => Object.assign({ x, y, w, h, kind, oneway: kind === 'ledge' || kind === 'plank' }, o);
 const deco = (k, x, base, h, layer = 'play', flip = false) => ({ k, x, base, h, layer, flip });
 
-function level1() { // EL BOSQUE
-  const L = { name: 'El bosque', theme: 'forest', w: 3300, rough: 9, flat: [[1186, 1430, 1.2], [2630, 2830, 0], [2880, 2945, 0]],
+const shiftDecor = (list, at, dx) => list.map(d => (d.layer === 'play' || d.layer === 'mid' || d.layer === 'bg' || d.layer === 'fg') && d.x >= at ? { ...d, x: d.x + dx } : d);
+
+function level1() { // EL BOSQUE — rope over the chasm, the tall crate, the rolling boulder, the crank in the dark
+  const L = { name: 'El bosque', theme: 'forest', w: 3430, rough: 9, flat: [[1316, 1560, 1.2], [1880, 1990, 0], [2760, 2960, 0], [3010, 3075, 0]],
     terrain: [
       { pts: [[0, 224], [120, 228], [220, 236], [300, 240], [380, 236], [470, 228], [560, 232], [640, 232], [640, 172], [700, 170], [760, 174], [760, 232], [860, 234], [1000, 234], [1100, 230], [1130, 231]] },
-      { pts: [[1186, 230], [1300, 228], [1420, 230], [1420, 130], [1560, 128], [1600, 140], [1680, 170], [1760, 200], [1840, 226], [1900, 230], [2150, 230], [2150, 208], [2200, 206], [2200, 230], [2380, 232]] },
-      { pts: [[2430, 232], [2560, 230], [2640, 230], [2640, 190], [2760, 190], [2760, 230], [3300, 230]] },
+      { pts: [[1316, 230], [1430, 228], [1550, 230], [1550, 130], [1690, 128], [1730, 140], [1810, 170], [1890, 200], [1905, 205], [1905, 258], [1933, 258], [1933, 214], [1970, 226], [2030, 230], [2280, 230], [2280, 208], [2330, 206], [2330, 230], [2510, 232]] },
+      { pts: [[2560, 232], [2690, 230], [2770, 230], [2770, 190], [2890, 190], [2890, 230], [3430, 230]] },
     ],
-    boxes: [box(2900, 120, 16, 110, 'gate', { y0: 120, openH: 104, open: 0, by: 'plate0' })],
-    crates: [{ x: 1250, y: 202, w: 30, h: 40 }, { x: 2700, y: 164, w: 24, h: 18 }],   // a big one to climb the wall, a small one for the plate
-    traps: [{ x: 920, y: 234 }, { x: 2000, y: 230 }, { x: 2290, y: 231 }],
-    plates: [{ id: 'plate0', x: 2760, y: 230, w: 34 }],
-    levers: [], stal: [], water: [],
-    chases: [{ trigger: 1905, end: 2520, speed: 1.3 }],
-    checkpoints: [20, 790, 1470, 1880, 2560, 2940],
-    goalX: 3140, houseX: 3070,
-    says: [[30, 'h', 'Te lo prometí, ma. Una rosa todos los días.'], [560, 'n', 'Salta contra una pared baja para trepar.'], [1225, 'n', 'Empuja la caja.'],
-      [1905, 'h', 'Ya viene.'], [2530, 'h', 'La luz la detiene.'], [2645, 'n', 'Una puerta que se abre con peso.']],
-    decor: [
+    boxes: [
+      box(3030, 120, 16, 110, 'gate', { y0: 120, openH: 104, open: 0, by: 'plate0' }),
+      box(2492, 120, 16, 112, 'gate', { y0: 120, openH: 108, open: 0, by: 'crank0' }),
+      box(2068, 116, 16, 114, 'barrier'),
+    ],
+    crates: [{ x: 1380, y: 202, w: 30, h: 40 }, { x: 2830, y: 164, w: 24, h: 18 }],   // a big one to climb the wall, a small one for the plate
+    traps: [{ x: 920, y: 234 }, { x: 2130, y: 230 }, { x: 2362, y: 231 }],
+    plates: [{ id: 'plate0', x: 2890, y: 230, w: 34 }],
+    levers: [{ id: 'crank0', x: 2466, y: 230, crank: 3 }],
+    ropes: [{ x: 1182, y: 46, len: 128 }],
+    boulders: [{ trigger: 1712, x: 1580, r: 22 }],
+    hands: [{ x: 250, w: 80 }, { x: 2446, w: 62 }],
+    lamps: [{ x: 2668, r: 64 }],
+    stal: [], water: [],
+    chases: [{ trigger: 2110, end: 2650, speed: 1.3 }],
+    checkpoints: [20, 790, 1330, 1600, 2092, 2690, 3070],
+    goalX: 3270, houseX: 3200,
+    says: [[30, 'h', 'Te lo prometí, ma. Una rosa todos los días.'], [190, 'n', 'Las manos de la oscuridad no tocan a quien lleva la rosa.'], [560, 'n', 'Salta contra una pared baja para trepar.'],
+      [1040, 'n', 'Salta a la cuerda. Balancéate con ← → y suéltate con ↑.'], [1355, 'n', 'Empuja la caja.'], [1712, 'h', '¿Qué es ese ruido?'],
+      [2110, 'h', 'Ya viene.'], [2330, 'n', 'Deja la rosa con ↓: la sombra no cruza su luz. Mantén Shift en la manivela.'], [2650, 'h', 'La luz la detiene.'], [2905, 'n', 'Una puerta que se abre con peso.']],
+    decor: shiftDecor([
       deco('treeTall', 60, 262, 210, 'bg'), deco('treeSmall', 330, 262, 150, 'bg', true), deco('treeTall', 700, 262, 230, 'bg', true), deco('treeTall', 1150, 262, 200, 'bg'),
       deco('treeSmall', 1500, 262, 170, 'bg'), deco('treeTall', 1900, 262, 220, 'bg', true), deco('treeTall', 2350, 262, 210, 'bg'), deco('treeSmall', 2700, 262, 160, 'bg', true), deco('treeTall', 3050, 262, 200, 'bg'),
       deco('treeTall', 150, 228, 120, 'mid'), deco('roots', 628, 236, 34, 'play', true), deco('grass', 520, 234, 26), deco('thorns', 1158, 272, 30), deco('thorns', 1142, 272, 26, 'play', true),
       deco('treeSmall', 1000, 236, 90, 'mid', true), deco('log', 1330, 230, 16), deco('roots', 1412, 236, 44), deco('treeTall', 1640, 160, 110, 'mid'), deco('grass', 1800, 228, 24),
       deco('log', 2175, 210, 18), deco('roots', 2640, 236, 46, 'play', true), deco('roots', 2762, 236, 44), deco('grass', 2700, 192, 16), deco('thorns', 2405, 272, 30), deco('grass', 2480, 234, 22), deco('fence', 3000, 232, 26), deco('grass', 2600, 232, 18, 'play', true),
       deco('treeTall', 400, 300, 320, 'fg'), deco('grass', 1260, 290, 70, 'fg'), deco('treeSmall', 2100, 300, 260, 'fg', true), deco('grass', 2860, 292, 60, 'fg'),
-    ],
+    ], 1150, 130).concat([deco('lamp', 2668, 232, 84, 'play'), deco('treeTall', 1175, 60, 90, 'play', true)]),
   };
   return L;
 }
-function level2() { // LA CUEVA
-  return { name: 'La cueva', theme: 'cave', w: 3400, caveEnd: 2950, rough: 8, flat: [[1270, 1560, .8]],
+function level2() { // LA CUEVA — the counterweight lift, the spider
+  return { name: 'La cueva', theme: 'cave', w: 4400, caveEnd: 3950, rough: 8, flat: [[1270, 1560, .8], [1950, 2300, 0], [2400, 2980, .6]],
     terrain: [
       { pts: [[0, 200], [140, 204], [260, 220], [380, 232], [440, 236], [440, 300]] },
       { pts: [[620, 300], [620, 236], [700, 232], [820, 230], [1700, 230]] },
-      { pts: [[1960, 230], [2400, 230], [2400, 172], [2480, 170], [2520, 190], [2600, 200]] },
-      { pts: [[2650, 205], [2750, 190], [2900, 170], [3000, 165], [3150, 170], [3400, 172]] },
+      { pts: [[1960, 230], [2040, 230]] },
+      { pts: [[2080, 230], [2160, 230]] },
+      { pts: [[2200, 230], [2300, 230], [2300, 104], [2400, 104], [2400, 230], [2980, 230], [3400, 230], [3400, 172], [3480, 170], [3520, 190], [3600, 200]] },
+      { pts: [[3650, 205], [3750, 190], [3900, 170], [4000, 165], [4150, 170], [4400, 172]] },
     ],
     boxes: [
       box(474, 236, 34, 70, 'stone'), box(540, 238, 36, 70, 'stone', { fragile: true, sink: true }),
       box(1520, 110, 16, 120, 'gate', { y0: 110, openH: 108, open: 0, by: 'lever0' }),
       ...Array.from({ length: 9 }, (_, i) => box(1702 + i * 29, 230, 27, 5, 'plank', { fragile: true })),
+      box(2080, 104, 220, 12, 'slab'),
     ],
     water: [{ x: 440, y: 244, w: 180, h: 60 }],
-    crates: [],
-    traps: [{ x: 1420, y: 230 }, { x: 2230, y: 230 }],
+    crates: [{ x: 2104, y: 204 }],
+    lifts: [{ a: { x: 2160, w: 40 }, b: { x: 2040, w: 40 }, y: 230, aDown: 100, aUp: 20, speed: .45 }],
+    spider: { x0: 2420, x1: 2950, bx: 2990, by: 40 },
+    traps: [{ x: 1420, y: 230 }, { x: 2560, y: 230 }, { x: 2716, y: 230 }, { x: 3230, y: 230 }],
     plates: [],
     levers: [{ id: 'lever0', x: 1300, y: 230, timed: 4.8 }],
-    stal: [{ x: 905, len: 44 }, { x: 1015, len: 52 }, { x: 1125, len: 40 }, { x: 2300, len: 48 }, { x: 2560, len: 44 }],
-    chases: [{ trigger: 2050, end: 2900, speed: 1.35 }],
-    checkpoints: [20, 640, 1220, 1560, 1980, 2940],
-    goalX: 3175, houseX: 3100,
+    stal: [{ x: 905, len: 44 }, { x: 1015, len: 52 }, { x: 1125, len: 40 }, { x: 3300, len: 48 }, { x: 3560, len: 44 }],
+    chases: [{ trigger: 3050, end: 3900, speed: 1.35 }],
+    checkpoints: [20, 640, 1220, 1560, 1980, 2430, 2990, 3940],
+    goalX: 4175, houseX: 4100,
     says: [[30, 'h', 'Aquí abajo no se ve nada.'], [420, 'n', 'El agua es profunda.'], [850, 'h', 'Algo cruje arriba.'], [1240, 'n', 'Shift o E junto a la palanca.'],
-      [1690, 'h', 'No te detengas.'], [2050, 'h', 'Otra vez ella.'], [2950, 'h', 'Ya veo tu ventana.']],
-    decor: [
+      [1690, 'h', 'No te detengas.'], [1985, 'n', 'La polea baja del lado que pesa más.'], [2430, 'h', 'Hay algo arriba. Algo grande.'], [2470, 'n', 'Un cepo atrapa lo que lo pise.'],
+      [3050, 'h', 'Otra vez ella.'], [3950, 'h', 'Ya veo tu ventana.']],
+    decor: shiftDecor([
       deco('stagL', 120, 262, 140, 'bg'), deco('stagM', 520, 262, 110, 'bg', true), deco('stagL', 980, 262, 150, 'bg', true), deco('mineFrame', 1330, 262, 120, 'bg'),
       deco('stagM', 1800, 262, 120, 'bg'), deco('stagL', 2300, 262, 140, 'bg'), deco('stagM', 2700, 262, 100, 'bg', true),
       deco('chain', 300, 70, 70, 'mid'), deco('lantern', 1285, 150, 26, 'play'), deco('chain', 1702, 60, 90, 'play'), deco('chain', 1958, 60, 90, 'play'),
       deco('mineFrame', 1190, 232, 70, 'play'), deco('roots', 2392, 176, 40, 'play', true), deco('stagM', 860, 234, 26, 'play'), deco('stagM', 2780, 196, 30, 'play', true),
       deco('stagL', 700, 300, 260, 'fg'), deco('stagM', 1600, 300, 220, 'fg', true), deco('stagL', 2500, 300, 240, 'fg'),
       deco('treeSmall', 3050, 172, 90, 'play', true), deco('grass', 3230, 174, 22),
-    ],
+    ], 1980, 1000).concat([deco('mineFrame', 2250, 232, 80, 'play'), deco('lantern', 2090, 124, 22, 'play')]),
   };
 }
-function level3() { // LA LLUVIA
-  return { name: 'La lluvia', theme: 'rain', w: 3200, closed: true, rough: 9, flat: [[860, 1120, .8], [1230, 1520, .8]],
+function level3() { // LA LLUVIA — the flooded street: a raft on the current, a rope up the far bank
+  return { name: 'La lluvia', theme: 'rain', w: 3950, closed: true, rough: 9, flat: [[860, 1120, .8], [1230, 1520, .8], [2120, 2310, 0]],
     terrain: [
-      { pts: [[0, 228], [300, 230], [420, 226], [520, 230], [700, 160], [740, 160], [740, 230], [820, 230], [820, 188], [850, 188], [850, 230], [1850, 230]] },
-      { pts: [[1905, 230], [2000, 230], [2000, 172], [2080, 170], [2130, 200], [2200, 230], [2400, 230]] },
-      { pts: [[2560, 230], [3200, 228]] },
+      { pts: [[0, 228], [300, 230], [420, 226], [520, 230], [700, 160], [740, 160], [740, 230], [820, 230], [820, 188], [850, 188], [850, 230], [1600, 230], [1600, 300]] },
+      { pts: [[2120, 300], [2120, 140], [2310, 140], [2310, 230], [2600, 230]] },
+      { pts: [[2655, 230], [2750, 230], [2750, 172], [2830, 170], [2880, 200], [2950, 230], [3150, 230]] },
+      { pts: [[3310, 230], [3950, 228]] },
     ],
     boxes: [
       box(1480, 112, 16, 118, 'gate', { y0: 112, openH: 106, open: 0, by: 'lever0' }),
       box(1370, 206, 40, 24, 'rock'),
-      ...Array.from({ length: 5 }, (_, i) => box(2402 + i * 31, 230, 29, 5, 'plank', { fragile: true })),
+      ...Array.from({ length: 5 }, (_, i) => box(3152 + i * 31, 230, 29, 5, 'plank', { fragile: true })),
+      box(1606, 236, 58, 8, 'raft'),
     ],
-    water: [], stal: [],
+    water: [{ x: 1600, y: 244, w: 520, h: 60 }], stal: [],
+    ropes: [{ x: 2092, y: 20, len: 140 }],
+    lamps: [{ x: 2230, r: 46 }],
     crates: [{ x: 890, y: 204 }],
-    traps: [{ x: 1000, y: 230 }, { x: 1024, y: 230 }, { x: 1048, y: 230 }, { x: 1750, y: 230 }, { x: 2255, y: 230 }],
+    traps: [{ x: 1000, y: 230 }, { x: 1024, y: 230 }, { x: 1048, y: 230 }, { x: 2500, y: 230 }, { x: 3005, y: 230 }],
     plates: [],
     levers: [{ id: 'lever0', x: 1250, y: 230, timed: 4.4 }],
-    chases: [{ trigger: 1600, end: 2760, speed: 1.45 }],
-    checkpoints: [20, 870, 1120, 1540, 2600],
-    goalX: 2890, houseX: 2820,
+    chases: [{ trigger: 2350, end: 3510, speed: 1.45 }],
+    checkpoints: [20, 870, 1120, 1540, 2140, 3350],
+    goalX: 3640, houseX: 3570,
     says: [[30, 'h', 'Hoy está difícil, ¿verdad? Igual te la llevo.'], [860, 'n', 'Las trampas se cierran con cualquier peso.'], [1230, 'n', 'La reja se cierra rápido.'],
-      [1600, 'h', 'Corre.'], [2770, 'h', 'Aunque hoy no la veas, te llega.']],
-    decor: [
+      [1545, 'h', 'Se inundó la calle.'], [1580, 'n', 'Súbete a la balsa: la corriente la lleva.'], [2000, 'n', 'Salta a la cuerda y balancéate hasta la orilla.'],
+      [2350, 'h', 'Corre.'], [3520, 'h', 'Aunque hoy no la veas, te llega.']],
+    decor: shiftDecor([
       deco('fence', 835, 232, 28, 'play'), deco('treeSmall', 600, 196, 70, 'play', true), deco('grass', 300, 232, 22), deco('grass', 1180, 232, 22, 'play', true),
       deco('fence', 1900, 232, 24, 'play', true), deco('treeTall', 2040, 172, 90, 'play'), deco('rope', 2480, 60, 60, 'play'), deco('fence', 2700, 230, 26),
       deco('treeTall', 200, 262, 190, 'bg'), deco('treeSmall', 1300, 262, 150, 'bg', true), deco('treeTall', 2250, 262, 200, 'bg'),
       deco('grass', 500, 292, 70, 'fg'), deco('treeSmall', 1700, 300, 260, 'fg'), deco('grass', 2600, 292, 70, 'fg', true),
+    ], 1560, 750).concat([deco('lamp', 2230, 142, 84, 'play'), deco('pole', 1570, 232, 150, 'play'), deco('trashcan', 1760, 250, 18, 'play')]),
+  };
+}
+function level4() { // CONTIGO — you lead her by the hand; she cannot jump
+  return { name: 'Contigo', theme: 'forest', w: 2600, rough: 6, garden: true, flat: [[380, 470, 0], [1120, 1280, 0]],
+    terrain: [
+      { pts: [[0, 230], [200, 228], [420, 230]] },
+      { pts: [[420, 256], [448, 256]] },
+      { pts: [[448, 230], [640, 228], [700, 230], [900, 230], [1100, 229], [1150, 230]] },
+      { pts: [[1250, 230], [1400, 230], [1600, 226], [1900, 230], [2150, 228], [2600, 230]] },
+    ],
+    boxes: [box(1150, 229, 100, 6, 'bridge', { by: 'lever0', open: 0 })],
+    crates: [{ x: 330, y: 204 }],
+    traps: [], plates: [], stal: [], water: [],
+    levers: [{ id: 'lever0', x: 1292, y: 230 }],
+    ropes: [{ x: 1200, y: 40, len: 128 }],
+    hands: [{ x: 710, w: 160 }],
+    lamps: [{ x: 2250, r: 90 }],
+    mom: { x: 110 },
+    chases: [{ trigger: 1560, end: 2200, speed: 1.0 }],
+    checkpoints: [40, 520, 960, 1310],
+    goalX: 2300, houseX: -9999,
+    says: [[30, 'h', 'Ven, ma. Dame la mano.'], [70, 'n', 'Shift o E junto a ella: tomarla de la mano o soltarla. De la mano no puedes saltar.'], [300, 'n', 'Ella no puede saltar. Ábrele camino.'],
+      [640, 'h', 'Ahí hay algo, ma. No te sueltes.'], [670, 'n', 'Deja la rosa (↓) para darle luz. Después vuelve por ella.'], [1080, 'h', 'Espérame aquí, ma.'],
+      [1560, 'h', 'No voltees, ma. Sigue.'], [2220, 'h', 'Mira, ma.']],
+    decor: [
+      deco('treeTall', 80, 262, 200, 'bg'), deco('treeSmall', 600, 262, 160, 'bg', true), deco('treeTall', 1100, 262, 220, 'bg'), deco('treeSmall', 1700, 262, 170, 'bg'), deco('treeTall', 2200, 262, 210, 'bg', true),
+      deco('treeTall', 760, 232, 140, 'play', true), deco('deadBush', 820, 232, 40, 'play'), deco('treeTall', 1175, 60, 90, 'play', true), deco('lamp', 2250, 230, 90, 'play'),
+      deco('treeTall', 300, 300, 300, 'fg'), deco('grass', 1400, 292, 60, 'fg'), deco('treeSmall', 2000, 300, 260, 'fg', true),
     ],
   };
 }
-function level4() { // LA ÚLTIMA NOCHE — she walks toward the light
+function level5() { // LA ÚLTIMA NOCHE — she walks toward the light
   return { name: 'La última noche', theme: 'dream', w: 1800, dream: true, rough: 5,
     terrain: [{ pts: [[0, 230], [300, 228], [520, 222], [760, 226], [1000, 220], [1300, 224], [1800, 222]] }],
     boxes: [], crates: [], traps: [], plates: [], levers: [], stal: [], water: [], chases: [],
@@ -258,17 +310,19 @@ function level4() { // LA ÚLTIMA NOCHE — she walks toward the light
       deco('grass', 420, 224, 22), deco('grass', 980, 222, 24, 'play', true), deco('treeTall', 700, 300, 300, 'fg')],
   };
 }
-const LEVELS = [level1, level2, level3, level4];
+const LEVELS = [level1, level2, level3, level4, level5];
 const INTRO = [
   { title: 'I · El bosque', lines: [{ t: () => `${cap(Mn())} sigue viva, pero una parte de ella se fue contigo. Detrás de ti viene la tristeza.` }, { hand: 'Te lo prometí, ma. Una rosa todos los días.' }] },
   { title: 'II · La cueva', lines: [{ t: 'El camino baja. Hace frío y gotea.' }, { hand: 'No te preocupes, ma. Conozco el camino.' }] },
   { title: 'III · La lluvia', lines: [{ t: 'Hoy es un día malo.' }, { hand: 'Hoy está difícil, ¿verdad? Igual te la llevo.' }] },
+  { title: 'IV · Contigo', lines: [{ t: () => `${cap(Mn())} no ha salido de la casa en semanas. Esta tarde, la sacas tú de la mano. Ella no puede saltar.` }, { hand: 'Ven, ma. Te quiero enseñar algo.' }] },
   { title: 'La última noche', lines: [{ t: () => `Esa noche, ${Mn()} sueña. Esta vez caminas tú, y la sombra ya no te sigue.` }] },
 ];
 const GOAL = [
   () => 'Dejas la rosa en su ventana. Por un momento, la sombra se detiene.',
   () => 'Ella abre la ventana y toma la rosa. La pone en un vaso con agua.',
   () => 'La ventana está cerrada. Dejas la rosa en el borde, bajo la lluvia. Mañana la va a encontrar.',
+  () => 'Al final del camino hay un rosal. Ella corta una rosa sola. Es la primera vez que sale.',
 ];
 const END = [
   [{ hand: 'Hola, ma. Esta te la guardé.' }],
@@ -351,11 +405,17 @@ function build(i) {
   d.traps.forEach(t => t.y = surfaceY(t.x + 12));
   d.plates.forEach(p => p.y = surfaceY(p.x + p.w / 2));
   d.levers.forEach(l => l.y = surfaceY(l.x));
-  d.crates.forEach(c => c.y = surfaceY(c.x + 13) - 27);
+  d.crates.forEach(c => c.y = groundAt(c.x + 13) - 27);
   dress(d, i * 13.1);
   L = prevL;
-  d.boxes.forEach(b => { b.x0 = b.x; b.y0b = b.y; b.t = -1; b.gone = false; b.vy = 0; });
-  d.crates = d.crates.map(c => { const w = c.w || 26, h = c.h || 26; return { x: c.x, y: c.y + 26 - h, w, h, vx: 0, vy: 0, on: false, stuck: false, crate: true }; });   // y is given for the usual 26 px crate
+  d.lifts = (d.lifts || []).map(l => { const A = box(l.a.x, l.y, l.a.w, 8, 'lift'), B = box(l.b.x, l.y, l.b.w, 8, 'lift'); d.boxes.push(A, B); return { ...l, A, B, s: 0, stuck: 0 }; });
+  d.boxes.forEach(b => { b.x0 = b.x; b.y0b = b.y; b.t = -1; b.gone = false; b.vy = 0; b.vx = 0; });
+  d.ropes = (d.ropes || []).map(r => ({ ...r, th: 0, om: 0 }));
+  d.boulders = (d.boulders || []).map(b => ({ ...b, y: 0, vx: 0, vy: 0, rot: 0, state: 'idle' }));
+  d.hands = (d.hands || []).map(h => ({ ...h, reach: 0, tP: 0, tM: 0 }));
+  d.lamps = d.lamps || []; d.rubble = null;
+  d.spider = d.spider ? { ...d.spider, t: .8, leg: null, caught: null, away: 0 } : null;
+  d.crates = d.crates.map(c => { const w = c.w || 26, h = c.h || 26; return { x: c.x, y: c.y + 26 - h, x0: c.x, y0: c.y + 26 - h, w, h, vx: 0, vy: 0, on: false, stuck: false, crate: true }; });   // y is given for the usual 26 px crate
   d.traps = d.traps.map(t => ({ ...t, w: 24, shut: false }));
   d.levers = d.levers.map(l => ({ ...l, on: false, left: 0 }));
   d.plates = d.plates.map(p => ({ ...p, down: 0 }));
@@ -381,7 +441,7 @@ function terrTop(p, x) {
 function groundAt(x) { let b = Infinity; for (const p of L.terrain) { const y = terrTop(p, x); if (y < b) b = y; } return b; }
 function solids(ignore) {
   const out = [];
-  for (const b of L.boxes) if (!b.oneway && !b.gone && !b.falling && b !== ignore) out.push(b);
+  for (const b of L.boxes) if (!b.oneway && !b.gone && !b.falling && b !== ignore && (b.kind !== 'bridge' || b.open >= 1)) out.push(b);
   for (const c of L.crates) if (c !== ignore) out.push(c);
   return out;
 }
@@ -431,7 +491,7 @@ function snapDown(o, max) { // keep feet on the ground walking downhill
 }
 function surfaceY(x) { // standing height at x for respawns
   let y = groundAt(x);
-  for (const b of L.boxes) if (!b.gone && x >= b.x && x <= b.x + b.w && b.y < y && b.kind !== 'gate') y = b.y;
+  for (const b of L.boxes) if (!b.gone && x >= b.x && x <= b.x + b.w && b.y < y && b.kind !== 'gate' && b.kind !== 'barrier' && (b.kind !== 'bridge' || b.open >= 1)) y = b.y;
   return y;
 }
 
@@ -515,15 +575,15 @@ $('#snd').onclick = () => {
 };
 
 /* ---------- input ---------- */
-const K = { l: false, r: false, j: false, g: false }; let jPrev = false, gPrev = false;
-const KEYMAP = { ArrowLeft: 'l', KeyA: 'l', ArrowRight: 'r', KeyD: 'r', ArrowUp: 'j', KeyW: 'j', Space: 'j', ShiftLeft: 'g', ShiftRight: 'g', KeyE: 'g', KeyK: 'g' };
+const K = { l: false, r: false, j: false, g: false, d: false }; let jPrev = false, gPrev = false, dPrev = false;
+const KEYMAP = { ArrowLeft: 'l', KeyA: 'l', ArrowRight: 'r', KeyD: 'r', ArrowUp: 'j', KeyW: 'j', Space: 'j', ShiftLeft: 'g', ShiftRight: 'g', KeyE: 'g', KeyK: 'g', ArrowDown: 'd', KeyS: 'd', KeyR: 'd' };
 addEventListener('keydown', e => {
   if (!$('#card').hidden) { if (e.key === 'Enter' && document.activeElement.tagName !== 'BUTTON') { e.preventDefault(); $('#cBtn').click(); } return; }
   if (e.code === 'KeyC' && !e.repeat) { S.debug = !S.debug; return; }
   const k = KEYMAP[e.code]; if (k) { K[k] = true; e.preventDefault(); }
 });
 addEventListener('keyup', e => { const k = KEYMAP[e.code]; if (k) K[k] = false; });
-addEventListener('blur', () => { K.l = K.r = K.j = K.g = false; });
+addEventListener('blur', () => { K.l = K.r = K.j = K.g = K.d = false; });
 document.querySelectorAll('.pad button').forEach(b => {
   const k = b.dataset.k;
   const on = e => { e.preventDefault(); K[k] = true; b.classList.add('held'); try { b.setPointerCapture(e.pointerId); } catch (_) {} audioStart(); };
@@ -566,8 +626,11 @@ function startLevel(i) {
 }
 function spawn() {
   const dream = !!L.dream, cpx = L.checkpoints[S.cp];
-  P = { x: cpx, y: 0, w: 10, h: dream ? 38 : 36, vx: 0, vy: 0, on: true, co: 0, buf: 0, face: 1, animT: 0, airT: 0, landT: 0, stepT: 0, mantle: null, act: null, topY: 0, pushing: 0, pulling: 0, pushH: 26, under: 0, holdT: 0, holdDir: 0, idleT: 0 };
+  P = { x: cpx, y: 0, w: 10, h: dream ? 38 : 36, vx: 0, vy: 0, on: true, co: 0, buf: 0, face: 1, animT: 0, airT: 0, landT: 0, stepT: 0, mantle: null, act: null, topY: 0, pushing: 0, pulling: 0, pushH: 26, under: 0, holdT: 0, holdDir: 0, idleT: 0, rope: null, ropeS: 0, ropeCd: 0, cranking: false };
   P.y = surfaceY(cpx + 5) - P.h; P.topY = P.y;
+  S.rose = null; S.warnRose = false;
+  M = null;
+  if (L.mom) { const mx = S.cp ? cpx - 22 : L.mom.x; M = { x: mx, y: surfaceY(mx + 5) - 38, w: 10, h: 38, vx: 0, vy: 0, on: true, hand: false, face: 1, wc: 0, ic: 0 }; }
   // restore chases: if this checkpoint is inside a chase, it restarts right behind you
   chase = null;
   for (const c of L.chases) if (cpx >= c.trigger && cpx < c.end) { c.started = true; chase = c; c.x = cpx - 250; }
@@ -591,16 +654,17 @@ function introCard(loading) {
       startLevel(0);
     } });
 }
-function goalCard() { const i = S.level; card({ title: '', lines: [{ t: GOAL[i] }], btn: i === 2 ? 'Dormir' : 'Seguir', next: () => startLevel(i + 1) }); }
+function goalCard() { const i = S.level; card({ title: '', lines: [{ t: GOAL[i] }], btn: i === 3 ? 'Dormir' : 'Seguir', next: () => startLevel(i + 1) }); }
 function endCard() {
   const lines = END[S.endStep], last = S.endStep === END.length - 1;
   card({ title: '', lines, soft: !last, btn: last ? 'Jugar otra vez' : 'Continuar', next: () => { if (last) { introCard(); return; } S.endStep++; endCard(); } });
 }
 function die(type) {
   if (S.dead) return;
-  S.dead = { type, t: 0, x: P.x, y: P.y, face: P.face, vy: 0 };
+  P.act = null; P.rope = null;
+  S.dead = { type, t: 0, x: P.x, y: P.y, face: P.face, vy: 0, mx: M ? M.x : 0, my: M ? M.y : 0 };
   S.state = 'dead'; S.shake = type === 'fall' ? 0 : type === 'impact' ? 9 : 7;
-  if (type === 'trap') SFX.snap(); else if (type === 'crush') SFX.crush(); else if (type === 'drown') SFX.splash(); else if (type === 'fall') SFX.land(); else if (type === 'impact') { SFX.land(); SFX.crush(); }
+  if (type === 'trap') SFX.snap(); else if (type === 'crush') SFX.crush(); else if (type === 'drown') SFX.splash(); else if (type === 'fall') SFX.land(); else if (type === 'impact' || type === 'stab') { SFX.land(); SFX.crush(); } else if (type === 'hands' || type === 'mom') { noise(1.2, .2, 'lowpass', 300, 1, 60); SFX.whisper(); }
   setTimeout(() => SFX.death(), 250);
 }
 
@@ -662,6 +726,8 @@ function chooseAnim(dt) {
   if (S.state === 'deliver') return out(at('offer', frameOf(an.offer, S.timer / 60, 'hold')));
   if (AN.standT >= 0) { AN.standT += dt; const f = AN.kneelF - AN.standT * an.kneel.fps * 1.6; if (f > 0) return out(at('kneel', f)); AN.standT = -1; }
   if (P.act) return out(at(P.act.type, P.act.f));
+  if (P.rope && an.hang) return out(at('hang', ROPE_F));
+  if (P.cranking && an.push_low) { AN.wasMoving = false; return out(cyc('push_low', .9)); }
   if (AN.tail) {   // the end of a move carried on by another clip (standing up on top)
     const m = an[AN.tail.anim]; AN.tail.f += dt * m.fps * 1.5;
     if (AN.tail.f < m.frames - 1 && v < .15 && P.on) return out(at(AN.tail.anim, AN.tail.f));
@@ -795,6 +861,164 @@ function actPose(a) { // where the body is at the clip's current frame
   const x = v <= HUG ? a.x0 + (a.xh - a.x0) * (v / HUG) : a.xh + (a.x1 - a.xh) * ((v - HUG) / (1 - HUG));
   return { x, bottom, base: bottom + (ATLAS.brother.frameH - 3 - m.by[i]) * s };
 }
+/* =========================================================================
+   MECHANICS — the rope, the counterweight lift, the raft, the boulder, the hands
+   in the dark, the spider, the rose's light, and leading her by the hand
+   ========================================================================= */
+const GPX = GRAV * 3600;                 // px/s², gravity for the pendulum
+const ROSE_R = 70, CARRY_R = 24, ROPE_F = 8, HAND_T = 1;   // HAND_T: seconds in the dark before the hands take you
+let M = null;                            // mamá, when she walks with you
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+function roseHeld() { return !S.rose; }
+// the planted rose and the lamps keep the dark away (a column of light)
+function lightAt(x) {
+  if (S.rose && Math.abs(x - S.rose.x) < ROSE_R) return true;
+  for (const l of L.lamps || []) if (Math.abs(x - l.x) < l.r) return true;
+  return false;
+}
+function standsOn(o, b) { return o !== b && o.x + o.w > b.x + 2 && o.x < b.x + b.w - 2 && Math.abs(o.y + o.h - b.y) < 1.6; }
+function bodies() { const out = [...L.crates]; if (P && S.state === 'play' && !P.act && !P.rope) out.push(P); if (M) out.push(M); return out; }
+function weight(o) { return o === P || o === M ? 1 : o.h >= 24 ? 2.6 : 1.3; }   // a crate outweighs the boy; the boy alone barely moves the chain
+function carry(b, dx, dy) { for (const o of bodies()) if (standsOn(o, b)) { if (dx) moveX(o, dx, true); o.y += dy; } }
+function dropFrom(o, x) { for (let k = 0; k < 260; k++) if (hitSolid(x, o.y + k + 1, o.w, o.h, o) || onewayBelow({ x, y: o.y + k, w: o.w, h: o.h }, 1)) return k; return 999; }
+
+// ---- rope: grab it in the air, pump with ← →, let go with ↑
+function ropeTick(dt) {
+  for (const r of L.ropes || []) { if (P && P.rope === r) continue; r.om += -GPX / r.len * Math.sin(r.th) * dt; r.om *= .99; r.th += r.om * dt; }
+}
+function ropeGrab() {
+  if (P.ropeCd > 0) return false;
+  for (const r of L.ropes || []) {
+    const hx = P.x + P.w / 2, hy = P.y + 3, dx = hx - r.x, dy = hy - r.y, sx = Math.sin(r.th), sy = Math.cos(r.th);
+    const along = dx * sx + dy * sy, off = Math.abs(dx * sy - dy * sx);
+    if (along > 24 && along < r.len && off < 9) {
+      const vt = (P.vx * sy - P.vy * sx) * 60;
+      P.rope = r; P.ropeS = along; r.om = vt / (along + 18) * .9; P.vx = P.vy = 0; P.on = false; P.mantle = null;
+      if (M) M.hand = false; SFX.creak(); return true;
+    }
+  }
+  return false;
+}
+function ropeStep(dt, dir) {
+  const r = P.rope, Lr = P.ropeS + 18;
+  r.om += -GPX / Lr * Math.sin(r.th) * dt;
+  if (dir && (Math.sign(r.om) === dir || Math.abs(r.om) < .15)) r.om += dir * 2.6 * dt;   // pumping only adds when it goes with the swing
+  r.om *= .998; r.th = clamp(r.th + r.om * dt, -1.35, 1.35); if (Math.abs(r.th) >= 1.35) r.om *= -.3;
+  const hx = r.x + Math.sin(r.th) * P.ropeS, hy = r.y + Math.cos(r.th) * P.ropeS;
+  P.x = hx - P.w / 2; P.y = hy - 3; if (dir) P.face = dir;
+}
+function ropeRelease(dir) {
+  const r = P.rope, v = r.om * (P.ropeS + 10);
+  P.vx = clamp(v * Math.cos(r.th) / 60 + dir * .5, -3.2, 3.2); P.vy = Math.min(-1.5, -v * Math.sin(r.th) / 60 - 2.4);
+  P.rope = null; P.ropeCd = .4; P.airT = 0; P.topY = P.y; P.on = false; AN.airKind = 'leap'; AN.apex = -1; noise(.08, .05, 'bandpass', 700, 1);
+}
+
+// ---- counterweight lift: the heavier side goes down
+function liftTick(dt) {
+  for (const l of L.lifts || []) {
+    let wa = 0, wb = 0; for (const o of bodies()) { if (standsOn(o, l.A)) wa += weight(o); if (standsOn(o, l.B)) wb += weight(o); }
+    const want = wa - wb >= 1.5 ? l.aDown : wb - wa >= 1.5 ? -l.aUp : l.s;
+    const ds = Math.sign(want - l.s) * Math.min(Math.abs(want - l.s), l.speed);
+    if (ds) { carry(l.A, 0, ds); carry(l.B, 0, -ds); l.A.y += ds; l.B.y -= ds; l.s += ds; if (Math.random() < .06) SFX.creak(); }
+    // the heavy side down, nobody on the other and he is stuck below: the chain slips and it all goes back
+    const stuck = l.s >= l.aDown - .5 && wb === 0 && P && P.on && P.y + P.h > l.y - 4 && Math.abs(P.x - l.b.x) < 220;
+    l.stuck = stuck ? l.stuck + dt : 0;
+    if (l.stuck > 4) {
+      for (const c of L.crates) if (Math.abs(c.x - l.A.x) < 40 && c.y > l.y - 30) { c.x = c.x0; c.y = c.y0; c.vy = 0; }
+      l.A.y = l.B.y = l.y; l.s = 0; l.stuck = 0; SFX.gate(); S.shake = 3; toast('n', 'La cadena se soltó. Inténtalo otra vez.');
+    }
+  }
+}
+// ---- raft: the current takes it while something is on it
+function raftTick() {
+  for (const b of L.boxes) if (b.kind === 'raft') {
+    const w = L.water.find(w => b.x + b.w / 2 > w.x && b.x + b.w / 2 < w.x + w.w);
+    const loaded = bodies().some(o => standsOn(o, b));
+    b.vx += ((loaded ? .8 : 0) - b.vx) * .03;
+    let dx = b.vx;
+    if (dx > 0 && groundAt(b.x + b.w + dx) < b.y + b.h) dx = 0;
+    if (dx < 0 && groundAt(b.x + dx) < b.y + b.h) dx = 0;
+    if (!dx) b.vx = 0;
+    const ny = (w ? w.y - b.h : b.y) + Math.sin(S.t * 1.7 + b.x * .02) * .6;
+    carry(b, dx, ny - b.y); b.x += dx; b.y = ny;
+  }
+}
+// ---- the boulder: it rolls down the hill; get out of its way, it breaks what stops you
+function boulderTick() {
+  for (const b of L.boulders || []) {
+    const rest = x => Math.min(groundAt(x - b.r * .7), groundAt(x), groundAt(x + b.r * .7)) - b.r;
+    if (b.state === 'idle') { b.y = rest(b.x); if (S.state === 'play' && P.x > b.trigger) { b.state = 'roll'; SFX.crush(); S.shake = 4; } continue; }
+    if (b.state !== 'roll') continue;
+    const slope = (rest(b.x + 6) - rest(b.x - 6)) / 12;
+    b.vx = clamp(b.vx + .03 + slope * .09, .5, 1.95); b.x += b.vx; b.rot += b.vx / b.r;
+    const ny = rest(b.x); b.vy = (b.vy || 0) + GRAV; b.y = ny > b.y + b.vy ? b.y + b.vy : ny; if (b.y >= ny) b.vy = 0;
+    if (Math.random() < .12) noise(.3, .08, 'lowpass', 120);
+    S.shake = Math.max(S.shake, 1.2);
+    for (const w of L.boxes) if (w.kind === 'barrier' && !w.gone && b.x + b.r > w.x && b.x - b.r < w.x + w.w) {
+      w.gone = true; b.state = 'done'; S.shake = 8; SFX.crush(); setTimeout(() => SFX.crush(), 120); L.rubble = { x: w.x, y: groundAt(w.x) };
+    }
+    for (const o of [P, M]) {
+      if (!o || S.state !== 'play' || (o === P && (P.act || P.rope))) continue;
+      const cx = clamp(b.x, o.x, o.x + o.w), cy = clamp(b.y, o.y, o.y + o.h);
+      if (Math.hypot(cx - b.x, cy - b.y) < b.r - 1) { o === P ? die('crush') : die('mom'); return; }
+    }
+    if (b.x > L.w + 60) b.state = 'done';
+  }
+}
+// ---- hands in the dark: they take whoever stands in the dark too long. The rose you carry keeps them off you — only you.
+function handsTick(dt) {
+  for (const h of L.hands || []) {
+    h.reach = 0;
+    for (const [o, key] of [[P, 'tP'], [M, 'tM']]) {
+      if (!o || (o === P && (S.state !== 'play' || P.act || P.rope))) { h[key] = 0; continue; }
+      const cx = o.x + o.w / 2, inside = cx > h.x && cx < h.x + h.w && o.y + o.h > groundAt(cx) - 8;
+      const safe = lightAt(cx) || (o === P && roseHeld());
+      h[key] = inside && !safe ? (h[key] || 0) + dt : Math.max(0, (h[key] || 0) - dt * 2);
+      if (inside && !safe) h.reach = Math.max(h.reach, h[key] / HAND_T);
+      if (h[key] > HAND_T) { h[key] = 0; if (o === P) die('hands'); else die('mom'); return; }
+    }
+  }
+}
+// ---- the spider: a leg rises over you, follows you, and strikes where you are going
+function spiderTick(dt) {
+  const sp = L.spider; if (!sp) return;
+  if (sp.caught) { sp.away = Math.min(1, sp.away + dt / 2.5); return; }
+  const px = P.x + P.w / 2, inZone = S.state === 'play' && px > sp.x0 && px < sp.x1 + 60;
+  const lg = sp.leg;
+  if (!lg) { sp.t -= dt; if (inZone && sp.t <= 0) { sp.leg = { ph: 'raise', t: 0, tx: px }; noise(.4, .05, 'bandpass', 300, 4); } return; }
+  lg.t += dt;
+  const deep = px > sp.x1 - 70, lock = deep ? .22 : .55, dur = deep ? .4 : .9;
+  if (lg.ph === 'raise') { if (lg.t < lock) lg.tx += (clamp(px + P.vx * 8, sp.x0 - 20, sp.x1 + 60) - lg.tx) * .2; if (lg.t >= dur) { lg.ph = 'stab'; lg.t = 0; } }
+  else if (lg.ph === 'stab') {
+    if (lg.t >= .07) {
+      lg.ph = 'hold'; lg.t = 0; S.shake = 4; tone(60, .25, .3, 'sine', 35, true); noise(.12, .2, 'lowpass', 400);
+      const tr = L.traps.find(t => !t.shut && lg.tx > t.x - 3 && lg.tx < t.x + t.w + 3);
+      if (tr) { tr.shut = true; SFX.snap(); sp.caught = { x: lg.tx, y: groundAt(lg.tx) }; sp.leg = null; setTimeout(() => { tone(900, .9, .06, 'sawtooth', 300); noise(1, .12, 'bandpass', 1600, 3, 500); }, 80); toast('h', 'Se fue.'); return; }
+      if (S.state === 'play' && Math.abs(lg.tx - px) < P.w / 2 + 3 && !P.act) { die('stab'); return; }
+    }
+  }
+  else if (lg.ph === 'hold') { if (lg.t >= .5) { lg.ph = 'lift'; lg.t = 0; } }
+  else if (lg.ph === 'lift') { if (lg.t >= .35) { sp.leg = null; sp.t = deep ? .15 : .5; } }
+}
+// ---- mamá: take her hand (Shift/E next to her); she follows, she cannot jump, she will not step off an edge
+function momTick(dt, gEdge) {
+  if (!M) return false;
+  let used = false;
+  const near = Math.abs(P.x + P.w / 2 - (M.x + M.w / 2)) < 24 && Math.abs(P.y + P.h - (M.y + M.h)) < 12;
+  if (gEdge && near && P.on && S.state === 'play') { M.hand = !M.hand; used = true; tone(M.hand ? 392 : 330, .5, .03, 'triangle'); }
+  if (M.hand && (Math.abs(P.x - M.x) > 48 || Math.abs(P.y - M.y) > 30)) M.hand = false;
+  const tx = M.hand ? P.x - P.face * 13 : M.x;
+  let want = Math.abs(tx - M.x) < 2 ? 0 : clamp((tx - M.x) * .2, -MOMV, MOMV);
+  if (want && dropFrom(M, M.x + Math.sign(want) * (M.w + 1)) > 14) want = 0;
+  M.vx += (want - M.vx) * .25; if (Math.abs(M.vx) < .02) M.vx = 0;
+  if (M.vx) { const r = moveX(M, M.vx, M.on); if (r.blocked) M.vx = 0; }
+  M.vy = Math.min(7, M.vy + GRAV); const vr = moveY(M, M.vy);
+  if (vr === 'land') { M.vy = 0; M.on = true; } else { M.on = false; if (snapDown(M, STEP + 2)) { M.on = true; M.vy = 0; } }
+  if (Math.abs(M.vx) > .05) M.face = Math.sign(M.vx); else if (M.hand) M.face = Math.sign(P.x - M.x) || M.face;
+  const A = ATLAS.mother; if (A) { const m = A.anims.walk, g = m && m.ground ? m.ground * 43 / A.bodyH : 30; M.wc += dt * clamp(Math.abs(M.vx) * 60 / g, .3, 2); M.ic += dt; }
+  if (M.y > VH + 20 || L.water.some(w => M.x + M.w / 2 > w.x && M.x + M.w / 2 < w.x + w.w && M.y + 10 > w.y)) die('mom');
+  return used;
+}
 function step() { stepCore(); animate(1 / 60); }
 function stepCore() {
   const dt = 1 / 60; S.t += dt; S.shake *= .86; S.flash = Math.max(0, S.flash - .03);
@@ -804,13 +1028,14 @@ function stepCore() {
   for (const b of L.boxes) {
     if (b.kind === 'gate') {
       const src = L.plates.find(p => p.id === b.by) || L.levers.find(l => l.id === b.by);
-      const want = src ? (src.down !== undefined ? (src.down > 0 ? 1 : 0) : (src.on ? 1 : 0)) : 0;
+      const want = src ? (src.down !== undefined ? (src.down > 0 ? 1 : 0) : src.crank ? src.prog || 0 : (src.on ? 1 : 0)) : 0;
       const prev = b.open; b.open += Math.sign(want - b.open) * Math.min(Math.abs(want - b.open), want ? .018 : .05);
       if ((prev === 0 && b.open > 0) || (prev === 1 && b.open < 1)) SFX.gate();
       const ny = b.y0 - b.openH * b.open;
       if (ny > b.y && P && P.x < b.x + b.w && P.x + P.w > b.x && P.y < ny + b.h && P.y + P.h > ny && S.state === 'play') die('crush');
       b.y = ny;
     }
+    if (b.kind === 'bridge') { const lv = L.levers.find(l => l.id === b.by), prev = b.open; b.open = Math.min(1, b.open + (lv && lv.on ? .012 : 0)); if (prev < 1 && b.open >= 1) { SFX.land(); S.shake = 3; } }
     if (b.fragile && b.t >= 0 && !b.falling) { b.t += dt; if (b.t > (b.sink ? .6 : .32)) { b.falling = true; SFX.crack(); } }
     if (b.falling && !b.gone) { b.vy = Math.min(b.sink ? .6 : 7, b.vy + (b.sink ? .02 : .4)); b.y += b.vy; if (b.y > VH + 60) b.gone = true; }
   }
@@ -821,8 +1046,8 @@ function stepCore() {
     for (const t of L.traps) if (!t.shut && c.x + c.w / 2 > t.x + 8 && c.x + c.w / 2 < t.x + t.w && Math.abs(c.y + c.h - t.y) < 3) { t.shut = true; c.stuck = true; SFX.snap(); S.shake = 3; }
   }
   for (const p of L.plates) {
-    const bodies = [...L.crates, ...(S.state === 'play' ? [P] : [])];
-    const on = bodies.some(o => o.x < p.x + p.w - 3 && o.x + o.w > p.x + 3 && Math.abs(o.y + o.h - p.y) < 3);
+    const bs = [...L.crates, ...(S.state === 'play' ? [P] : []), ...(M ? [M] : [])];
+    const on = bs.some(o => o.x < p.x + p.w - 3 && o.x + o.w > p.x + 3 && Math.abs(o.y + o.h - p.y) < 3);
     if (on && !p.down) SFX.lever();
     p.down = on ? 1 : 0;
   }
@@ -836,13 +1061,16 @@ function stepCore() {
       if (tipY >= g) { s.state = 'down'; s.y = g - s.len - 14 + 10; S.shake = Math.max(S.shake, 3); SFX.crush(); }
     }
   }
-  if (S.state === 'deliver') { S.timer++; if (chase) chase.x -= 5; if (S.timer > 170) { S.roses++; goalCard(); } return; }
+  ropeTick(dt); liftTick(dt); raftTick(); boulderTick(); spiderTick(dt); handsTick(dt);
+  if (S.state === 'deliver') { S.timer++; if (chase) chase.x -= 5; if (M) { M.vx = 0; M.ic += dt; } if (S.timer > (L.garden ? 230 : 170)) { if (!L.garden) S.roses++; goalCard(); } return; }
   if (S.state === 'meet') { S.timer++; P.animT += dt; if (S.timer > 150) endCard(); return; }
   if (S.state === 'dead') {
     const d = S.dead; d.t += dt;
     if (d.type === 'drown') d.y += .25;
     if (d.type === 'shadow') d.x -= .8;
     if (d.type === 'fall') { d.vy = Math.min(8, d.vy + GRAV); d.y += d.vy; }
+    if (d.type === 'hands') d.y += .12;
+    if (d.type === 'mom') d.my += .15;
     if (d.t > 2.1) respawn();
     return;
   }
@@ -866,10 +1094,31 @@ function stepCore() {
     camFollow(); return;
   }
   const dir = AN.standT >= 0 ? 0 : (K.r ? 1 : 0) - (K.l ? 1 : 0);
+  const gEdge = K.g && !gPrev;
+  P.ropeCd = Math.max(0, P.ropeCd - dt); P.cranking = false;
+  if (P.rope) {
+    ropeStep(dt, dir);
+    if (K.j && !jPrev) ropeRelease(dir);
+    jPrev = K.j; gPrev = K.g; dPrev = K.d;
+    if (shadowTick()) return; camFollow(); return;
+  }
+  // the rose: leave it on the ground (it lights the dark and holds the shadow back), pick it up again
+  if (K.d && !dPrev && P.on && !L.dream) {
+    const cx = P.x + P.w / 2;
+    if (roseHeld()) { const x = cx + P.face * 8; S.rose = { x, y: P.y + P.h }; tone(660, 1.2, .04, 'triangle'); tone(990, 1.2, .015, 'sine'); }
+    else if (Math.abs(cx - S.rose.x) < 18 && Math.abs(P.y + P.h - S.rose.y) < 14) { S.rose = null; S.warnRose = false; tone(523, .8, .04, 'triangle'); }
+    else toast('n', 'La rosa quedó atrás.');
+  }
+  dPrev = K.d;
+  const momUsed = momTick(dt, gEdge);
   const inWater = L.water.find(w => P.x + P.w / 2 > w.x && P.x + P.w / 2 < w.x + w.w && P.y + P.h > w.y);
   const grab = K.g && P.on;
   // levers
-  if (K.g && !gPrev) for (const lv of L.levers) if (Math.abs(P.x + P.w / 2 - lv.x) < 16 && Math.abs(P.y + P.h - lv.y) < 8) { lv.on = !lv.on || !!lv.timed; lv.left = lv.timed || 0; SFX.lever(); }
+  for (const lv of L.levers) {
+    const near = Math.abs(P.x + P.w / 2 - lv.x) < 16 && Math.abs(P.y + P.h - lv.y) < 8;
+    if (lv.crank) { if (K.g && near && P.on && (lv.prog || 0) < 1) { const p0 = lv.prog || 0; lv.prog = Math.min(1, p0 + dt / lv.crank); P.cranking = true; P.face = Math.sign(lv.x - (P.x + P.w / 2)) || P.face; if (Math.floor(lv.prog * 10) !== Math.floor(p0 * 10)) SFX.tick(); } }
+    else if (gEdge && !momUsed && near) { lv.on = !lv.on || !!lv.timed || lv.id === 'lever0' && L.garden; lv.left = lv.timed || 0; SFX.lever(); }
+  }
   gPrev = K.g;
   if (dir && dir === P.holdDir) P.holdT += dt; else { P.holdT = 0; P.holdDir = dir; }
   if (dir || K.j || !P.on) P.idleT = 0; else P.idleT += dt;
@@ -878,6 +1127,8 @@ function stepCore() {
   if (!L.dream && P.on && !chasing && P.x > L.goalX - 170) maxv = Math.min(maxv, WALK);
   const pullC = grab && dir ? adjacentCrate(-dir) : null;
   if (pullC || P.pushing > 0) maxv = PUSHV;
+  if (M && M.hand) maxv = Math.min(maxv, MOMV);
+  if (P.cranking) maxv = 0;
   if (inWater) maxv = .8;
   const acc = P.on ? .32 : .12;
   if (dir) { P.vx += dir * acc; P.face = dir; } else if (P.on) P.vx *= .68; else P.vx *= .96;
@@ -886,6 +1137,7 @@ function stepCore() {
   if (K.j && !jPrev && !L.dream && AN.standT < 0) P.buf = 7;
   jPrev = K.j;
   P.co = P.on ? 6 : P.co - 1;
+  if (P.buf > 0 && M && M.hand) { M.hand = false; tone(330, .5, .03, 'triangle'); }   // you need both hands to jump
   if (P.buf > 0 && P.on && !pullC && !inWater && tryTraverse(dir)) { P.buf = 0; camFollow(); return; }
   if (P.buf > 0 && P.co > 0 && !pullC && (!inWater || P.y + 8 < inWater.y)) { P.vy = JUMP; P.buf = 0; P.co = 0; P.on = false; P.airT = 0; if (dir) P.vx = dir * Math.max(Math.abs(P.vx), RUNG) * 1.25; /* a held direction makes a full leap */ AN.airKind = dir ? 'leap' : 'jump'; noise(.08, .05, 'bandpass', 700, 1); }
   P.buf--;
@@ -922,6 +1174,7 @@ function stepCore() {
   else if (vr === 'ceil') { P.vy = 0; P.on = false; }
   else { P.on = false; if (wasOn && P.vy >= 0 && snapDown(P, STEP + 2)) { P.on = true; P.vy = 0; } }
   if (!P.on) { P.airT += dt; P.topY = Math.min(P.topY, P.y); } else { P.airT = 0; P.topY = P.y; }
+  if (!P.on && ropeGrab()) { camFollow(); return; }
   if (!P.on && wasOn && P.vy >= 0) {   // off an edge: stepping down keeps the stride, a real drop takes the fall pose
     const d = dropBelow(P.x + P.vx * 8);
     AN.airKind = d <= FALL.step ? 'step' : Math.abs(P.vx) > .8 ? 'leap' : 'jump';
@@ -935,19 +1188,24 @@ function stepCore() {
   if (P.y > VH + 20) { die('fall'); return; }
   if (shadowTick()) return;
   // checkpoints, whispers, goal
-  for (let i = S.cp + 1; i < L.checkpoints.length; i++) if (P.x > L.checkpoints[i]) S.cp = i;
+  for (let i = S.cp + 1; i < L.checkpoints.length; i++) if (P.x > L.checkpoints[i] && (!M || M.x > L.checkpoints[i] - 40)) S.cp = i;
   L.says.forEach(([x, who, text], i) => { if (!S.said.has(i) && P.x > x) { S.said.add(i); toast(who, text); } });
-  if (!L.dream && P.x > L.goalX - 8 && P.on) { S.state = 'deliver'; S.delivered = true; S.timer = 0; P.vx = 0; P.face = 1; S.from = { x: P.x + 16, y: P.y + 14 }; SFX.chord(); }
+  if (L.garden) { if (M && P.x > L.goalX - 8 && M.x > L.goalX - 70 && P.on) { S.state = 'deliver'; S.delivered = true; S.timer = 0; P.vx = 0; P.face = 1; M.face = 1; SFX.chord(); } }
+  else if (!L.dream && P.x > L.goalX - 8 && P.on && !roseHeld()) { if (!S.warnRose) { S.warnRose = true; toast('h', 'La rosa… la dejé atrás.'); } }
+  else if (!L.dream && P.x > L.goalX - 8 && P.on) { S.state = 'deliver'; S.delivered = true; S.timer = 0; P.vx = 0; P.face = 1; S.from = { x: P.x + 16, y: P.y + 14 }; SFX.chord(); }
   if (L.dream && P.x > L.goalX - 26) { S.state = 'meet'; S.timer = 0; P.vx = 0; }
   camFollow();
 }
 function shadowTick() { // the shadow keeps coming, even while he climbs
   for (const c of L.chases) if (!c.started && !c.done && P.x > c.trigger) { c.started = true; c.x = P.x - 270; chase = c; SFX.whisper(); }
   if (chase && !chase.done) {
-    chase.x += chase.speed; chase.x = Math.max(chase.x, P.x - 300);
-    const d = P.x - chase.x; if (d < 90) S.shake = Math.max(S.shake, (90 - d) / 90 * 1.4);
-    if (d < 0) { P.act = null; die('shadow'); return true; }
-    if (P.x > chase.end) { chase.done = true; SFX.chord(); }
+    const last = M ? Math.min(P.x, M.x) : P.x;
+    let nx = Math.max(chase.x + chase.speed, last - 300);
+    if (S.rose && S.rose.x > chase.x - 4) nx = Math.min(nx, S.rose.x - ROSE_R - 2);   // it will not cross the rose's light
+    chase.x = nx;
+    const d = last - chase.x; if (d < 90) S.shake = Math.max(S.shake, (90 - d) / 90 * 1.4);
+    if (d < 0 && !(S.rose && Math.abs(last - S.rose.x) < ROSE_R)) { P.act = null; if (M && M.x < P.x) die('mom'); else die('shadow'); return true; }
+    if (last > chase.end) { chase.done = true; SFX.chord(); }
   }
   if (chase && chase.done) chase.x -= 3;
   return false;
@@ -1019,12 +1277,31 @@ function drawBoxes(c) {
     if (b.gone || b.x > cam + VW + 20 || b.x + b.w < cam - 20) continue;
     if (b.kind === 'gate') { const im = IMG.gate; if (im) c.drawImage(im, b.x - 4, b.y, b.w + 8, b.h); else { c.fillStyle = '#050505'; c.fillRect(b.x, b.y, b.w, b.h); } }
     else if (b.kind === 'plank') { c.fillStyle = '#060606'; c.fillRect(b.x, b.y, b.w, b.h); c.fillRect(b.x + 3, b.y + b.h, 2, 3); c.fillRect(b.x + b.w - 5, b.y + b.h, 2, 3); }
+    else if (b.kind === 'slab') { c.fillStyle = '#050505'; c.beginPath(); c.moveTo(b.x, b.y); c.lineTo(b.x + b.w, b.y); c.lineTo(b.x + b.w, b.y + b.h); for (let x = b.x + b.w; x > b.x; x -= 7) c.lineTo(x - 3.5, b.y + b.h + 2 + hash(x) * 6); c.lineTo(b.x, b.y + b.h); c.closePath(); c.fill(); }
+    else if (b.kind === 'barrier') { c.fillStyle = '#060606'; for (let i = 0; i < 3; i++) { const px = b.x + i * 5.5, top = b.y + (i === 1 ? 0 : 8); c.beginPath(); c.moveTo(px, b.y + b.h); c.lineTo(px, top + 4); c.lineTo(px + 2.5, top); c.lineTo(px + 5, top + 4); c.lineTo(px + 5, b.y + b.h); c.fill(); } c.fillRect(b.x - 3, b.y + 30, b.w + 6, 4); c.fillRect(b.x - 3, b.y + 80, b.w + 6, 4); }
+    else if (b.kind === 'bridge') { const a = (1 - b.open) * Math.PI / 2; c.save(); c.translate(b.x + b.w, b.y + 3); c.rotate(a); c.fillStyle = '#060606'; c.fillRect(-b.w, -3, b.w, 6); for (let x = -b.w; x < 0; x += 12) c.fillRect(x, 3, 2, 2); c.restore(); c.strokeStyle = '#080808'; c.lineWidth = 1; c.beginPath(); c.moveTo(b.x + b.w + 4, b.y - 60); c.lineTo(b.x + b.w - Math.cos(a) * b.w, b.y + 3 - Math.sin(a) * b.w); c.stroke(); c.fillStyle = '#050505'; c.fillRect(b.x + b.w + 2, b.y - 62, 4, 64); }
+    else if (b.kind === 'lift') { c.fillStyle = '#080808'; c.fillRect(b.x - 1, b.y, b.w + 2, b.h); c.strokeStyle = '#0a0a0a'; c.lineWidth = 1; c.beginPath(); c.moveTo(b.x + 3, b.y); c.lineTo(b.x + 3, -10); c.moveTo(b.x + b.w - 3, b.y); c.lineTo(b.x + b.w - 3, -10); c.stroke(); }
+    else if (b.kind === 'raft') { c.fillStyle = '#070707'; c.fillRect(b.x, b.y, b.w, b.h); c.fillStyle = '#111'; for (let x = b.x + 6; x < b.x + b.w; x += 9) c.fillRect(x, b.y + 1, 1, b.h - 2); c.fillStyle = '#060606'; c.fillRect(b.x + b.w - 8, b.y - 14, 2, 14); }
     else if (b.kind === 'stone') { const im = IMG.rock; if (im) c.drawImage(im, b.x - 6, b.y - 4, b.w + 12, Math.min(b.h, 40)); c.fillStyle = '#050505'; c.fillRect(b.x, b.y + 20, b.w, b.h); }
     else { const im = IMG.rock; if (im) c.drawImage(im, b.x - 4, b.y - 4, b.w + 8, b.h + 6); else { c.fillStyle = '#050505'; c.fillRect(b.x, b.y, b.w, b.h); } }
   }
   for (const cr of L.crates) { const im = IMG.crate; if (im) c.drawImage(im, cr.x - 1, cr.y - 1, cr.w + 2, cr.h + 2); else { c.fillStyle = '#050505'; c.fillRect(cr.x, cr.y, cr.w, cr.h); } }
+  for (const l of L.lifts || []) {   // the beam and the two wheels the chain runs over
+    const ax = l.A.x + l.A.w / 2, bx = l.B.x + l.B.w / 2, y = 16;
+    c.fillStyle = '#050505'; c.fillRect(Math.min(ax, bx) - 22, y - 3, Math.abs(ax - bx) + 44, 5);
+    c.strokeStyle = '#060606'; c.lineWidth = 2;
+    for (const [x, l2] of [[ax, l.A], [bx, l.B]]) { c.beginPath(); c.arc(x, y + 6, l2.w / 2 - 3, 0, 7); c.stroke(); const a = l.s * .08 * (l2 === l.A ? 1 : -1); for (let k = 0; k < 3; k++) { c.beginPath(); c.moveTo(x, y + 6); c.lineTo(x + Math.cos(a + k * 2.1) * (l2.w / 2 - 3), y + 6 + Math.sin(a + k * 2.1) * (l2.w / 2 - 3)); c.stroke(); } }
+  }
   for (const p of L.plates) { const im = IMG.plate; if (im) c.drawImage(im, p.x, p.y - 5 + p.down * 2, p.w, 6); }
   for (const lv of L.levers) {
+    if (lv.crank) {   // a winch: a post, a wheel that turns as you crank, the chain up to the gate
+      const a = (lv.prog || 0) * Math.PI * 9, cy = lv.y - 16;
+      c.fillStyle = '#050505'; c.fillRect(lv.x - 2, cy, 4, 16); c.strokeStyle = '#060606'; c.lineWidth = 2;
+      c.beginPath(); c.arc(lv.x, cy, 7, 0, 7); c.stroke(); for (let k = 0; k < 4; k++) { const b = a + k * Math.PI / 2; c.beginPath(); c.moveTo(lv.x, cy); c.lineTo(lv.x + Math.cos(b) * 7, cy + Math.sin(b) * 7); c.stroke(); }
+      c.lineWidth = 2.4; c.beginPath(); c.moveTo(lv.x + Math.cos(a) * 7, cy + Math.sin(a) * 7); c.lineTo(lv.x + Math.cos(a) * 11, cy + Math.sin(a) * 11 - 2); c.stroke();
+      const g = L.boxes.find(b => b.by === lv.id); if (g) { c.lineWidth = 1; c.beginPath(); c.moveTo(lv.x, cy - 7); c.lineTo(g.x + g.w / 2, g.y + 4); c.stroke(); }
+      continue;
+    }
     const im = IMG.lever; if (!im) continue; const w = 22, h = 20;
     c.save(); c.translate(lv.x, lv.y); if (lv.on) c.scale(-1, 1); c.drawImage(im, -w / 2, -h, w, h); c.restore();
     if (lv.on && lv.timed) { c.fillStyle = 'rgba(220,220,220,.5)'; c.fillRect(lv.x - 10, lv.y - 26, 20 * Math.max(0, lv.left / lv.timed), 1.5); }
@@ -1062,7 +1339,7 @@ function rose(c, x, y, r) {
   c.fillStyle = '#6b0f20'; c.beginPath(); c.arc(x, y, r * .55, 0, 7); c.fill();
 }
 function drawSprite(c, sheet, anim, frame, x, base, face, rot = 0, alpha = 1) {
-  const A = ATLAS[sheet], im = IMG[sheet]; if (!A || !im) return;
+  const A = ATLAS[sheet], im = sheet === 'brother' && S.rose && IMG.brother_nr ? IMG.brother_nr : IMG[sheet]; if (!A || !im) return;
   const m = A.anims[anim]; if (!m) return; const s = (sheet === 'mother' ? 43 : 40) / A.bodyH, f = Math.max(0, Math.min(m.frames - 1, Math.floor(frame)));
   const blit = () => { c.translate(x, base); if (rot) c.rotate(rot); c.scale(face * s, s); c.drawImage(im, f * A.frameW, m.row * A.frameH, A.frameW, A.frameH, -A.anchorX, -A.anchorY, A.frameW, A.frameH); };
   // faint rim light so the figure reads in front of black shapes — only on the upper body,
@@ -1107,6 +1384,100 @@ function drawShadow(c) {
     }
   }
 }
+function glow(c, x, y, r, a) { const g = c.createRadialGradient(x, y, 2, x, y, r); g.addColorStop(0, `rgba(245,242,235,${a})`); g.addColorStop(1, 'rgba(245,242,235,0)'); c.fillStyle = g; c.fillRect(x - r, y - r, r * 2, r * 2); }
+function drawLights(c) {
+  for (const l of L.lamps || []) { if (l.x < cam - 150 || l.x > cam + VW + 150) continue; const gy = groundAt(l.x); glow(c, l.x, gy - 70, l.r * 1.4, .2 + Math.sin(S.t * 7) * .01); glow(c, l.x, gy - 10, l.r * 1.1, .12); }
+  if (S.rose && !L.dream) {
+    const { x, y } = S.rose, fl = .9 + Math.sin(S.t * 2.3) * .05 + Math.sin(S.t * 7.1) * .03;
+    glow(c, x, y - 18, ROSE_R * 1.25, .26 * fl); glow(c, x, y - 8, 22, .3 * fl);
+    c.strokeStyle = '#050505'; c.lineWidth = 1; c.beginPath(); c.moveTo(x, y); c.quadraticCurveTo(x + 1.5, y - 5, x, y - 10); c.stroke();
+    c.fillStyle = '#050505'; c.beginPath(); c.ellipse(x + 2.5, y - 5, 2, .9, -.5, 0, 7); c.fill();
+    rose(c, x, y - 11, 2.4);
+  }
+}
+function drawRopes(c) {
+  c.strokeStyle = '#060606'; c.lineCap = 'round';
+  for (const r of L.ropes || []) {
+    if (r.x < cam - 200 || r.x > cam + VW + 200) continue;
+    const sx = Math.sin(r.th), sy = Math.cos(r.th);
+    c.lineWidth = 1.8; c.beginPath(); c.moveTo(r.x, r.y);
+    if (P && P.rope === r) { const hx = r.x + sx * P.ropeS, hy = r.y + sy * P.ropeS; c.lineTo(hx, hy); c.lineTo(hx + sx * 8, hy + sy * 8 + 3); }
+    else { const ex = r.x + sx * r.len, ey = r.y + sy * r.len; c.quadraticCurveTo(r.x + sx * r.len * .5 - r.om * 4, r.y + sy * r.len * .5, ex, ey); }
+    c.stroke();
+    if (!(P && P.rope === r)) { const ex = r.x + sx * r.len, ey = r.y + sy * r.len; c.lineWidth = 3; c.beginPath(); c.moveTo(ex, ey - 4); c.lineTo(ex, ey); c.stroke(); }
+    // the branch it hangs from: one limb from off screen, thinning to a tip past the rope
+    { const x0 = r.x - 170, y0 = r.y - 64, cx = r.x - 60, cy = r.y - 8, x1 = r.x + 36, y1 = r.y + 2, pts = [];
+      for (let i = 0; i <= 16; i++) { const t = i / 16, u = 1 - t, x = u * u * x0 + 2 * u * t * cx + t * t * x1, y = u * u * y0 + 2 * u * t * cy + t * t * y1; pts.push([x, y, 5.5 * (1 - t) + 1 + (hash(i * 5) - .5) * .8]); }
+      c.fillStyle = '#050505'; c.beginPath();
+      pts.forEach(([x, y, w], i) => { const [nx, ny] = pts[Math.min(i + 1, 16)], [px, py] = pts[Math.max(i - 1, 0)], dx = nx - px, dy = ny - py, l = Math.hypot(dx, dy) || 1; i ? c.lineTo(x - dy / l * w, y + dx / l * w) : c.moveTo(x - dy / l * w, y + dx / l * w); });
+      for (let i = 16; i >= 0; i--) { const [x, y, w] = pts[i], [nx, ny] = pts[Math.min(i + 1, 16)], [px, py] = pts[Math.max(i - 1, 0)], dx = nx - px, dy = ny - py, l = Math.hypot(dx, dy) || 1; c.lineTo(x + dy / l * w, y - dx / l * w); }
+      c.fill();
+      c.lineWidth = 1.6; for (const i of [4, 8, 12]) { const [x, y] = pts[i]; c.beginPath(); c.moveTo(x, y); c.quadraticCurveTo(x + 5, y - 10, x + 2 + hash(i) * 10, y - 18 - hash(i * 3) * 10); c.stroke(); } }
+    c.lineWidth = 2.5; c.beginPath(); c.moveTo(r.x - 3, r.y - 3); c.lineTo(r.x + 3, r.y + 3); c.stroke();
+  }
+}
+function drawBoulders(c) {
+  for (const b of L.boulders || []) {
+    if (b.state === 'done') continue;
+    const im = IMG.boulder; c.save(); c.translate(b.x, b.y); c.rotate(b.rot);
+    if (im) c.drawImage(im, -b.r * 1.08, -b.r * 1.08, b.r * 2.16, b.r * 2.16); else { c.fillStyle = '#050505'; c.beginPath(); c.arc(0, 0, b.r, 0, 7); c.fill(); }
+    c.restore();
+  }
+  if (L.rubble) { const im = IMG.rockPile; if (im) { const h = 16, w = im.width * h / im.height; c.drawImage(im, L.rubble.x - w / 2 + 6, L.rubble.y - h + 3, w, h); } }
+}
+// hands in the dark: fingers twitch at the surface and grow toward whoever lingers unlit
+function drawHands(c) {
+  c.strokeStyle = '#000'; c.fillStyle = '#000'; c.lineCap = 'round';
+  for (const h of L.hands || []) {
+    if (h.x > cam + VW + 20 || h.x + h.w < cam - 20) continue;
+    const subj = [P, M].filter(o => o && o.x + o.w / 2 > h.x - 20 && o.x + o.w / 2 < h.x + h.w + 20);
+    for (let x = h.x + 3; x < h.x + h.w - 2; x += 6) {
+      const gy = groundAt(x) + 3, k = hash(x * 1.31), lit = lightAt(x) || (roseHeld() && P && Math.abs(x - P.x - P.w / 2) < CARRY_R);
+      let len = lit ? 1.5 : 6 + k * 9 + Math.sin(S.t * (1.3 + k) + x) * 2.5, tx = x + Math.sin(S.t * (1 + k) + k * 9) * 3, ty;
+      for (const o of subj) { const ox = o.x + o.w / 2, dd = Math.abs(ox - x); if (dd < 34 && !lit) { const t = o === P ? h.tP : h.tM, g = Math.min(1, t / HAND_T) * (1 - dd / 34); len += g * 34; tx += (ox - x) * g * .8; } }
+      ty = gy - len;
+      c.lineWidth = 1.4 + k * .8; c.beginPath(); c.moveTo(x, gy); c.quadraticCurveTo(x + (tx - x) * .2 + Math.sin(S.t * 2 + x) * 2, gy - len * .6, tx, ty); c.stroke();
+      if (len > 8) { c.lineWidth = .8; for (let f = -1; f <= 1; f++) { c.beginPath(); c.moveTo(tx, ty); c.lineTo(tx + f * 2.2, ty - 3); c.stroke(); } }
+    }
+  }
+}
+// the spider: a huge body up in the dark, and the legs
+function spiderLeg(c, hx, hy, fx, fy, w) {
+  const kx = (hx + fx) / 2 + 34, ky = Math.min(hy, fy) - 36;
+  c.lineCap = 'round'; c.strokeStyle = '#000';
+  c.lineWidth = w; c.beginPath(); c.moveTo(hx, hy); c.lineTo(kx, ky); c.stroke();
+  c.lineWidth = w * .7; c.beginPath(); c.moveTo(kx, ky); c.lineTo((kx + fx) / 2, (ky + fy) / 2); c.stroke();
+  c.lineWidth = w * .35; c.beginPath(); c.moveTo((kx + fx) / 2, (ky + fy) / 2); c.lineTo(fx, fy); c.stroke();
+}
+function drawSpider(c) {
+  const sp = L.spider; if (!sp || sp.bx < cam - 300 || sp.bx - 700 > cam + VW) return;
+  const up = sp.away * 170, bx = sp.bx + sp.away * 60, by = sp.by - up;
+  const gy = groundAt(sp.x1 - 20);
+  // standing legs
+  for (const [fx, w] of [[sp.x1 - 20, 5], [sp.x1 + 30, 5.5], [sp.x1 + 90, 5]]) spiderLeg(c, bx - 10, by + 14, fx + Math.sin(S.t * .8 + fx) * 2, gy - up * 1.2, w);
+  c.fillStyle = '#000'; c.beginPath(); c.ellipse(bx, by, 78, 46, -.2, 0, 7); c.fill(); c.beginPath(); c.ellipse(bx - 64, by + 18, 30, 22, .3, 0, 7); c.fill();
+  if (!sp.caught) for (let i = 0; i < 4; i++) { const ex = bx - 80 + i * 5, ey = by + 16 + (i % 2) * 4, a = .5 + .4 * Math.sin(S.t * 2 + i); c.fillStyle = `rgba(230,230,225,${a})`; c.beginPath(); c.arc(ex, ey, .9, 0, 7); c.fill(); }
+  const lg = sp.leg;
+  if (lg) {
+    const fy0 = groundAt(lg.tx), hover = fy0 - 78 + Math.sin(S.t * 6) * 3;
+    const fy = lg.ph === 'raise' ? hover : lg.ph === 'stab' ? hover + (fy0 - hover) * Math.min(1, lg.t / .07) : lg.ph === 'hold' ? fy0 : fy0 + (hover - fy0) * Math.min(1, lg.t / .35);
+    spiderLeg(c, bx - 30, by + 20, lg.tx, fy, 6);
+  }
+  if (sp.caught) { c.strokeStyle = '#000'; c.lineWidth = 3; c.beginPath(); c.moveTo(sp.caught.x, sp.caught.y); c.lineTo(sp.caught.x + 10, sp.caught.y - 34); c.stroke(); c.lineWidth = 2; c.beginPath(); c.moveTo(sp.caught.x + 10, sp.caught.y - 34); c.lineTo(sp.caught.x + 6, sp.caught.y - 46); c.stroke(); }
+}
+function drawMom(c, fade = 1, sink = 0) {
+  const A = ATLAS.mother; if (!A || !M) return; const an = A.anims;
+  let name = 'idle', f = frameOf(an.idle, M.ic, 'pingpong');
+  if (S.state === 'deliver' && L.garden && an.receive) { name = 'receive'; f = frameOf(an.receive, S.timer / 60, 'hold'); }
+  else if (Math.abs(M.vx) > .08 && an.walk) { name = 'walk'; f = frameOf(an.walk, M.wc, 'loop'); }
+  drawSprite(c, 'mother', name, f, M.x + M.w / 2, (M.on ? feetY(M) : M.y + M.h) + 1.5 + sink, M.face, 0, fade);
+  if (M.hand && P) { const ax = M.x + M.w / 2 + M.face * 2, ay = M.y + 22, bx = P.x + P.w / 2 - P.face * 2, by = P.y + 20; c.strokeStyle = '#050505'; c.lineWidth = 1.2; c.beginPath(); c.moveTo(ax, ay); c.quadraticCurveTo((ax + bx) / 2, Math.max(ay, by) + 3, bx, by); c.stroke(); }
+}
+function drawRosebush(c) {
+  if (!L.garden) return; const x = L.goalX + 34, gy = groundAt(x);
+  const im = IMG.deadBush; if (im) { const h = 46, w = im.width * h / im.height; c.drawImage(im, x - w / 2, gy - h + 2, w, h); }
+  for (let i = 0; i < 9; i++) rose(c, x - 16 + hash(i * 3) * 32, gy - 10 - hash(i * 7) * 30, 2 + hash(i) * .8);
+}
 function render() {
   const sc = fit(); if (!sc || !L) return;
   const c = ctx, t = S.t, th = L.theme;
@@ -1134,14 +1505,21 @@ function render() {
   for (const d of L.decor) if (d.layer === 'play') drawProp(c, { ...d, x: d.x }, 0, null);
   drawTerrain(c);
   drawBoxes(c);
+  drawLights(c); drawRosebush(c); drawRopes(c); drawBoulders(c); drawHands(c);
   if (L.dream) {
     const gy = surfaceY(L.goalX), g = c.createRadialGradient(L.goalX, gy - 30, 4, L.goalX, gy - 30, 120);
     g.addColorStop(0, 'rgba(255,255,250,.55)'); g.addColorStop(1, 'rgba(255,255,250,0)'); c.fillStyle = g; c.fillRect(L.goalX - 120, gy - 150, 240, 170);
     const A = ATLAS.brother; if (A) { if (S.state === 'meet') drawSprite(c, 'brother', 'offer', frameOf(A.anims.offer, S.timer / 60, 'hold'), L.goalX, gy + 1.5, -1); else drawSprite(c, 'brother', 'idle', frameOf(A.anims.idle, t, 'pingpong'), L.goalX, gy + 1.5, -1); }
   }
+  // mamá
+  if (M && !(S.dead && S.dead.type === 'mom')) drawMom(c);
   // the boy (or his body)
   const d = S.dead;
-  if (d) {
+  if (d && d.type === 'mom') {
+    if (M) { M.y = d.my; drawMom(c, Math.max(0, 1 - d.t / 1.5), d.t * 6); }
+    const base = feetY(P) + 1.5; if (AN.cur) drawSprite(c, AN.cur.sheet, AN.cur.anim, AN.cur.f, P.x + P.w / 2, base, AN.cur.face);
+    c.strokeStyle = '#000'; c.lineWidth = 2; for (let i = 0; i < 5; i++) { const x = d.mx + 5 + (i - 2) * 5, gy = groundAt(x); c.beginPath(); c.moveTo(x, gy); c.quadraticCurveTo(x + 4, gy - 20, d.mx + 5 + Math.sin(i) * 4, d.my + 10 + i * 5 + d.t * 6); c.stroke(); }
+  } else if (d) {
     const base = (d.type === 'fall' ? d.y : d.y) + P.h, cx = d.x + P.w / 2, A = ATLAS.brother;
     if (A && !L.dream) {
       const an = A.anims, col = frameOf(an.collapse, d.t * 1.15, 'once'), fl = frameOf(an.fall, d.t, 'loop');
@@ -1151,14 +1529,19 @@ function render() {
       else if (d.type === 'shadow') drawSprite(c, 'brother', 'collapse', col, cx, base, d.face, 0, Math.max(0, 1 - d.t / 1.4));
       else drawSprite(c, 'brother', 'collapse', col, cx, base + 1.5, d.face);
       if (d.type === 'trap') { const tr = IMG.trapShut; if (tr) c.drawImage(tr, cx - 14, base - 12, 28, 12); }
+      if (d.type === 'hands') { c.strokeStyle = '#000'; for (let i = 0; i < 6; i++) { const x = cx + (i - 2.5) * 5, gy = groundAt(x) + 2; c.lineWidth = 2; c.beginPath(); c.moveTo(x, gy); c.quadraticCurveTo(x + 5, gy - 18, cx + Math.sin(i * 2) * 5, base - 6 - i * 3); c.stroke(); } }
     }
+  } else if (P && P.rope && ATLAS.brother) {
+    const r = P.rope, A = ATLAS.brother, m = A.anims.hang, f = ROPE_F, s = 40 / A.bodyH, sx = Math.sin(r.th), sy = Math.cos(r.th);
+    const ext = m.ext[f] * s + (A.frameH - 3 - m.by[f]) * s, hx = r.x + sx * P.ropeS, hy = r.y + sy * P.ropeS;
+    drawSprite(c, 'brother', 'hang', f, hx + sx * ext, hy + sy * ext, AN.visFace, -r.th);
   } else if (S.state !== 'card' || P) {
     const q = P.act ? actPose(P.act) : null;
     const base = (q ? q.base : P.on && !P.mantle ? feetY(P) : P.y + P.h) + 1.5, cx = P.x + P.w / 2;
     if (AN.prev && AN.fade < 1) drawSprite(c, AN.prev.sheet, AN.prev.anim, AN.prev.f, cx, base, AN.prev.face, 0, 1 - AN.fade);
     if (AN.cur) drawSprite(c, AN.cur.sheet, AN.cur.anim, AN.cur.f, cx, base, AN.cur.face, 0, AN.prev && AN.fade < 1 ? AN.fade : 1);
   }
-  if (S.state === 'deliver' && S.sill && S.timer > 70) {
+  if (S.state === 'deliver' && S.sill && S.timer > 70 && !L.garden) {
     const k = Math.max(0, Math.min(1, (S.timer - 70) / 60)), e = k * k * (3 - 2 * k), tx = S.sill.x + 1 + S.roses * 6, ty = S.sill.y - 6;
     const x = S.from.x + (tx - S.from.x) * e, y = S.from.y + (ty - S.from.y) * e - Math.sin(e * Math.PI) * 30;
     rose(c, x, y, 2.2 + (1 - e));
@@ -1168,6 +1551,7 @@ function render() {
     const im = IMG.cave_ceil; if (im) { const w = im.width * 64 / im.height; for (let x = Math.floor(cam / w) * w - w; x < cam + VW + w; x += w) c.drawImage(im, x, -6, w, 64); }
     c.restore();
   }
+  drawSpider(c);
   drawShadow(c);
   if (S.debug) {
     c.lineWidth = 1;

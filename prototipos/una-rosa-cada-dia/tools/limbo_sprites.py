@@ -44,6 +44,11 @@ for name, rose in [('brother', True), ('mother', False)]:
     glow = eyes.filter(ImageFilter.GaussianBlur(1.4))
     sheet.alpha_composite(glow); sheet.alpha_composite(eyes)
     sheet.save(f'{OUT}/{name}.png', optimize=True)
+    if rose:   # the same sheet with empty hands, for when the rose is left on the ground
+        gone = np.asarray(Image.fromarray((red * 255).astype(np.uint8)).filter(ImageFilter.MaxFilter(5))) > 0
+        nr = out.copy(); nr[gone, 3] = 0
+        nrs = Image.fromarray(nr.astype(np.uint8)); nrs.alpha_composite(glow); nrs.alpha_composite(eyes)
+        nrs.save(f'{OUT}/{name}_nr.png', optimize=True)
     json.dump(atlas, open(f'{OUT}/{name}.json', 'w'), indent=1)
     prev = Image.new('RGBA', sheet.size, (190, 190, 190, 255)); prev.alpha_composite(sheet)
     prev.convert('RGB').save(f'{OUT}/../{name}_sil_prev.jpg', quality=80)
