@@ -17,12 +17,12 @@
   },
   "walk": {
    "row": 2,
-   "frames": 15,
+   "frames": 19,
    "mode": "loop"
   },
   "run": {
    "row": 3,
-   "frames": 17,
+   "frames": 19,
    "mode": "loop"
   },
   "jump": {

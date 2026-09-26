@@ -132,8 +132,8 @@ def process(name, anims, scale_from='idle'):
 
 if __name__ == '__main__':
     process('brother', {
-        'idle': ('bro_idle_sad.mp4', 'idle'), 'look': ('bro_look.mp4', 'once'), 'walk': ('bro_walk_sad.mp4', 'loop'),
-        'run': ('bro_run.mp4', 'loop'), 'jump': ('bro_jump.mp4', 'jump'), 'push': ('bro_push.mp4', 'loop'),
+        'idle': ('bro_idle_sad.mp4', 'idle'), 'look': ('bro_look.mp4', 'once'), 'walk': ('bro_walk_grief.mp4', 'loop'),
+        'run': ('bro_run_flee.mp4', 'loop'), 'jump': ('bro_jump.mp4', 'jump'), 'push': ('bro_push.mp4', 'loop'),
         'pull': ('bro_pull.mp4', 'loop'), 'climb': ('bro_climb.mp4', 'once'), 'fall': ('bro_fall.mp4', 'loop'),
         'collapse': ('bro_collapse.mp4', 'once'), 'kneel': ('bro_kneel.mp4', 'hold'), 'offer': ('bro_offer.mp4', 'once')})
     process('mother', {'idle': ('mom_idle_sad.mp4', 'idle'), 'walk': ('mom_walk.mp4', 'loop'), 'receive': ('mom_receive.mp4', 'hold')})

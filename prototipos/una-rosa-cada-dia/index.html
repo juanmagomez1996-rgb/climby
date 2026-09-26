@@ -822,11 +822,21 @@ function rose(c, x, y, r) {
 function drawSprite(c, sheet, anim, frame, x, base, face, rot = 0, alpha = 1) {
   const A = ATLAS[sheet], im = IMG[sheet]; if (!A || !im) return;
   const m = A.anims[anim], s = (sheet === 'mother' ? 43 : 40) / A.bodyH, f = Math.max(0, Math.min(m.frames - 1, frame | 0));
-  c.save(); c.globalAlpha = alpha; c.translate(x, base); if (rot) c.rotate(rot); c.scale(face * s, s);
-  // faint rim light so a black figure still reads in front of black shapes
-  c.shadowColor = 'rgba(205,205,200,.55)'; c.shadowBlur = 7 * (cv.width / VW) / 2;
-  c.drawImage(im, f * A.frameW, m.row * A.frameH, A.frameW, A.frameH, -A.anchorX, -A.anchorY, A.frameW, A.frameH);
-  c.restore();
+  const blit = () => { c.translate(x, base); if (rot) c.rotate(rot); c.scale(face * s, s); c.drawImage(im, f * A.frameW, m.row * A.frameH, A.frameW, A.frameH, -A.anchorX, -A.anchorY, A.frameW, A.frameH); };
+  // faint rim light so the figure reads in front of black shapes — only on the upper body,
+  // fading out above the knees, so the legs melt into the black ground
+  const blur = 7 * (cv.width / VW) / 2;
+  for (const [top, bot, a] of [[-200, -20, 1], [-20, -15, .55], [-15, -11, .25]]) {
+    c.save(); c.beginPath(); c.rect(x - 80, base + top, 160, bot - top); c.clip();
+    c.globalAlpha = alpha * a; c.shadowColor = 'rgba(205,205,200,.5)'; c.shadowBlur = blur; blit(); c.restore();
+  }
+  c.save(); c.globalAlpha = alpha; blit(); c.restore();
+}
+// ground height right under the feet, so the drawn body always touches the floor (slopes included)
+function feetY(o) {
+  const cx = o.x + o.w / 2, y0 = o.y + o.h;
+  for (let k = -2; k <= 7; k++) { if (groundAt(cx) <= y0 + k + .5) return Math.min(groundAt(cx), y0 + k); for (const b of L.boxes) if (!b.gone && !b.falling && cx >= b.x && cx <= b.x + b.w && Math.abs(b.y - (y0 + k)) < .6) return b.y; for (const cr of L.crates) if (cx >= cr.x && cx <= cr.x + cr.w && Math.abs(cr.y - (y0 + k)) < .6) return cr.y; }
+  return y0;
 }
 function drawShadow(c) {
   if (!chase || !chase.started) return;
@@ -883,7 +893,7 @@ function render() {
   if (L.dream) {
     const gy = surfaceY(L.goalX), g = c.createRadialGradient(L.goalX, gy - 30, 4, L.goalX, gy - 30, 120);
     g.addColorStop(0, 'rgba(255,255,250,.55)'); g.addColorStop(1, 'rgba(255,255,250,0)'); c.fillStyle = g; c.fillRect(L.goalX - 120, gy - 150, 240, 170);
-    const A = ATLAS.brother; if (A) { if (S.state === 'meet') drawSprite(c, 'brother', 'offer', Math.min(A.anims.offer.frames - 1, Math.floor(S.timer / 60 * 12)), L.goalX, gy, -1); else drawSprite(c, 'brother', 'idle', Math.floor(t * 8) % A.anims.idle.frames, L.goalX, gy, -1); }
+    const A = ATLAS.brother; if (A) { if (S.state === 'meet') drawSprite(c, 'brother', 'offer', Math.min(A.anims.offer.frames - 1, Math.floor(S.timer / 60 * 12)), L.goalX, gy + 1.5, -1); else drawSprite(c, 'brother', 'idle', Math.floor(t * 8) % A.anims.idle.frames, L.goalX, gy + 1.5, -1); }
   }
   // the boy (or his body)
   const d = S.dead;
@@ -894,11 +904,11 @@ function render() {
       if (d.type === 'drown') drawSprite(c, 'brother', 'fall', fl, cx, base, d.face, .25, Math.max(0, 1 - d.t / 1.6));
       else if (d.type === 'fall') drawSprite(c, 'brother', 'fall', fl, cx, base, d.face);
       else if (d.type === 'shadow') drawSprite(c, 'brother', 'collapse', col, cx, base, d.face, 0, Math.max(0, 1 - d.t / 1.4));
-      else drawSprite(c, 'brother', 'collapse', col, cx, base, d.face);
+      else drawSprite(c, 'brother', 'collapse', col, cx, base + 1.5, d.face);
       if (d.type === 'trap') { const tr = IMG.trapShut; if (tr) c.drawImage(tr, cx - 14, base - 12, 28, 12); }
     }
   } else if (S.state !== 'card' || P) {
-    const p = pose(); if (p) drawSprite(c, p.sheet, p.anim, p.f, P.x + P.w / 2, P.y + P.h, P.face);
+    const p = pose(); if (p) drawSprite(c, p.sheet, p.anim, p.f, P.x + P.w / 2, (P.on && !P.mantle ? feetY(P) : P.y + P.h) + 1.5, P.face);
   }
   if (S.state === 'deliver' && S.sill && S.timer > 70) {
     const k = Math.max(0, Math.min(1, (S.timer - 70) / 60)), e = k * k * (3 - 2 * k), tx = S.sill.x + 1 + S.roses * 6, ty = S.sill.y - 6;
