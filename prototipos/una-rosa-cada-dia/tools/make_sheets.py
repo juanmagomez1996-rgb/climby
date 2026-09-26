@@ -105,7 +105,27 @@ def body_center(alpha, b):
 
 
 def pick(spec):
+    seq = _pick(spec)
+    if spec.get('clean') and spec['kind'] != 'rootclip':
+        seq = [no_floor_rose(only_body(f)) for f in seq]
+    return seq
+
+
+def no_floor_rose(f):
+    """In some clips he drops the rose: take away red lying at floor level."""
+    b = solid_bbox(f[..., 3])
+    if not b: return f
+    y0 = b[3] - int((b[3] - b[1]) * .12); f = f.copy(); r, g, bl = (f[y0:, :, i].astype(int) for i in range(3))
+    red = (r > g + 40) & (r > bl + 30); f[y0:, :, 3][red] = 0
+    return f
+
+
+def _pick(spec):
     raw = frames(spec['video'], spec.get('clean', False)); kind = spec['kind']
+    if spec.get('standref'): spec['_h0'] = solid_bbox(raw[0][..., 3])   # shot at another size: scale by its own standing frame
+    if 'raw' in spec and kind != 'rootclip':   # a hand-picked source range; phases ('split') are then given in source frames too
+        r0, r1 = spec['raw']; spec['_ridx'] = list(range(r0, min(r1, len(raw))))
+        return [raw[i] for i in spec['_ridx']]
     a, e = motion_span(raw)
     if kind == 'cycle':
         first = int(len(raw) * spec.get('from', .45))
@@ -187,12 +207,12 @@ def process(name, specs):
             seq = [f.copy() for f in seq]
             for f in seq:
                 b = solid_bbox(f[..., 3]); f[b[3] + 2:, :, 3] = 0; f[:, :max(0, b[0] - 30), 3] = 0; f[:, b[2] + 30:, 3] = 0
-        boxes = [solid_bbox(f[..., 3]) if kind == 'rootclip' else bbox(f[..., 3]) for f in seq]
+        boxes = [solid_bbox(f[..., 3]) if kind == 'rootclip' or spec.get('clean') else bbox(f[..., 3]) for f in seq]
         sc = scale
         if 'height' in spec:   # expected silhouette height relative to standing (e.g. arms raised)
             hs = [b[3] - b[1] for b in boxes if b]
             sc = F * .8 * spec['height'] / np.median(hs)
-        if kind == 'rootclip':   # same scale as standing, measured on the video's first (standing) frame
+        if kind == 'rootclip' or spec.get('standref'):   # same scale as standing, measured on the video's first (standing) frame
             h0 = spec['_h0']; sc = F * .8 / (h0[3] - h0[1])
         ok = [b for b in boxes if b]
         ubot = max(b[3] for b in ok)
@@ -230,7 +250,11 @@ def process(name, specs):
             m['fall'] = [int(i) for i in air if i > top] or [top]
             m['land'] = [int(i) for i in range(air.max() + 1, min(len(L), air.max() + 9))]
         if 'split' in spec:   # phases marked by eye when the clip fools the detection
-            for ph, (a0, a1) in spec['split'].items(): m[ph] = list(range(a0, min(a1, len(row))))
+            if '_ridx' in spec:
+                R = spec['_ridx']
+                for ph, (a0, a1) in spec['split'].items(): m[ph] = [i for i, r in enumerate(R) if a0 <= r < a1]
+            else:
+                for ph, (a0, a1) in spec['split'].items(): m[ph] = list(range(a0, min(a1, len(row))))
         if kind == 'rootclip':
             R = spec['_ridx']; near = lambda r: int(np.argmin([abs(x - r) for x in R]))
             m['ext'] = exts; m['by'] = bys
@@ -269,9 +293,15 @@ if __name__ == '__main__':
         'run': {'video': 'bro_run_flee.mp4', 'kind': 'cycle', 'lo': 12, 'hi': 28},
         'run_start': {'video': 'bro_run_flee.mp4', 'kind': 'start', 'n': 12},
         'run_stop': {'video': 'bro_run_stop.mp4', 'kind': 'stop', 'n': 22},
-        'jump': {'video': 'bro_jump2.mp4', 'kind': 'jump'},
-        'push': {'video': 'bro_push.mp4', 'kind': 'cycle', 'lo': 14, 'hi': 36},
-        'pull': {'video': 'bro_pull.mp4', 'kind': 'cycle', 'lo': 14, 'hi': 36},
+        'jump': {'video': 'bro_jump4.mp4', 'kind': 'jump', 'standref': True, 'raw': [25, 92],
+                 'split': {'crouch': [25, 34], 'rise': [34, 46], 'fall': [46, 58], 'land': [58, 92]}},
+        # pushing and pulling by crate height: low (shins), mid (hips/chest), tall (as tall as he is)
+        'push_low': {'video': 'bro_push_low.mp4', 'kind': 'cycle', 'lo': 14, 'hi': 36, 'clean': True},
+        'push_mid': {'video': 'bro_push_waist.mp4', 'kind': 'cycle', 'lo': 14, 'hi': 36, 'clean': True},
+        'push': {'video': 'bro_push_mid.mp4', 'kind': 'cycle', 'lo': 14, 'hi': 36, 'clean': True},
+        'pull_low': {'video': 'bro_pull_crouch.mp4', 'kind': 'cycle', 'lo': 14, 'hi': 36, 'clean': True},
+        'pull_mid': {'video': 'bro_pull_waist.mp4', 'kind': 'cycle', 'lo': 14, 'hi': 36, 'clean': True},
+        'pull': {'video': 'bro_pull_tall.mp4', 'kind': 'cycle', 'lo': 14, 'hi': 36, 'clean': True},
         'climb': {'video': 'bro_climb.mp4', 'kind': 'clip'},
         # traversals by obstacle height; raw = source frame range (24 fps), keys = where the body rests
         # (g0 start ground, hand = hanging from the ledge, g1 on top), fwd = share of the way across

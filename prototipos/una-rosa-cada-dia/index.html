@@ -63,7 +63,7 @@ button:focus-visible,input:focus-visible{outline:1px solid #bbb;outline-offset:3
     <canvas id="game" aria-label="Juego de plataformas en blanco y negro. Un niño lleva una rosa roja a la ventana de su mamá."></canvas>
     <div id="toast"></div>
   </div>
-  <p class="help"><kbd>←</kbd> <kbd>→</kbd> caminar · <kbd>↑</kbd> o <kbd>Espacio</kbd> saltar (salta contra una pared para trepar) · mantén <kbd>Shift</kbd> o <kbd>E</kbd> para jalar cajas y usar palancas · <kbd>C</kbd> ver colisiones</p>
+  <p class="help"><kbd>←</kbd> <kbd>→</kbd> caminar · <kbd>↑</kbd> o <kbd>Espacio</kbd> saltar; pegado a una caja, un muro o un borde alto, trepa · mantén <kbd>Shift</kbd> o <kbd>E</kbd> para jalar cajas y usar palancas · <kbd>C</kbd> ver colisiones</p>
   <div class="pad">
     <div><button data-k="l" aria-label="Izquierda">◀</button><button data-k="r" aria-label="Derecha">▶</button></div>
     <div><button class="wide" data-k="g">Agarrar</button><button class="wide" data-k="j">Saltar</button></div>
@@ -164,7 +164,7 @@ function level1() { // EL BOSQUE
       { pts: [[2430, 232], [2560, 230], [2640, 230], [2640, 190], [2760, 190], [2760, 230], [3300, 230]] },
     ],
     boxes: [box(2900, 120, 16, 110, 'gate', { y0: 120, openH: 104, open: 0, by: 'plate0' })],
-    crates: [{ x: 1250, y: 202 }, { x: 2700, y: 164 }],
+    crates: [{ x: 1250, y: 202, w: 30, h: 40 }, { x: 2700, y: 164, w: 24, h: 18 }],   // a big one to climb the wall, a small one for the plate
     traps: [{ x: 920, y: 234 }, { x: 2000, y: 230 }, { x: 2290, y: 231 }],
     plates: [{ id: 'plate0', x: 2760, y: 230, w: 34 }],
     levers: [], stal: [], water: [],
@@ -355,7 +355,7 @@ function build(i) {
   dress(d, i * 13.1);
   L = prevL;
   d.boxes.forEach(b => { b.x0 = b.x; b.y0b = b.y; b.t = -1; b.gone = false; b.vy = 0; });
-  d.crates = d.crates.map(c => ({ x: c.x, y: c.y, w: 26, h: 26, vx: 0, vy: 0, on: false, stuck: false, crate: true }));
+  d.crates = d.crates.map(c => { const w = c.w || 26, h = c.h || 26; return { x: c.x, y: c.y + 26 - h, w, h, vx: 0, vy: 0, on: false, stuck: false, crate: true }; });   // y is given for the usual 26 px crate
   d.traps = d.traps.map(t => ({ ...t, w: 24, shut: false }));
   d.levers = d.levers.map(l => ({ ...l, on: false, left: 0 }));
   d.plates = d.plates.map(p => ({ ...p, down: 0 }));
@@ -566,7 +566,7 @@ function startLevel(i) {
 }
 function spawn() {
   const dream = !!L.dream, cpx = L.checkpoints[S.cp];
-  P = { x: cpx, y: 0, w: 10, h: dream ? 38 : 36, vx: 0, vy: 0, on: true, co: 0, buf: 0, face: 1, animT: 0, airT: 0, landT: 0, stepT: 0, mantle: null, act: null, topY: 0, pushing: 0, pulling: 0, under: 0, holdT: 0, holdDir: 0, idleT: 0 };
+  P = { x: cpx, y: 0, w: 10, h: dream ? 38 : 36, vx: 0, vy: 0, on: true, co: 0, buf: 0, face: 1, animT: 0, airT: 0, landT: 0, stepT: 0, mantle: null, act: null, topY: 0, pushing: 0, pulling: 0, pushH: 26, under: 0, holdT: 0, holdDir: 0, idleT: 0 };
   P.y = surfaceY(cpx + 5) - P.h; P.topY = P.y;
   // restore chases: if this checkpoint is inside a chase, it restarts right behind you
   chase = null;
@@ -611,7 +611,7 @@ function die(type) {
    Picks the clip for what the body is doing. When the clip changes, it enters the new one at the
    frame whose silhouette best matches the current pose (16×16 fingerprints from the pipeline), so
    a leg that is forward stays forward. A very short fade hides what little is left. */
-const AN = { cur: null, prev: null, fade: 1, clk: {}, visFace: 1, lastSpeed: 0, moveT: 0, stopT: -1, stopClip: '', stopFrom: 0, standT: -1, kneelF: 0, wasMoving: false, airKind: 'jump', landT: -1, landClip: '', landFrom: 0 };
+const AN = { cur: null, prev: null, fade: 1, clk: {}, visFace: 1, lastSpeed: 0, moveT: 0, stopT: -1, stopClip: '', stopFrom: 0, standT: -1, kneelF: 0, wasMoving: false, airKind: 'jump', apex: -1, fallDur: .3, landT: -1, landClip: '', landFrom: 0 };
 const POSE = {};
 function poses(sheet) {
   if (POSE[sheet]) return POSE[sheet];
@@ -648,7 +648,7 @@ function chooseAnim(dt) {
   const at = (name, f) => ({ sheet, anim: name, f: Math.max(0, Math.min(an[name].frames - 1, f)) });
   const chasing = chase && chase.started && !chase.done;
   const dir = (K.r ? 1 : 0) - (K.l ? 1 : 0);
-  if (S.state === 'play' && dir && AN.standT < 0) AN.visFace = dir;          // turns at once, like the boy in LIMBO
+  if (S.state === 'play' && dir && AN.standT < 0) AN.visFace = P.pulling > 0 ? -dir : dir;   // pulling, he faces the crate and steps back          // turns at once, like the boy in LIMBO
   const face = AN.visFace, out = o => ({ ...o, face });
   if (L.dream) {
     if (S.state === 'meet') return out(at('receive', frameOf(an.receive, S.timer / 60, 'hold')));
@@ -670,27 +670,32 @@ function chooseAnim(dt) {
   if (P.mantle && an.climb) return out(at('climb', (.2 + .8 * Math.min(1, P.mantle.t)) * (an.climb.frames - 1)));
   // --- in the air: a leap when he jumped with a direction, a hop otherwise, then the fall
   //     (a bump that lifts the feet for a moment is still walking)
-  if (P.on) AN.fallLong = false;
+  if (P.on) { AN.fallLong = false; AN.apex = -1; }
   const stepping = AN.airKind === 'step' && P.airT < .4;   // stepping down off a crate: the stride goes on
   if (!P.on && !stepping && (P.vy < -.5 || P.airT > .12)) {
     AN.wasMoving = false; AN.stopT = -1; AN.landT = -1;
     if (P.y - P.topY > 40 && P.vy > 2 && an.fall && (AN.fallLong || (AN.fallLong = P.y - P.topY + dropBelow(P.x) > FALL.hard))) return out(cyc('fall', 1));   // a long way down
     const J = AN.airKind === 'leap' && an.leap ? an.leap : an.jump, name = AN.airKind === 'leap' && an.leap ? 'leap' : 'jump';
-    const air = [...J.rise, ...J.fall]; if (!air.length) return out(at(name, 0));
-    const p = Math.max(0, Math.min(.999, (P.vy - JUMP) / (6.8 - JUMP)));        // 0 at take-off, 1 when falling fast
-    return out(at(name, air[Math.floor(p * air.length)]));
+    // going up: the rise frames by time until the top; coming down: the fall frames by time until the ground
+    if (P.vy < 0 && J.rise.length) { AN.apex = -1; const up = P.airT / (P.airT + -P.vy / GRAV / 60 + 1e-3); return out(at(name, J.rise[Math.min(J.rise.length - 1, Math.floor(up * J.rise.length))])); }
+    if (AN.apex < 0) { AN.apex = P.airT; AN.fallDur = Math.max(.12, Math.sqrt(2 * Math.max(4, dropBelow(P.x)) / GRAV) / 60); }
+    const q = Math.min(.999, (P.airT - AN.apex) / AN.fallDur), list = J.fall.length ? J.fall : J.rise;
+    return out(at(name, list[Math.floor(q * list.length)]));
   }
   // --- landing: a heavy landing after a long fall, the clip's own landing after a jump
   if (AN.landT >= 0) {
     AN.landT += dt; const m = an[AN.landClip];
     const list = AN.landClip === 'land' ? null : (m.land || []);
-    const f = list ? list[Math.min(list.length - 1, Math.floor(AN.landT * m.fps))] : AN.landFrom + AN.landT * m.fps * 1.2;
-    const done = list ? AN.landT * m.fps >= list.length : f >= m.frames - 1;
+    const lr = AN.landClip === 'jump' ? 1.4 : 1;   // the hop's landing ends standing up again; a touch quicker
+    const f = list ? list[Math.min(list.length - 1, Math.floor(AN.landT * m.fps * lr))] : AN.landFrom + AN.landT * m.fps * 1.2;
+    const done = list ? AN.landT * m.fps * lr >= list.length : f >= m.frames - 1;
     if (!done && !(v > .3 && AN.landT > .1)) return out(at(AN.landClip, f));
     AN.landT = -1;
   }
-  if (P.pushing > 0 && an.push) { AN.wasMoving = false; return out(cyc('push', gait('push', PUSHV))); }
-  if (P.pulling > 0 && an.pull) { AN.wasMoving = false; return out(cyc('pull', gait('pull', PUSHV))); }
+  // pushing and pulling bend the body to the crate: crouched for a low one, bent at the waist, upright for a tall one
+  const sz = P.pushH <= 20 ? '_low' : P.pushH <= 30 ? '_mid' : '';
+  if (P.pushing > 0 && an.push) { const n = an['push' + sz] ? 'push' + sz : 'push'; AN.wasMoving = false; return out(cyc(n, gait(n, PUSHV))); }
+  if (P.pulling > 0 && an.pull) { const n = an['pull' + sz] ? 'pull' + sz : 'pull'; AN.wasMoving = false; return out(cyc(n, gait(n, PUSHV))); }
   const moving = v > .15;
   if (moving) {
     if (!AN.wasMoving) AN.moveT = 0; AN.wasMoving = true; AN.stopT = -1; AN.moveT += dt; AN.lastSpeed = v;
@@ -892,13 +897,13 @@ function stepCore() {
   P.pushing = Math.max(0, P.pushing - 1); P.pulling = Math.max(0, P.pulling - 1);
   if (pullC) {
     const r = moveX(P, P.vx, true);
-    if (r.moved) { P.pulling = 8; const r2 = moveX(pullC, r.moved, true); if (Math.abs(r2.moved) < Math.abs(r.moved) - .01) P.x -= r.moved - r2.moved; noise(.05, .03, 'lowpass', 300); }
+    if (r.moved) { P.pulling = 8; P.pushH = pullC.h; const r2 = moveX(pullC, r.moved, true); if (Math.abs(r2.moved) < Math.abs(r.moved) - .01) P.x -= r.moved - r2.moved; noise(.05, .03, 'lowpass', 300); }
   } else {
     const r = moveX(P, P.vx, P.on);
     if (r.blocked && dir) {
       const c = P.on ? adjacentCrate(dir) : null;
       if (c && !c.stuck && c.on) {
-        P.pushing = 8; const want = dir * PUSHV - r.moved;
+        P.pushing = 8; P.pushH = c.h; const want = dir * PUSHV - r.moved;
         const r2 = moveX(c, want, true); if (Math.abs(r2.moved) > .01) { moveX(P, r2.moved, true); if (Math.random() < .3) noise(.06, .04, 'lowpass', 280); }
       } else if (!P.on && P.vy > -3) tryMantle(dir);
       if (!c || c.stuck) P.vx = 0;
