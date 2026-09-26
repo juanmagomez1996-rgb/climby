@@ -1,20 +1,25 @@
 {
- "frameW": 124,
- "frameH": 200,
- "anchorX": 62.0,
- "anchorY": 196,
- "bodyH": 171,
- "bodyW": 26,
+ "frameW": 160,
+ "frameH": 160,
+ "anchorX": 80.0,
+ "anchorY": 156,
+ "bodyH": 127,
  "anims": {
   "idle": {
    "row": 0,
-   "frames": 15,
-   "fps": 8
+   "frames": 24,
+   "mode": "idle"
   },
   "walk": {
    "row": 1,
    "frames": 19,
-   "fps": 16
+   "mode": "loop"
+  },
+  "receive": {
+   "row": 2,
+   "frames": 32,
+   "mode": "hold",
+   "loopFrom": 19
   }
  }
 }

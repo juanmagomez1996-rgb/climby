@@ -26,6 +26,8 @@ for name, rose in [('brother', True), ('mother', False)]:
     fw, fh, H = atlas['frameW'], atlas['frameH'], atlas['bodyH']
     eyes = Image.new('RGBA', sheet.size, (0, 0, 0, 0)); ed = ImageDraw.Draw(eyes)
     for anim, m in atlas['anims'].items():
+        if anim in ('collapse',):
+            continue  # the eye goes out when he dies
         for f in range(m['frames']):
             x0, y0 = f * fw, m['row'] * fh
             cell = out[y0:y0 + fh, x0:x0 + fw, 3] > 80

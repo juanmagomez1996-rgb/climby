@@ -94,7 +94,7 @@ button:focus-visible,input:focus-visible{outline:1px solid #bbb;outline-offset:3
    screen tall and several screens wide, designed by hand below.
    ========================================================================= */
 const VW = 480, VH = 270, GROUND = 230;
-const GRAV = .36, JUMP = -6.0, RUN = 2.0, PUSHV = 1.0, STEP = 5;
+const GRAV = .36, JUMP = -6.0, RUN = 2.0, WALK = 1.25, PUSHV = 1.0, STEP = 5;
 const $ = s => document.querySelector(s);
 const cv = $('#game'), ctx = cv.getContext('2d');
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -494,7 +494,7 @@ function startLevel(i) {
 }
 function spawn() {
   const dream = !!L.dream, cpx = L.checkpoints[S.cp];
-  P = { x: cpx, y: 0, w: 10, h: dream ? 38 : 36, vx: 0, vy: 0, on: true, co: 0, buf: 0, face: 1, animT: 0, airT: 0, landT: 0, stepT: 0, mantle: null, pushing: 0, pulling: 0, under: 0 };
+  P = { x: cpx, y: 0, w: 10, h: dream ? 38 : 36, vx: 0, vy: 0, on: true, co: 0, buf: 0, face: 1, animT: 0, airT: 0, landT: 0, stepT: 0, mantle: null, pushing: 0, pulling: 0, under: 0, holdT: 0, holdDir: 0, idleT: 0 };
   P.y = surfaceY(cpx + 5) - P.h;
   // restore chases: if this checkpoint is inside a chase, it restarts right behind you
   chase = null;
@@ -537,20 +537,40 @@ function die(type) {
    ========================================================================= */
 function pose() {
   const sheet = L.dream ? 'mother' : 'brother', A = ATLAS[sheet]; if (!A) return null;
+  const an = A.anims;
+  // frame of an animation at time t; loops (or loops only the tail for "hold" clips) or stops at the end
+  const fr = (name, t, fps, loop = true) => {
+    const m = an[name]; if (!m) return null;
+    let f = Math.floor(t * fps);
+    if (!loop) f = Math.min(m.frames - 1, f);
+    else if (m.loopFrom !== undefined) { if (f >= m.frames) f = m.loopFrom + (f - m.frames) % (m.frames - m.loopFrom); }
+    else f %= m.frames;
+    return { sheet, anim: name, f };
+  };
   if (L.dream) {
-    if (Math.abs(P.vx) > .15) return { sheet, anim: 'walk', f: Math.floor(P.animT * 14) % A.anims.walk.frames };
-    return { sheet, anim: 'idle', f: Math.floor(P.animT * A.anims.idle.fps) % A.anims.idle.frames };
+    if (S.state === 'meet') return fr('receive', S.timer / 60, 10);
+    if (Math.abs(P.vx) > .15) return fr('walk', P.animT, 14 * Math.abs(P.vx) / 1.1);
+    return fr('idle', P.animT, 8);
   }
-  const J = A.anims.jump;
-  if (P.mantle) return { sheet, anim: 'jump', f: J.rise[0] };
+  if (S.state === 'deliver') return fr('offer', S.timer / 60, 12, false);
+  const J = an.jump;
+  if (P.mantle && an.climb) { const k = Math.min(1, P.mantle.t); return { sheet, anim: 'climb', f: Math.floor((.25 + .75 * k) * (an.climb.frames - 1)) }; }
   if (!P.on) {
+    if (P.airT > .5 && P.vy > 0 && an.fall) return fr('fall', P.airT, 12);
     const seq = P.vy < 0 ? J.rise : J.fall;
     const k = P.vy < 0 ? Math.floor((1 + P.vy / -JUMP) * seq.length) : Math.floor(P.airT * 8);
     return { sheet, anim: 'jump', f: seq[Math.max(0, Math.min(seq.length - 1, k))] };
   }
   if (P.landT > 0 && J.land.length) return { sheet, anim: 'jump', f: J.land[Math.min(J.land.length - 1, Math.floor((1 - P.landT / .16) * J.land.length))] };
-  if (Math.abs(P.vx) > .2) return { sheet, anim: 'run', f: Math.floor(P.animT * A.anims.run.fps * Math.max(.5, Math.abs(P.vx) / RUN)) % A.anims.run.frames };
-  return { sheet, anim: 'idle', f: Math.floor(P.animT * A.anims.idle.fps) % A.anims.idle.frames };
+  if (P.pushing > 0 && an.push) return fr('push', P.animT, 11);
+  if (P.pulling > 0 && an.pull) return fr('pull', P.animT, 11);
+  const v = Math.abs(P.vx);
+  if (v > .2) return v > 1.55 ? fr('run', P.animT, 16 * v / RUN) : fr('walk', P.animT, 12 * Math.max(.6, v / WALK));
+  // standing still: sad breathing, now and then a look back, and after a while he kneels to cry
+  if (P.idleT > 16 && an.kneel) return fr('kneel', P.idleT - 16, 9);
+  const cyc = P.idleT % 9, lookLen = an.look ? an.look.frames / 10 : 0;
+  if (P.idleT > 5 && an.look && cyc > 5 && cyc < 5 + lookLen) return fr('look', cyc - 5, 10, false);
+  return fr('idle', P.animT, 8);
 }
 function adjacentCrate(side) { // crate touching the player's side (side = ±1)
   for (const c of L.crates) {
@@ -609,8 +629,8 @@ function step() {
       if (tipY >= g) { s.state = 'down'; s.y = g - s.len - 14 + 10; S.shake = Math.max(S.shake, 3); SFX.crush(); }
     }
   }
-  if (S.state === 'deliver') { S.timer++; if (chase) chase.x -= 5; if (S.timer > 90) { S.roses++; goalCard(); } return; }
-  if (S.state === 'meet') { S.timer++; P.animT += dt; if (S.timer > 60) endCard(); return; }
+  if (S.state === 'deliver') { S.timer++; if (chase) chase.x -= 5; if (S.timer > 170) { S.roses++; goalCard(); } return; }
+  if (S.state === 'meet') { S.timer++; P.animT += dt; if (S.timer > 150) endCard(); return; }
   if (S.state === 'dead') {
     const d = S.dead; d.t += dt;
     if (d.type === 'drown') d.y += .25;
@@ -635,12 +655,16 @@ function step() {
   // levers
   if (K.g && !gPrev) for (const lv of L.levers) if (Math.abs(P.x + P.w / 2 - lv.x) < 16 && Math.abs(P.y + P.h - lv.y) < 8) { lv.on = !lv.on || !!lv.timed; lv.left = lv.timed || 0; SFX.lever(); }
   gPrev = K.g;
-  let maxv = L.dream ? 1.1 : RUN;
+  if (dir && dir === P.holdDir) P.holdT += dt; else { P.holdT = 0; P.holdDir = dir; }
+  if (dir || K.j || !P.on) P.idleT = 0; else P.idleT += dt;
+  const chasing = chase && chase.started && !chase.done;
+  let maxv = L.dream ? 1.1 : !P.on || chasing ? RUN : P.holdT < .45 ? WALK : Math.min(RUN, WALK + (P.holdT - .45) * 2.2);
+  if (!L.dream && P.on && !chasing && P.x > L.goalX - 170) maxv = Math.min(maxv, WALK);
   const pullC = grab && dir ? adjacentCrate(-dir) : null;
   if (pullC || P.pushing > 0) maxv = PUSHV;
   if (inWater) maxv = .8;
   const acc = P.on ? .32 : .22;
-  if (dir) { P.vx += dir * acc; if (!pullC) P.face = dir; else P.face = -dir; } else if (P.on) P.vx *= .68; else P.vx *= .96;
+  if (dir) { P.vx += dir * acc; P.face = dir; } else if (P.on) P.vx *= .68; else P.vx *= .96;
   if (Math.abs(P.vx) < .04) P.vx = 0;
   P.vx = Math.max(-maxv, Math.min(maxv, P.vx));
   if (K.j && !jPrev && !L.dream) P.buf = 7;
@@ -653,10 +677,10 @@ function step() {
 
   // horizontal: walking, pushing, pulling, climbing ledges
   const wasOn = P.on;
-  P.pushing = Math.max(0, P.pushing - 1);
+  P.pushing = Math.max(0, P.pushing - 1); P.pulling = Math.max(0, P.pulling - 1);
   if (pullC) {
     const r = moveX(P, P.vx, true);
-    if (r.moved) { const r2 = moveX(pullC, r.moved, true); if (Math.abs(r2.moved) < Math.abs(r.moved) - .01) P.x -= r.moved - r2.moved; noise(.05, .03, 'lowpass', 300); }
+    if (r.moved) { P.pulling = 8; const r2 = moveX(pullC, r.moved, true); if (Math.abs(r2.moved) < Math.abs(r.moved) - .01) P.x -= r.moved - r2.moved; noise(.05, .03, 'lowpass', 300); }
   } else {
     const r = moveX(P, P.vx, P.on);
     if (r.blocked && dir) {
@@ -694,7 +718,7 @@ function step() {
   // checkpoints, whispers, goal
   for (let i = S.cp + 1; i < L.checkpoints.length; i++) if (P.x > L.checkpoints[i]) S.cp = i;
   L.says.forEach(([x, who, text], i) => { if (!S.said.has(i) && P.x > x) { S.said.add(i); toast(who, text); } });
-  if (!L.dream && P.x > L.goalX - 8 && P.on) { S.state = 'deliver'; S.delivered = true; S.timer = 0; P.vx = 0; P.face = 1; S.from = { x: P.x + 8, y: P.y + 16 }; SFX.chord(); }
+  if (!L.dream && P.x > L.goalX - 8 && P.on) { S.state = 'deliver'; S.delivered = true; S.timer = 0; P.vx = 0; P.face = 1; S.from = { x: P.x + 16, y: P.y + 14 }; SFX.chord(); }
   if (L.dream && P.x > L.goalX - 26) { S.state = 'meet'; S.timer = 0; P.vx = 0; }
   camFollow();
 }
@@ -799,6 +823,8 @@ function drawSprite(c, sheet, anim, frame, x, base, face, rot = 0, alpha = 1) {
   const A = ATLAS[sheet], im = IMG[sheet]; if (!A || !im) return;
   const m = A.anims[anim], s = (sheet === 'mother' ? 43 : 40) / A.bodyH, f = Math.max(0, Math.min(m.frames - 1, frame | 0));
   c.save(); c.globalAlpha = alpha; c.translate(x, base); if (rot) c.rotate(rot); c.scale(face * s, s);
+  // faint rim light so a black figure still reads in front of black shapes
+  c.shadowColor = 'rgba(205,205,200,.55)'; c.shadowBlur = 7 * (cv.width / VW) / 2;
   c.drawImage(im, f * A.frameW, m.row * A.frameH, A.frameW, A.frameH, -A.anchorX, -A.anchorY, A.frameW, A.frameH);
   c.restore();
 }
@@ -857,26 +883,25 @@ function render() {
   if (L.dream) {
     const gy = surfaceY(L.goalX), g = c.createRadialGradient(L.goalX, gy - 30, 4, L.goalX, gy - 30, 120);
     g.addColorStop(0, 'rgba(255,255,250,.55)'); g.addColorStop(1, 'rgba(255,255,250,0)'); c.fillStyle = g; c.fillRect(L.goalX - 120, gy - 150, 240, 170);
-    const A = ATLAS.brother; drawSprite(c, 'brother', 'idle', Math.floor(t * 8) % (A ? A.anims.idle.frames : 1), L.goalX, gy, -1);
+    const A = ATLAS.brother; if (A) { if (S.state === 'meet') drawSprite(c, 'brother', 'offer', Math.min(A.anims.offer.frames - 1, Math.floor(S.timer / 60 * 12)), L.goalX, gy, -1); else drawSprite(c, 'brother', 'idle', Math.floor(t * 8) % A.anims.idle.frames, L.goalX, gy, -1); }
   }
   // the boy (or his body)
   const d = S.dead;
   if (d) {
     const base = (d.type === 'fall' ? d.y : d.y) + P.h, cx = d.x + P.w / 2, A = ATLAS.brother;
     if (A && !L.dream) {
-      const k = Math.min(1, d.t / .25), J = A.anims.jump;
-      if (d.type === 'trap') drawSprite(c, 'brother', 'jump', J.land[0], cx, base, d.face, -d.face * 1.45 * Math.min(1, Math.max(0, d.t - .15) / .25));
-      else if (d.type === 'crush') drawSprite(c, 'brother', 'jump', J.land[0], cx, base, d.face, -d.face * 1.5 * k);
-      else if (d.type === 'drown') drawSprite(c, 'brother', 'jump', J.fall[0], cx, base, d.face, .3, Math.max(0, 1 - d.t / 1.6));
-      else if (d.type === 'shadow') drawSprite(c, 'brother', 'jump', J.fall[0], cx, base - Math.min(20, d.t * 30), d.face, -.4 * k, Math.max(0, 1 - d.t / 1.2));
-      else drawSprite(c, 'brother', 'jump', J.fall[0], cx, base, d.face);
-      if (d.type === 'trap' || d.type === 'crush') { const tr = IMG.trapShut; if (d.type === 'trap' && tr) c.drawImage(tr, cx - 14, base - 12, 28, 12); rose(c, cx + d.face * 16, base - 1.5, 2.4); }
+      const an = A.anims, col = Math.min(an.collapse.frames - 1, Math.floor(d.t * 16)), fl = Math.floor(d.t * 12) % an.fall.frames;
+      if (d.type === 'drown') drawSprite(c, 'brother', 'fall', fl, cx, base, d.face, .25, Math.max(0, 1 - d.t / 1.6));
+      else if (d.type === 'fall') drawSprite(c, 'brother', 'fall', fl, cx, base, d.face);
+      else if (d.type === 'shadow') drawSprite(c, 'brother', 'collapse', col, cx, base, d.face, 0, Math.max(0, 1 - d.t / 1.4));
+      else drawSprite(c, 'brother', 'collapse', col, cx, base, d.face);
+      if (d.type === 'trap') { const tr = IMG.trapShut; if (tr) c.drawImage(tr, cx - 14, base - 12, 28, 12); }
     }
   } else if (S.state !== 'card' || P) {
     const p = pose(); if (p) drawSprite(c, p.sheet, p.anim, p.f, P.x + P.w / 2, P.y + P.h, P.face);
   }
-  if (S.state === 'deliver' && S.sill) {
-    const k = Math.min(1, S.timer / 60), e = k * k * (3 - 2 * k), tx = S.sill.x + 1 + S.roses * 6, ty = S.sill.y - 6;
+  if (S.state === 'deliver' && S.sill && S.timer > 70) {
+    const k = Math.max(0, Math.min(1, (S.timer - 70) / 60)), e = k * k * (3 - 2 * k), tx = S.sill.x + 1 + S.roses * 6, ty = S.sill.y - 6;
     const x = S.from.x + (tx - S.from.x) * e, y = S.from.y + (ty - S.from.y) * e - Math.sin(e * Math.PI) * 30;
     rose(c, x, y, 2.2 + (1 - e));
   }
