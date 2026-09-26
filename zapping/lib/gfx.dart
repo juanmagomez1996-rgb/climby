@@ -4,6 +4,8 @@ import 'dart:ui' as ui;
 import 'package:flame/cache.dart';
 import 'package:flutter/painting.dart';
 
+import 'font_data.dart';
+
 final rng = math.Random();
 double rnd(double a, double b) => a + rng.nextDouble() * (b - a);
 int rndi(int a, int b) => a + rng.nextInt(b - a + 1);
@@ -82,6 +84,10 @@ const spriteNames = [
   'bg_dojo', 'bg_fair', 'bg_desk', 'bg_karaoke', 'bg_night', 'bg_bakery',
   'bg_bedroom', 'bg_lab', 'bg_garden', 'bg_sushi', 'bg_circus', 'bg_space',
   'bg_disco', 'bg_club', 'bg_vault', 'bg_bathroom', 'bg_ranch', 'bg_pingpong',
+  // interfaz de plastilina
+  'font', 'bar_track', 'bar_gold', 'bar_pink', 'life_off', 'mark_ok', 'mark_no',
+  'ico_pause', 'ico_sound', 'ico_mute', 'ico_vibe', 'ico_novibe', 'ico_help',
+  'panel_dark', 'panel_cream', 'note',
 ];
 
 class Gfx {
@@ -164,47 +170,73 @@ class Gfx {
     return im == null ? 1 : im.width / im.height;
   }
 
-  // ---------- Texto ----------
-  static final Map<String, (TextPainter, TextPainter?)> _tc = {};
+  // ---------- Texto: fuente de plastilina hecha de sprites ----------
+  /// Reloj del temblor de las letras (lo avanza el juego; los overlays pasan el suyo).
+  static double time = 0;
 
-  static (TextPainter, TextPainter?) _painters(String s, double size, Color col,
-      String font, double? maxW, bool outline, TextAlign align) {
-    final key = '$s|$size|${col.toARGB32()}|$font|$maxW|$outline|$align';
-    final hit = _tc[key];
-    if (hit != null) return hit;
-    if (_tc.length > 400) _tc.clear();
-    TextPainter mk(Paint? fg, Color? color) {
-      final tp = TextPainter(
-        text: TextSpan(
-          text: s,
-          style: TextStyle(
-            fontFamily: font,
-            fontSize: size,
-            height: 1.1,
-            color: fg == null ? color : null,
-            foreground: fg,
-          ),
-        ),
-        textAlign: align,
-        textDirection: TextDirection.ltr,
-      )..layout(maxWidth: maxW ?? double.infinity);
-      return tp;
-    }
+  static const _subst = {'…': '...', '·': '-', '×': 'X', 'Ü': 'U', '"': '', '(': '', ')': '', "'": '', '’': ''};
 
-    final fill = mk(null, col);
-    final stroke = outline
-        ? mk(
-            Paint()
-              ..style = PaintingStyle.stroke
-              ..strokeWidth = size * 0.16
-              ..strokeJoin = StrokeJoin.round
-              ..color = Pal.dark,
-            null)
-        : null;
-    return _tc[key] = (fill, stroke);
+  static String _norm(String s) {
+    var u = s.toUpperCase();
+    _subst.forEach((k, v) => u = u.replaceAll(k, v));
+    return u;
   }
 
-  /// Texto con contorno oscuro. [align]: 0 izq, .5 centro, 1 der. y = centro vertical.
+  /// Escala del atlas para un tamaño de letra (la mayúscula mide un 72 % del tamaño; mínimo legible 18).
+  static double _k(double size) => math.max(size, 18) * .72 / kFontCap;
+  static const _overlap = .12; // las letras se montan un poco, como plastilina pegada
+
+  static double _adv(String ch, double k) {
+    if (ch == ' ') return kFontCap * .36 * k;
+    final g = kFontGlyphs[ch];
+    return ((g?.$3 ?? kFontCap * .5) - kFontCap * _overlap) * k;
+  }
+
+  static double _lineW(String line, double k) {
+    if (line.isEmpty) return 0;
+    var w = 0.0;
+    for (final r in line.runes) {
+      w += _adv(String.fromCharCode(r), k);
+    }
+    return w + kFontCap * _overlap * k;
+  }
+
+  static List<String> _wrap(String s, double k, double? maxW) {
+    final out = <String>[];
+    for (final para in s.split('\n')) {
+      if (maxW == null) {
+        out.add(para);
+        continue;
+      }
+      var cur = '';
+      for (final w in para.split(' ')) {
+        final t = cur.isEmpty ? w : '$cur $w';
+        if (_lineW(t, k) > maxW && cur.isNotEmpty) {
+          out.add(cur);
+          cur = w;
+        } else {
+          cur = t;
+        }
+      }
+      out.add(cur);
+    }
+    return out;
+  }
+
+  /// Tamaño que ocupará un texto (sin aplicar fitW/fitH).
+  static Size measure(String s, double size, {double? maxW}) {
+    final k = _k(size);
+    final lines = _wrap(_norm(s), k, maxW);
+    final lh = kFontCap * k * 1.45;
+    var w = 0.0;
+    for (final l in lines) {
+      w = math.max(w, _lineW(l, k));
+    }
+    return Size(w, lines.length * lh);
+  }
+
+  /// Texto con letras de plastilina que tiemblan un poco a 12 fps.
+  /// [align]: 0 izquierda, .5 centro, 1 derecha. [y] = centro vertical del bloque.
   static void text(Canvas c, String s, double x, double y, double size,
       {Color color = Pal.ink,
       String font = kDisplay,
@@ -215,30 +247,59 @@ class Gfx {
       double rot = 0,
       double alpha = 1,
       double? fitW,
-      double? fitH}) {
-    final ta = align == .5
-        ? TextAlign.center
-        : (align < .5 ? TextAlign.left : TextAlign.right);
-    final (fill, stroke) = _painters(s, size, color, font, maxW, outline, ta);
-    final w = fill.width, h = fill.height;
-    // Encoge (nunca agranda) para que quepa en fitW x fitH.
-    var k = scale;
-    if (fitW != null && w * k > fitW) k = fitW / w;
-    if (fitH != null && h * k > fitH) k = fitH / h;
+      double? fitH,
+      double? t}) {
+    final atlas = img['font'];
+    if (atlas == null) return;
+    final str = _norm(s);
+    final k = _k(size);
+    final lines = _wrap(str, k, maxW);
+    final lh = kFontCap * k * 1.45;
+    var w = 0.0;
+    for (final l in lines) {
+      w = math.max(w, _lineW(l, k));
+    }
+    final h = lines.length * lh;
+    var sc = scale;
+    if (fitW != null && w * sc > fitW) sc = fitW / w;
+    if (fitH != null && h * sc > fitH) sc = math.min(sc, fitH / h);
+    final tt = t ?? time;
+    final paint = Paint()
+      ..filterQuality = FilterQuality.medium
+      ..color = Color.fromRGBO(255, 255, 255, alpha.clamp(0, 1));
+    if (color != Pal.ink) paint.colorFilter = ColorFilter.mode(color, BlendMode.modulate);
     c.save();
     c.translate(x, y);
     if (rot != 0) c.rotate(rot);
-    if (k != 1) c.scale(k);
-    final o = Offset(-w * align, -h / 2);
-    if (alpha < 1) {
-      c.saveLayer(null, Paint()..color = Color.fromRGBO(0, 0, 0, alpha.clamp(0, 1)));
+    if (sc != 1) c.scale(sc);
+    final seed0 = (s.hashCode % 97).toDouble();
+    for (var i = 0; i < lines.length; i++) {
+      final line = lines[i];
+      final lw = _lineW(line, k);
+      var gx = -w * align + (w - lw) * align;
+      // centro de la mayúscula de esta línea
+      final cy = -h / 2 + i * lh + lh / 2;
+      final top = cy - (kFontBase - kFontCap / 2) * k;
+      var j = 0;
+      for (final r in line.runes) {
+        final ch = String.fromCharCode(r);
+        final g = kFontGlyphs[ch];
+        if (g != null) {
+          final gw = g.$3 * k, gh = kFontLineH * k;
+          final seed = seed0 + i * 31 + j * 7.0;
+          final dy = boil(tt, seed) * kFontCap * k * .035;
+          final gr = boil(tt, seed + 13) * .045;
+          c.save();
+          c.translate(gx + gw / 2, top + gh / 2 + dy);
+          c.rotate(gr);
+          c.drawImageRect(atlas, Rect.fromLTWH(g.$1, g.$2, g.$3, kFontLineH),
+              Rect.fromLTWH(-gw / 2, -gh / 2, gw, gh), paint);
+          c.restore();
+        }
+        gx += _adv(ch, k);
+        j++;
+      }
     }
-    if (stroke != null) {
-      stroke.paint(c, o + const Offset(0, 2));
-      stroke.paint(c, o);
-    }
-    fill.paint(c, o);
-    if (alpha < 1) c.restore();
     c.restore();
   }
 
@@ -266,29 +327,47 @@ class Gfx {
               [light, col, dark], [0, .45, 1]));
   }
 
-  /// Barra tipo "churro" de plastilina.
-  static void clayBar(Canvas c, Rect r, double f, Color col) {
-    final rr = RRect.fromRectAndRadius(r, Radius.circular(r.height / 2));
-    c.drawRRect(rr.shift(const Offset(0, 3)), Paint()..color = const Color(0x66000000));
-    c.drawRRect(rr, Paint()..color = const Color(0xFF241A33));
-    if (f > 0) {
-      final fr = Rect.fromLTWH(r.left, r.top, math.max(r.height, r.width * clamp01(f)), r.height);
-      final hsl = HSLColor.fromColor(col);
-      c.drawRRect(
-          RRect.fromRectAndRadius(fr, Radius.circular(r.height / 2)),
-          Paint()
-            ..shader = ui.Gradient.linear(fr.topLeft, fr.bottomLeft, [
-              hsl.withLightness((hsl.lightness + .18).clamp(0, 1)).toColor(),
-              col,
-              hsl.withLightness((hsl.lightness - .2).clamp(0, 1)).toColor(),
-            ], [0, .45, 1]));
+  /// Dibuja [im] estirado en [dst] conservando los extremos redondeados (3 trozos en horizontal).
+  static void _hslice(Canvas c, ui.Image im, Rect dst, Paint p) {
+    final iw = im.width.toDouble(), ih = im.height.toDouble();
+    final cap = ih * .55;
+    final s = dst.height / ih;
+    final dc = math.min(cap * s, dst.width / 2);
+    final sc = dc / s;
+    c.drawImageRect(im, Rect.fromLTWH(0, 0, sc, ih), Rect.fromLTWH(dst.left, dst.top, dc, dst.height), p);
+    c.drawImageRect(im, Rect.fromLTWH(sc, 0, iw - 2 * sc, ih),
+        Rect.fromLTWH(dst.left + dc, dst.top, math.max(0, dst.width - 2 * dc), dst.height), p);
+    c.drawImageRect(im, Rect.fromLTWH(iw - sc, 0, sc, ih), Rect.fromLTWH(dst.right - dc, dst.top, dc, dst.height), p);
+  }
+
+  /// Dibuja un sprite estirado en [dst] sin deformar las esquinas (9 trozos); [corner] en fracción del alto de la imagen.
+  static void nine(Canvas c, String name, Rect dst, {double corner = .3, Paint? paint}) {
+    final im = img[name]!;
+    final p = paint ?? _p;
+    final iw = im.width.toDouble(), ih = im.height.toDouble();
+    final cs = ih * corner;
+    final cd = math.min(math.min(dst.width, dst.height) / 2, math.min(cs, dst.height * corner * 1.2));
+    final xs = [0.0, cs, iw - cs, iw], ys = [0.0, cs, ih - cs, ih];
+    final xd = [dst.left, dst.left + cd, dst.right - cd, dst.right];
+    final yd = [dst.top, dst.top + cd, dst.bottom - cd, dst.bottom];
+    for (var i = 0; i < 3; i++) {
+      for (var j = 0; j < 3; j++) {
+        final d = Rect.fromLTRB(xd[i], yd[j], xd[i + 1], yd[j + 1]);
+        if (d.width <= 0 || d.height <= 0) continue;
+        c.drawImageRect(im, Rect.fromLTRB(xs[i], ys[j], xs[i + 1], ys[j + 1]), d, p);
+      }
     }
-    c.drawRRect(
-        rr,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 3
-          ..color = Pal.dark);
+  }
+
+  /// Barra de plastilina: carril morado y relleno de "churro" dorado o rosa (o teñido).
+  static void clayBar(Canvas c, Rect r, double f, Color col) {
+    _hslice(c, img['bar_track']!, r.inflate(r.height * .35), _p..color = const Color(0xFFFFFFFF));
+    if (f <= 0) return;
+    final fw = math.max(r.height * 1.2, r.width * clamp01(f));
+    final pink = col == Pal.pink;
+    final p = Paint()..filterQuality = FilterQuality.medium;
+    if (!pink && col != Pal.gold) p.colorFilter = ColorFilter.mode(col, BlendMode.modulate);
+    _hslice(c, img[pink ? 'bar_pink' : 'bar_gold']!, Rect.fromLTWH(r.left, r.top, fw, r.height), p);
   }
 
   /// Botón de plastilina dibujado en el lienzo, con el texto ajustado a su cara plana.
@@ -302,63 +381,32 @@ class Gfx {
         scale: scale, fitW: face.width * scale, fitH: face.height * scale);
   }
 
+  /// Placa de plastilina: morada oscura o crema (teñida con [col] si es clara).
   static void clayPanel(Canvas c, Rect r, Color col, {double radius = 18}) {
-    final rr = RRect.fromRectAndRadius(r, Radius.circular(radius));
-    c.drawRRect(rr.shift(const Offset(0, 5)), Paint()..color = const Color(0x77000000));
-    final hsl = HSLColor.fromColor(col);
-    c.drawRRect(
-        rr,
-        Paint()
-          ..shader = ui.Gradient.linear(r.topCenter, r.bottomCenter, [
-            hsl.withLightness((hsl.lightness + .08).clamp(0, 1)).toColor(),
-            hsl.withLightness((hsl.lightness - .08).clamp(0, 1)).toColor(),
-          ]));
-    c.drawRRect(
-        rr,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 3
-          ..color = const Color(0x55000000));
-  }
-
-  /// Visto bueno / cruz gruesos de plastilina.
-  static void mark(Canvas c, bool ok, double x, double y, double s) {
-    final path = Path();
-    if (ok) {
-      path
-        ..moveTo(x - s * .45, y)
-        ..lineTo(x - s * .12, y + s * .32)
-        ..lineTo(x + s * .5, y - s * .38);
-    } else {
-      path
-        ..moveTo(x - s * .38, y - s * .38)
-        ..lineTo(x + s * .38, y + s * .38)
-        ..moveTo(x + s * .38, y - s * .38)
-        ..lineTo(x - s * .38, y + s * .38);
+    final light = HSLColor.fromColor(col).lightness > .45;
+    final p = Paint()
+      ..filterQuality = FilterQuality.medium
+      ..color = Color.fromRGBO(255, 255, 255, col.a);
+    if (light && col.toARGB32() != 0xFFF7F1E3) {
+      p.colorFilter = ColorFilter.mode(col.withValues(alpha: 1), BlendMode.modulate);
     }
-    Paint st(double w, Color col) => Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = w
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..color = col;
-    c.drawPath(path.shift(const Offset(0, 6)), st(s * .26, const Color(0x88000000)));
-    c.drawPath(path, st(s * .26, Pal.dark));
-    c.drawPath(path, st(s * .18, ok ? Pal.lime : Pal.pink));
-    c.drawPath(path.shift(Offset(-s * .02, -s * .03)),
-        st(s * .05, const Color(0x66FFFFFF)));
+    nine(c, light ? 'panel_cream' : 'panel_dark', r, corner: .32, paint: p);
   }
 
+  /// Visto bueno / cruz de plastilina.
+  static void mark(Canvas c, bool ok, double x, double y, double s) {
+    sprite(c, ok ? 'mark_ok' : 'mark_no', x, y, s * .95, rot: boil(time, ok ? 3 : 4) * .04);
+  }
+
+  /// Nota musical de plastilina (x,y = cabeza de la nota).
   static void note(Canvas c, double x, double y, double s, Color col) {
-    final p = Paint()..color = col;
-    final o = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3
-      ..color = Pal.dark;
-    c.drawRect(Rect.fromLTWH(x + s * .22, y - s * .9, s * .12, s * .9), p);
-    c.drawRect(Rect.fromLTWH(x + s * .22, y - s * .9, s * .12, s * .9), o);
-    c.drawOval(Rect.fromCenter(center: Offset(x, y), width: s * .6, height: s * .45), p);
-    c.drawOval(Rect.fromCenter(center: Offset(x, y), width: s * .6, height: s * .45), o);
+    final im = img['note']!;
+    final h = s * 1.15, w = h * im.width / im.height;
+    final p = Paint()
+      ..filterQuality = FilterQuality.medium
+      ..colorFilter = ColorFilter.mode(col, BlendMode.modulate);
+    c.drawImageRect(im, Rect.fromLTWH(0, 0, im.width.toDouble(), im.height.toDouble()),
+        Rect.fromLTWH(x - w * .35, y - h * .82, w, h), p);
   }
 }
 

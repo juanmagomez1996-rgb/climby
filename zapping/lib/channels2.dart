@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'channels.dart';
+import 'game.dart';
 import 'gfx.dart';
 import 'sfx.dart';
 
@@ -1452,7 +1453,7 @@ class WashMonster extends Channel {
     }
     // la parte delantera de la bañera tapa al monstruo: vuelve a pintar ese trozo del decorado
     c.save();
-    c.clipRect(Rect.fromLTRB(S.left - 6, by(.665), S.right + 6, S.bottom + 6));
+    c.clipRect(Rect.fromLTRB(ZappingGame.bleed.left, by(.665), ZappingGame.bleed.right, ZappingGame.bleed.bottom));
     drawBg(c);
     c.restore();
     if (p.down && res == 0) Gfx.sprite(c, 'sponge', p.x, p.y, 62, rot: math.sin(vt * 20) * .15);

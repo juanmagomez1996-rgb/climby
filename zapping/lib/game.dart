@@ -34,7 +34,9 @@ class ZappingGame extends FlameGame {
   static const double W = 540, H = 960;
   static const Rect tvRect = Rect.fromLTWH(5, 48, 530, 710);
   static const Rect screen = Rect.fromLTWH(59, 108, 421, 460);
-  static final RRect screenClip = RRect.fromRectAndRadius(screen.inflate(3), const Radius.circular(44));
+  /// Zona que se pinta por debajo del marco: más grande que el hueco de la tele para que
+  /// nunca quede una rendija en las esquinas (el marco opaco tapa lo que sobra).
+  static final Rect bleed = screen.inflate(14);
   static const Offset pauseBtn = Offset(506, 24);
 
   /// Solo para capturas: `--dart-define=TOUR=true` recorre los canales en orden sin perder vidas.
@@ -231,6 +233,7 @@ class ZappingGame extends FlameGame {
     super.update(dt);
     dt = math.min(dt, 1 / 20);
     time += dt;
+    Gfx.time = time;
     fx.update(dt);
     if (mode == Mode.playing) {
       phaseT += dt;
@@ -281,7 +284,7 @@ class ZappingGame extends FlameGame {
     final sh = fx.shakeOffset;
     canvas.translate(sh.dx, sh.dy);
     canvas.save();
-    canvas.clipRRect(screenClip);
+    canvas.clipRect(bleed);
     _screen(canvas);
     _crt(canvas);
     canvas.restore();
@@ -298,13 +301,10 @@ class ZappingGame extends FlameGame {
     final live = mode == Mode.playing || mode == Mode.paused;
     final on = (time * 2).floor().isEven;
     Gfx.clayBall(c, 40, 24, 8, live && on ? Pal.pink : const Color(0xFF6A5A7A));
-    Gfx.text(c, live ? 'EN EMISIÓN' : 'ZAPPING INFINITO', 56, 24, 17,
+    Gfx.text(c, live ? 'EN EMISIÓN' : 'ZAPPING INFINITO', 56, 24, 21,
         align: 0, color: live ? Pal.ink : Pal.dim);
     if (mode == Mode.playing) {
-      Gfx.clayBall(c, pauseBtn.dx, pauseBtn.dy, 20, const Color(0xFF4A3B60));
-      final p = Paint()..color = Pal.ink;
-      c.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(pauseBtn.dx - 8, pauseBtn.dy - 9, 5, 18), const Radius.circular(2)), p);
-      c.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(pauseBtn.dx + 3, pauseBtn.dy - 9, 5, 18), const Radius.circular(2)), p);
+      Gfx.sprite(c, 'ico_pause', pauseBtn.dx, pauseBtn.dy, 44, rot: boil(time, 9) * .03);
     }
   }
 
@@ -312,7 +312,7 @@ class ZappingGame extends FlameGame {
     final S = screen;
     if (mode == Mode.menu || mode == Mode.loading) {
       // Modo demostración: Tito presentando, con cortes de estática.
-      Gfx.cover(c, 'bg_screw', S.inflate(6));
+      Gfx.cover(c, 'bg_screw', bleed);
       Gfx.sprite(c, 'host_body', S.center.dx, S.bottom + 12, 230, ay: 1);
       Gfx.anim(c, 'host_head', time, S.center.dx, S.bottom - 247, 150, rot: math.sin(time * 1.3) * .08);
       if ((time % 6) > 5.6) _noise(c, 1);
@@ -334,7 +334,7 @@ class ZappingGame extends FlameGame {
           scale: k, rot: math.sin(ch.t * 30) * .04, maxW: S.width - 30);
     }
     if (phase == Phase.result) {
-      c.drawRect(S, Paint()..color = ok ? const Color(0x3353D8C3) : const Color(0x44FF5C7A));
+      c.drawRect(bleed, Paint()..color = ok ? const Color(0x3353D8C3) : const Color(0x44FF5C7A));
       final pop = 1 + math.max(0.0, .15 - phaseT) * 3;
       Gfx.mark(c, ok, S.center.dx, S.center.dy + 30, 150 * pop);
     }
@@ -345,7 +345,7 @@ class ZappingGame extends FlameGame {
     c.drawImageRect(
         im,
         Rect.fromLTWH(0, 0, im.width.toDouble(), im.height.toDouble()),
-        screen.inflate(6),
+        bleed,
         Paint()
           ..filterQuality = FilterQuality.none
           ..color = Color.fromRGBO(255, 255, 255, alpha));
@@ -369,7 +369,7 @@ class ZappingGame extends FlameGame {
     Gfx.text(c, chn.name, S.center.dx, panel.top + 104, 25, color: Pal.gold, maxW: panel.width - 30);
     Gfx.text(c, chn.sub, S.center.dx, panel.top + 170, 21,
         font: kBody, color: Pal.ink, maxW: panel.width - 30, outline: false);
-    Gfx.text(c, chn.hint, S.center.dx, panel.bottom - 34, 18,
+    Gfx.text(c, chn.hint, S.center.dx, panel.bottom - 48, 18,
         font: kBody, color: Pal.teal, maxW: panel.width - 30, outline: false);
     c.restore();
   }
@@ -377,11 +377,11 @@ class ZappingGame extends FlameGame {
   void _crt(Canvas c) {
     final S = screen;
     final lines = Paint()..color = const Color(0x1A000000);
-    for (var y = S.top; y < S.bottom; y += 4) {
-      c.drawRect(Rect.fromLTWH(S.left, y, S.width, 2), lines);
+    for (var y = bleed.top; y < bleed.bottom; y += 4) {
+      c.drawRect(Rect.fromLTWH(bleed.left, y, bleed.width, 2), lines);
     }
     c.drawRect(
-        S.inflate(6),
+        bleed,
         Paint()
           ..shader = ui.Gradient.radial(S.center, S.height * .78,
               [const Color(0x00000000), const Color(0x00000000), const Color(0x99000000)], [0, .55, 1]));
@@ -406,21 +406,21 @@ class ZappingGame extends FlameGame {
       }
     }
     if (mode == Mode.menu) return;
-    Gfx.text(c, 'VIDAS', 36, 822, 15, font: kBody, align: 0, color: Pal.dim);
+    Gfx.text(c, 'VIDAS', 36, 822, 19, align: 0);
     for (var i = 0; i < 4; i++) {
       final on = i < lives;
       final x = 62.0 + i * 62, y = 870.0;
-      Gfx.sprite(c, 'life', x, y + (on ? boil(time, i.toDouble()) * 1.5 : 0), 56,
-          alpha: on ? 1 : .22, rot: on ? math.sin(time * 2 + i) * .06 : 0);
-      if (!on) Gfx.mark(c, false, x, y, 30);
+      if (on) {
+        Gfx.sprite(c, 'life', x, y + boil(time, i.toDouble()) * 1.5, 56, rot: math.sin(time * 2 + i) * .06);
+      } else {
+        Gfx.sprite(c, 'life_off', x, y + 2, 58, rot: -.12 + boil(time, i + 20.0) * .02);
+      }
     }
-    Gfx.text(c, 'CANALES', 504, 822, 15, font: kBody, align: 1, color: Pal.dim);
+    Gfx.text(c, 'CANALES', 504, 822, 19, align: 1);
     Gfx.text(c, '$score', 504, 868, 50, align: 1, color: Pal.gold);
-    Gfx.text(c, 'Récord ${math.max(Prefs.best, score)}', 504, 918, 15,
-        font: kBody, align: 1, color: Pal.dim, outline: false);
+    Gfx.text(c, 'Récord ${math.max(Prefs.best, score)}', 504, 920, 18, align: 1, color: Pal.teal);
     if (level > 0) {
-      Gfx.text(c, 'VELOCIDAD x${speed.toStringAsFixed(2)}', 36, 918, 15,
-          font: kBody, align: 0, color: Pal.lime, outline: false);
+      Gfx.text(c, 'VELOCIDAD x${speed.toStringAsFixed(2)}', 36, 920, 18, align: 0, color: Pal.lime);
     }
   }
 }

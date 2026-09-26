@@ -59,6 +59,16 @@ Para ver todos los canales en orden sin perder vidas (útil para capturas):
 - **Estados de reacción** (gana/pierde) generados con el personaje como referencia y recortados con la misma
   caja que su versión base (o que su animación), para que al cambiar de estado no se mueva de sitio.
 - **Botones**: el texto solo ocupa la cara plana de la plastilina (`kButtonFace`) y se encoge hasta caber.
+- **Pantalla**: el contenido se pinta en `ZappingGame.bleed`, algo más grande que el hueco de la tele; el marco
+  opaco tapa lo que sobra, así nunca queda una rendija en las esquinas.
+
+## Letras e interfaz de plastilina
+
+Todo el texto (juego, HUD y menús) usa una fuente hecha de sprites: `assets/images/font.webp` con sus
+métricas en `lib/font_data.dart` (A–Z, Ñ, vocales con tilde, 0–9 y signos). `Gfx.text` coloca cada letra
+con un pequeño temblor de stop-motion a 12 fps y la tiñe del color pedido; en Flutter se usa `ClayText`.
+También son sprites las barras (`bar_*`), las placas (`panel_*`, estiradas en 9 trozos), las marcas de acierto
+y fallo, la vida perdida, la nota musical y los iconos redondos (`ico_*`).
 
 ## Publicar en Google Play
 

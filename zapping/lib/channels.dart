@@ -56,12 +56,13 @@ abstract class Channel {
   void update(double dt);
   void render(Canvas c);
 
-  void drawBg(Canvas c) => Gfx.cover(c, bg, S.inflate(6));
+  void drawBg(Canvas c) => Gfx.cover(c, bg, ZappingGame.bleed);
 
   /// Convierte una fracción del fondo (imagen 4:5 recortada para cubrir la tele) a coordenadas de pantalla.
   /// Sirve para apoyar personajes justo en el suelo o la mesa que se ve en el decorado.
-  double bx(double f) => sl - 6 + f * 433;
-  double by(double f) => st - 40.6 + f * 541.25;
+  // El decorado (720x900) cubre `ZappingGame.bleed` (449x488): escala 0,6236, recorte vertical de 36,6.
+  double bx(double f) => sl - 14 + f * 449;
+  double by(double f) => st - 50.62 + f * 561.25;
 
   /// Deslizamiento terminado en este frame (vector desde donde empezó), o null.
   Offset? swipe({double min = 40}) {
@@ -493,8 +494,8 @@ class Quiz extends Channel {
     Gfx.anim(c, 'quizhost', vt, cx, st + 118, 118, ay: 1);
     final card = Rect.fromLTWH(sl + 26, st + 128, S.width - 52, 116);
     Gfx.clayPanel(c, card, const Color(0xFFF7F1E3));
-    Gfx.text(c, q, cx, card.center.dy, 24,
-        font: kBody, color: Pal.bg, outline: false, maxW: card.width - 36);
+    Gfx.text(c, q, cx, card.center.dy, 30,
+        color: const Color(0xFF6A3FA0), maxW: card.width - 40, fitH: card.height - 30);
     void btn(Rect r, String img, String label, int v) {
       final sel = picked == v;
       final s = sel ? 1.08 : 1 + math.sin(vt * 6 + v) * .015;
@@ -580,7 +581,7 @@ class Chairs extends Channel {
     } else {
       Gfx.text(c, '¡YA!', cx, st + 90, 72, color: Pal.lime, scale: 1 + math.max(0.0, .3 - (t - stop)) * 2);
     }
-    Gfx.text(c, 'TÚ = AZUL', cx, sb - 22, 18, color: Pal.teal);
+    Gfx.text(c, 'TÚ ERES EL AZUL', cx, sb - 22, 18, color: Pal.teal);
   }
 }
 
