@@ -40,6 +40,8 @@ class _ZappingAppState extends State<ZappingApp> {
               game.resume();
             case Mode.over:
               game.toMenu();
+            case Mode.menu when game.overlays.isActive('sandbox'):
+              game.toMenu();
             default:
               SystemNavigator.pop();
           }
@@ -62,6 +64,7 @@ class _ZappingAppState extends State<ZappingApp> {
                 'menu': (_, g) => MenuOverlay(g),
                 'pause': (_, g) => PauseOverlay(g),
                 'over': (_, g) => GameOverOverlay(g),
+                'sandbox': (_, g) => SandboxOverlay(g),
               },
             ),
           ),

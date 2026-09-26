@@ -48,6 +48,9 @@ flutter run            # en un móvil o emulador Android
 flutter test
 ```
 
+En el menú, **PROBAR CANALES** abre el sandbox: una lista con los 31 canales (30 + jefe) para probar
+cada uno con vidas infinitas; se repite al terminar y las flechas del marcador pasan al anterior o al siguiente.
+
 Para ver todos los canales en orden sin perder vidas (útil para capturas):
 `flutter run --dart-define=TOUR=true` (añade `--dart-define=TOUR_FROM=12` para empezar por el canal 13).
 

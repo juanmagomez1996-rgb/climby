@@ -43,6 +43,13 @@ class ZappingGame extends FlameGame {
   static const bool tour = bool.fromEnvironment('TOUR');
   static const int tourFrom = int.fromEnvironment('TOUR_FROM');
 
+  /// Sandbox: índice del canal que se está probando (null = partida normal).
+  /// El último índice (allChannels.length) es el jefe.
+  int? practice;
+  static const Offset prevBtn = Offset(58, 868), nextBtn = Offset(482, 868);
+  int get channelCount => allChannels.length + 1;
+  Channel makeChannel(int i) => i == allChannels.length ? Boss(this) : allChannels[i](this);
+
   final ptr = Pointer();
   final fx = Fx();
 
@@ -99,6 +106,14 @@ class ZappingGame extends FlameGame {
     if (mode == Mode.playing && (o - pauseBtn).distance < 34) {
       ptr.pressed = false;
       pause();
+    } else if (mode == Mode.playing && practice != null) {
+      if ((o - prevBtn).distance < 44) {
+        ptr.pressed = false;
+        practiceGo(practice! - 1);
+      } else if ((o - nextBtn).distance < 44) {
+        ptr.pressed = false;
+        practiceGo(practice! + 1);
+      }
     }
   }
 
@@ -122,6 +137,7 @@ class ZappingGame extends FlameGame {
 
   // ───────────── Flujo de partida ─────────────
   void startRun() {
+    practice = null;
     overlays
       ..remove('menu')
       ..remove('over');
@@ -133,6 +149,36 @@ class ZappingGame extends FlameGame {
     fx.clear();
     mode = Mode.playing;
     _nextChannel();
+  }
+
+  /// Abre el sandbox para probar un canal concreto (vidas infinitas, se repite).
+  void startPractice(int i) {
+    overlays
+      ..remove('menu')
+      ..remove('sandbox')
+      ..remove('pause');
+    lives = 4;
+    score = 0;
+    fx.clear();
+    mode = Mode.playing;
+    practiceGo(i);
+  }
+
+  void practiceGo(int i) {
+    practice = (i + channelCount) % channelCount;
+    fx.clear();
+    ch = practice!;
+    _nextChannel();
+  }
+
+  void openSandbox() {
+    overlays
+      ..remove('menu')
+      ..remove('pause');
+    mode = Mode.menu;
+    cur = null;
+    practice = null;
+    overlays.add('sandbox');
   }
 
   void pause() {
@@ -148,9 +194,11 @@ class ZappingGame extends FlameGame {
   }
 
   void toMenu() {
+    practice = null;
     overlays
       ..remove('pause')
-      ..remove('over');
+      ..remove('over')
+      ..remove('sandbox');
     fx.clear();
     cur = null;
     mode = Mode.menu;
@@ -166,7 +214,9 @@ class ZappingGame extends FlameGame {
   void _nextChannel() {
     ch++;
     Channel c;
-    if (tour) {
+    if (practice != null) {
+      c = makeChannel(practice!);
+    } else if (tour) {
       final i = (ch - 1 + tourFrom) % (allChannels.length + 1);
       c = i == allChannels.length ? Boss(this) : allChannels[i](this);
     } else if (ch % 10 == 0) {
@@ -212,7 +262,7 @@ class ZappingGame extends FlameGame {
         fx.float('¡MÁS RÁPIDO!', screen.center.dx, screen.center.dy + 120, Pal.gold, 36);
       }
     } else {
-      if (!tour) lives--;
+      if (!tour && practice == null) lives--;
       fx.shake(14, .35);
       Sfx.play('lose');
       Sfx.haptic(strong: true);
@@ -259,7 +309,14 @@ class ZappingGame extends FlameGame {
             Sfx.play('tick');
           }
         case Phase.result:
-          if (phaseT > .9) lives <= 0 ? _gameOver() : _nextChannel();
+          if (phaseT > .9) {
+            if (practice != null) {
+              ch = practice!; // repite el mismo canal
+              _nextChannel();
+            } else {
+              lives <= 0 ? _gameOver() : _nextChannel();
+            }
+          }
       }
     }
     ptr
@@ -410,6 +467,14 @@ class ZappingGame extends FlameGame {
       }
     }
     if (mode == Mode.menu) return;
+    if (practice != null) {
+      Gfx.text(c, 'MODO PRUEBA', 270, 822, 19, color: Pal.teal);
+      Gfx.sprite(c, 'arrow', prevBtn.dx, prevBtn.dy, 56, rot: math.pi, drop: const Offset(3, 5));
+      Gfx.sprite(c, 'arrow', nextBtn.dx, nextBtn.dy, 56, drop: const Offset(3, 5));
+      Gfx.text(c, 'CANAL ${practice! + 1} DE $channelCount', 270, 868, 30, color: Pal.gold, fitW: 300);
+      Gfx.text(c, 'Aciertos $score', 270, 916, 18, color: Pal.lime);
+      return;
+    }
     Gfx.text(c, 'VIDAS', 36, 822, 19, align: 0);
     for (var i = 0; i < 4; i++) {
       final on = i < lives;

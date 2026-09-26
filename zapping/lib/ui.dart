@@ -206,7 +206,9 @@ class _MenuOverlayState extends State<MenuOverlay> {
             ),
           const SizedBox(height: 14),
           ClayButton('ENCENDER LA TELE', onTap: widget.game.startRun, width: 250),
-          const SizedBox(height: 10),
+          const SizedBox(height: 4),
+          ClayButton('PROBAR CANALES', image: 'btn_teal', onTap: widget.game.openSandbox, width: 190),
+          const SizedBox(height: 6),
           ClayText('Récord: ${Prefs.best} canales', size: 22, color: Pal.gold),
           const SizedBox(height: 12),
           Row(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -234,6 +236,10 @@ class PauseOverlay extends StatelessWidget {
           const ClayText('PAUSA', size: 64, color: Pal.gold),
           const SizedBox(height: 24),
           ClayButton('SEGUIR', image: 'btn_teal', onTap: game.resume, width: 230),
+          if (game.practice != null) ...[
+            const SizedBox(height: 12),
+            ClayButton('LISTA DE CANALES', onTap: game.openSandbox, width: 230),
+          ],
           const SizedBox(height: 12),
           ClayButton('SALIR AL MENÚ', image: 'btn_pink', onTap: game.toMenu, width: 230),
         ]),
@@ -265,6 +271,65 @@ class GameOverOverlay extends StatelessWidget {
           ClayButton('MENÚ', image: 'btn_teal', onTap: game.toMenu, width: 170),
         ]);
       }),
+    );
+  }
+}
+
+
+/// Sandbox: lista de todos los canales para probarlos uno a uno.
+class SandboxOverlay extends StatelessWidget {
+  final ZappingGame game;
+  const SandboxOverlay(this.game, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final names = [for (var i = 0; i < game.channelCount; i++) game.makeChannel(i).name];
+    return Container(
+      color: const Color(0xE61A1424),
+      child: SafeArea(
+        child: LayoutBuilder(builder: (context, box) {
+          final w = box.maxWidth.clamp(200.0, 460.0) - 32;
+          return Column(children: [
+            const SizedBox(height: 12),
+            const ClayText('PROBAR CANALES', size: 36, color: Pal.gold),
+            ClayText('Vidas infinitas. Usa las flechas para cambiar de canal.', size: 17, maxWidth: w, color: Pal.teal),
+            const SizedBox(height: 8),
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                itemCount: names.length,
+                itemBuilder: (context, i) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Center(
+                    child: SizedBox(
+                      width: w,
+                      child: GestureDetector(
+                        onTap: () {
+                          Sfx.play('click');
+                          game.startPractice(i);
+                        },
+                        child: _ClayCard(
+                          child: Row(children: [
+                            SizedBox(
+                                width: 52,
+                                child: ClayText('${i + 1}'.padLeft(2, '0'), size: 26,
+                                    color: i == names.length - 1 ? Pal.pink : Pal.lime)),
+                            const SizedBox(width: 8),
+                            Expanded(child: ClayText(names[i], size: 20, maxWidth: w - 120, align: 0)),
+                          ]),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            ClayButton('VOLVER', image: 'btn_pink', onTap: game.toMenu, width: 170),
+            const SizedBox(height: 10),
+          ]);
+        }),
+      ),
     );
   }
 }

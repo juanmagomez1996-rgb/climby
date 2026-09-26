@@ -87,7 +87,7 @@ const spriteNames = [
   // interfaz de plastilina
   'font', 'bar_track', 'bar_gold', 'bar_pink', 'life_off', 'mark_ok', 'mark_no',
   'ico_pause', 'ico_sound', 'ico_mute', 'ico_vibe', 'ico_novibe', 'ico_help',
-  'panel_dark', 'panel_cream', 'note',
+  'panel_dark', 'panel_cream', 'note', 'hook',
 ];
 
 class Gfx {

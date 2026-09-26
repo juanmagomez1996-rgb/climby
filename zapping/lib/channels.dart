@@ -738,18 +738,60 @@ class EyeFishing extends Channel {
   String get bg => 'bg_fishing';
 
   double x = 0, y = 0, vx = 0, vy = 0;
+  // El gancho cuelga del sedal; al tocar sale disparado hacia el dedo y, si el ojo está ahí, lo engancha.
+  int hook = 0; // 0 colgando, 1 lanzado, 2 volviendo, 3 con el ojo
+  double hookT = 0;
+  Offset from = Offset.zero, to = Offset.zero, hookPos = Offset.zero;
+  static const shot = .12, back = .22, hookH = 64.0;
+  Offset get rod => Offset(cx, st - 30);
+  Offset get rest => Offset(cx + math.sin(vt * 1.6) * 14, st + 60);
 
   @override
   void init(int l) {
     final a = rnd(0, tau), s = 290 + l * 50.0;
     x = cx;
-    y = cy;
+    y = cy + 40;
     vx = math.cos(a) * s;
     vy = math.sin(a) * s;
+    hookPos = Offset(cx, st + 60);
   }
 
   @override
   void update(double dt) {
+    hookT += dt;
+    switch (hook) {
+      case 0:
+        hookPos = rest;
+      case 1:
+        hookPos = Offset.lerp(from, to, clamp01(hookT / shot))!;
+        if (hookT >= shot && res == 0) {
+          // la punta del gancho está en su parte baja
+          final tip = hookPos.translate(0, hookH * .75);
+          if (dist(tip.dx, tip.dy, x, y) < 62) {
+            hook = 3;
+            hookT = 0;
+            win();
+            g.fx.burst(x, y, const Color(0xFFFFFFFF), 24);
+            Sfx.play('pop');
+            Sfx.haptic();
+          } else {
+            g.fx.float('¡casi!', to.dx, to.dy, Pal.dim, 20);
+            vx *= 1.1;
+            vy *= 1.1;
+            hook = 2;
+            hookT = 0;
+            from = hookPos;
+          }
+        }
+      case 2:
+        hookPos = Offset.lerp(from, rest, clamp01(hookT / back))!;
+        if (hookT >= back) hook = 0;
+      case 3:
+        // sube el ojo enganchado
+        hookPos = hookPos.translate(0, -dt * 520);
+        x = hookPos.dx;
+        y = hookPos.dy + hookH * .75 + 38;
+    }
     if (res != 0) return;
     x += vx * dt;
     y += vy * dt;
@@ -757,25 +799,22 @@ class EyeFishing extends Channel {
       vx = -vx;
       x = x.clamp(sl + 40, sr - 40);
     }
-    if (y < st + 40 || y > sb - 40) {
+    if (y < st + 110 || y > sb - 40) {
       vy = -vy;
-      y = y.clamp(st + 40, sb - 40);
+      y = y.clamp(st + 110, sb - 40);
     }
     if (rng.nextDouble() < .02) {
       final a = rnd(0, tau), s = math.sqrt(vx * vx + vy * vy);
       vx = math.cos(a) * s;
       vy = math.sin(a) * s;
     }
-    if (tap) {
-      if (dist(p.x, p.y, x, y) < 58) {
-        win();
-        g.fx.burst(x, y, const Color(0xFFFFFFFF), 24);
-        Sfx.play('pop');
-      } else {
-        g.fx.float('¡casi!', p.x, p.y, Pal.dim, 20);
-        vx *= 1.1;
-        vy *= 1.1;
-      }
+    if (tap && hook == 0) {
+      hook = 1;
+      hookT = 0;
+      from = hookPos;
+      // el gancho apunta a que su punta caiga donde tocas
+      to = Offset(p.x, p.y - hookH * .75);
+      Sfx.play('boing', volume: .5);
     }
   }
 
@@ -783,26 +822,39 @@ class EyeFishing extends Channel {
   void render(Canvas c) {
     drawBg(c);
     // nervio
-    final sp = math.max(1.0, math.sqrt(vx * vx + vy * vy));
-    final nx = -vx / sp, ny = -vy / sp;
-    final path = Path()..moveTo(x + nx * 30, y + ny * 30);
-    for (var i = 1; i <= 6; i++) {
-      final d = 30 + i * 10.0;
-      final w = math.sin(vt * 16 + i) * 5;
-      path.lineTo(x + nx * d - ny * w, y + ny * d + nx * w);
+    final caught = hook == 3;
+    if (!caught) {
+      final sp = math.max(1.0, math.sqrt(vx * vx + vy * vy));
+      final nx = -vx / sp, ny = -vy / sp;
+      final path = Path()..moveTo(x + nx * 30, y + ny * 30);
+      for (var i = 1; i <= 6; i++) {
+        final d = 30 + i * 10.0;
+        final w = math.sin(vt * 16 + i) * 5;
+        path.lineTo(x + nx * d - ny * w, y + ny * d + nx * w);
+      }
+      c.drawPath(
+          path,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 6
+            ..strokeCap = StrokeCap.round
+            ..color = const Color(0xFFC0203A));
     }
-    c.drawPath(
-        path,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 6
-          ..strokeCap = StrokeCap.round
-          ..color = const Color(0xFFC0203A));
-    final sq = res == 1 ? clamp01(1 - since * 4) : 1.0;
     final near = clamp01((y - st) / (sb - st));
-    Gfx.shadow(c, x, by(.9), 80 * (.4 + .6 * near) * sq, alpha: .1 + .25 * near);
-    Gfx.sprite(c, 'eyeball', x, y, 92 * sq,
-        rot: math.atan2(vy, vx) * .15 + boil(vt, 4) * .05);
+    Gfx.shadow(c, x, by(.9), 80 * (.4 + .6 * near), alpha: .1 + .25 * near);
+    // sedal y gancho (colgando en la dirección del sedal)
+    final d = hookPos - rod;
+    final rot = math.atan2(-d.dx, d.dy);
+    c.drawLine(rod, hookPos, Paint()
+      ..strokeWidth = 3
+      ..color = const Color(0xCCE8E0C8));
+    if (caught) {
+      Gfx.sprite(c, 'eyeball', x, y, 92, rot: math.sin(vt * 18) * .25);
+    }
+    Gfx.sprite(c, 'hook', hookPos.dx, hookPos.dy, hookH, ay: .04, rot: caught ? 0 : rot, drop: const Offset(4, 6));
+    if (!caught) {
+      Gfx.sprite(c, 'eyeball', x, y, 92, rot: math.atan2(vy, vx) * .15 + boil(vt, 4) * .05);
+    }
   }
 }
 
