@@ -49,6 +49,21 @@ for name, rose in [('brother', True), ('mother', False)]:
         nr = out.copy(); nr[gone, 3] = 0
         nrs = Image.fromarray(nr.astype(np.uint8)); nrs.alpha_composite(glow); nrs.alpha_composite(eyes)
         nrs.save(f'{OUT}/{name}_nr.png', optimize=True)
+    # traversal clips: how far the body reaches forward, row band by row band, so the game can keep
+    # every part below a ledge's top out of the wall (he climbs its face, not through it)
+    alpha = np.asarray(sheet)[..., 3]
+    for anim, m in atlas['anims'].items():
+        if m.get('kind') != 'rootclip':
+            continue
+        prof = []
+        for f in range(m['frames']):
+            cell = alpha[m['row'] * fh:(m['row'] + 1) * fh, f * fw:(f + 1) * fw] > 90
+            row = []
+            for b0 in range(0, fh, 8):
+                xs = np.where(cell[b0:b0 + 8].any(axis=0))[0]
+                row.append(int(xs.max() - fw / 2) if len(xs) else -99)
+            prof.append(row)
+        m['prof'] = prof; m['profBin'] = 8
     json.dump(atlas, open(f'{OUT}/{name}.json', 'w'), indent=1)
     prev = Image.new('RGBA', sheet.size, (190, 190, 190, 255)); prev.alpha_composite(sheet)
     prev.convert('RGB').save(f'{OUT}/../{name}_sil_prev.jpg', quality=80)

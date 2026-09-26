@@ -63,7 +63,7 @@ button:focus-visible,input:focus-visible{outline:1px solid #bbb;outline-offset:3
     <canvas id="game" aria-label="Juego de plataformas en blanco y negro. Un niño lleva una rosa roja a la ventana de su mamá."></canvas>
     <div id="toast"></div>
   </div>
-  <p class="help"><kbd>←</kbd> <kbd>→</kbd> caminar · <kbd>↑</kbd> o <kbd>Espacio</kbd> saltar, trepar y soltarte de la cuerda · <kbd>↓</kbd> o <kbd>R</kbd> dejar o recoger la rosa · mantén <kbd>Shift</kbd> o <kbd>E</kbd> para jalar cajas, usar palancas y tomar la mano de mamá · <kbd>C</kbd> ver colisiones</p>
+  <p class="help"><kbd>←</kbd> <kbd>→</kbd> caminar · <kbd>↑</kbd> o <kbd>Espacio</kbd> saltar y trepar · en la cuerda: <kbd>←</kbd> <kbd>→</kbd> balancearte, <kbd>↑</kbd> <kbd>↓</kbd> subir y bajar, <kbd>Espacio</kbd> soltarte · <kbd>↓</kbd> o <kbd>R</kbd> dejar o recoger la rosa · mantén <kbd>Shift</kbd> o <kbd>E</kbd> para jalar cajas, usar palancas y tomar la mano de mamá · <kbd>C</kbd> ver colisiones</p>
   <div class="pad">
     <div><button data-k="l" aria-label="Izquierda">◀</button><button data-k="r" aria-label="Derecha">▶</button></div>
     <div><button class="wide" data-k="d">Rosa</button><button class="wide" data-k="g">Agarrar</button><button class="wide" data-k="j">Saltar</button></div>
@@ -94,7 +94,7 @@ button:focus-visible,input:focus-visible{outline:1px solid #bbb;outline-offset:3
    screen tall and several screens wide, designed by hand below.
    ========================================================================= */
 const VW = 480, VH = 270, GROUND = 230;
-const GRAV = .36, JUMP = -6.0, RUN = 2.0, RUNG = 1.6, WALK = .55, MOMV = .65, PUSHV = .8, STEP = 5;
+const GRAV = .36, JUMP = -5.6, RUN = 2.0, RUNG = 1.6, WALK = .55, MOMV = .65, PUSHV = .8, STEP = 5;
 const $ = s => document.querySelector(s);
 const cv = $('#game'), ctx = cv.getContext('2d');
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -183,7 +183,7 @@ function level1() { // EL BOSQUE — rope over the chasm, the tall crate, the ro
     checkpoints: [20, 790, 1330, 1600, 2092, 2690, 3070],
     goalX: 3270, houseX: 3200,
     says: [[30, 'h', 'Te lo prometí, ma. Una rosa todos los días.'], [190, 'n', 'Las manos de la oscuridad no tocan a quien lleva la rosa.'], [560, 'n', 'Salta contra una pared baja para trepar.'],
-      [1040, 'n', 'Salta a la cuerda. Balancéate con ← → y suéltate con ↑.'], [1355, 'n', 'Empuja la caja.'], [1712, 'h', '¿Qué es ese ruido?'],
+      [1040, 'n', 'Salta a la cuerda. Balancéate con ← →, sube o baja con ↑ ↓ y suéltate con Espacio.'], [1355, 'n', 'Empuja la caja.'], [1712, 'h', '¿Qué es ese ruido?'],
       [2110, 'h', 'Ya viene.'], [2330, 'n', 'Deja la rosa con ↓: la sombra no cruza su luz. Mantén Shift en la manivela.'], [2650, 'h', 'La luz la detiene.'], [2905, 'n', 'Una puerta que se abre con peso.']],
     decor: shiftDecor([
       deco('treeTall', 60, 262, 210, 'bg'), deco('treeSmall', 330, 262, 150, 'bg', true), deco('treeTall', 700, 262, 230, 'bg', true), deco('treeTall', 1150, 262, 200, 'bg'),
@@ -261,7 +261,7 @@ function level3() { // LA LLUVIA — the flooded street: a raft on the current, 
     checkpoints: [20, 870, 1120, 1540, 2140, 3350],
     goalX: 3640, houseX: 3570,
     says: [[30, 'h', 'Hoy está difícil, ¿verdad? Igual te la llevo.'], [860, 'n', 'Las trampas se cierran con cualquier peso.'], [1230, 'n', 'La reja se cierra rápido.'],
-      [1545, 'h', 'Se inundó la calle.'], [1580, 'n', 'Súbete a la balsa: la corriente la lleva.'], [2000, 'n', 'Salta a la cuerda y balancéate hasta la orilla.'],
+      [1545, 'h', 'Se inundó la calle.'], [1580, 'n', 'Súbete a la balsa: la corriente la lleva.'], [2000, 'n', 'Salta a la cuerda, balancéate y suéltate con Espacio sobre la orilla.'],
       [2350, 'h', 'Corre.'], [3520, 'h', 'Aunque hoy no la veas, te llega.']],
     decor: shiftDecor([
       deco('fence', 835, 232, 28, 'play'), deco('treeSmall', 600, 196, 70, 'play', true), deco('grass', 300, 232, 22), deco('grass', 1180, 232, 22, 'play', true),
@@ -582,13 +582,14 @@ addEventListener('keydown', e => {
   if (!$('#card').hidden) { if (e.key === 'Enter' && document.activeElement.tagName !== 'BUTTON') { e.preventDefault(); $('#cBtn').click(); } return; }
   if (e.code === 'KeyC' && !e.repeat) { S.debug = !S.debug; return; }
   const k = KEYMAP[e.code]; if (k) { K[k] = true; e.preventDefault(); }
+  if (e.code === 'ArrowUp' || e.code === 'KeyW') K.u = true; if (e.code === 'ArrowDown' || e.code === 'KeyS') K.dn = true; if (e.code === 'Space') K.sp = true;
 });
-addEventListener('keyup', e => { const k = KEYMAP[e.code]; if (k) K[k] = false; });
-addEventListener('blur', () => { K.l = K.r = K.j = K.g = K.d = false; });
+addEventListener('keyup', e => { const k = KEYMAP[e.code]; if (k) K[k] = false; if (e.code === 'ArrowUp' || e.code === 'KeyW') K.u = false; if (e.code === 'ArrowDown' || e.code === 'KeyS') K.dn = false; if (e.code === 'Space') K.sp = false; });
+addEventListener('blur', () => { K.l = K.r = K.j = K.g = K.d = K.u = K.dn = K.sp = false; });
 document.querySelectorAll('.pad button').forEach(b => {
   const k = b.dataset.k;
-  const on = e => { e.preventDefault(); K[k] = true; b.classList.add('held'); try { b.setPointerCapture(e.pointerId); } catch (_) {} audioStart(); };
-  const off = () => { K[k] = false; b.classList.remove('held'); };
+  const on = e => { e.preventDefault(); K[k] = true; if (k === 'j') K.sp = true; b.classList.add('held'); try { b.setPointerCapture(e.pointerId); } catch (_) {} audioStart(); };
+  const off = () => { K[k] = false; if (k === 'j') K.sp = false; b.classList.remove('held'); };
   b.addEventListener('pointerdown', on); b.addEventListener('pointerup', off); b.addEventListener('pointercancel', off); b.addEventListener('lostpointercapture', off);
 });
 
@@ -627,7 +628,7 @@ function startLevel(i) {
 }
 function spawn() {
   const dream = !!L.dream, cpx = L.checkpoints[S.cp];
-  P = { x: cpx, y: 0, w: 10, h: dream ? 38 : 36, vx: 0, vy: 0, on: true, co: 0, buf: 0, face: 1, animT: 0, airT: 0, landT: 0, stepT: 0, mantle: null, act: null, topY: 0, pushing: 0, pulling: 0, pushH: 26, under: 0, holdT: 0, holdDir: 0, idleT: 0, rope: null, ropeS: 0, ropeCd: 0, cranking: false };
+  P = { ropeK: 0, ba: 0, bv: 0, ropeV: 0, spPrev: false, airMax: .8, prep: 0, prepN: 1, x: cpx, y: 0, w: 10, h: dream ? 38 : 36, vx: 0, vy: 0, on: true, co: 0, buf: 0, face: 1, animT: 0, airT: 0, landT: 0, stepT: 0, mantle: null, act: null, topY: 0, pushing: 0, pulling: 0, pushH: 26, under: 0, holdT: 0, holdDir: 0, idleT: 0, rope: null, ropeS: 0, ropeCd: 0, cranking: false };
   P.y = surfaceY(cpx + 5) - P.h; P.topY = P.y;
   S.rose = null; S.warnRose = false;
   M = null;
@@ -727,7 +728,7 @@ function chooseAnim(dt) {
   if (S.state === 'deliver') return out(at('offer', frameOf(an.offer, S.timer / 60, 'hold')));
   if (AN.standT >= 0) { AN.standT += dt; const f = AN.kneelF - AN.standT * an.kneel.fps * 1.6; if (f > 0) return out(at('kneel', f)); AN.standT = -1; }
   if (P.act) return out(at(P.act.type, P.act.f));
-  if (P.rope && an.hang) return out(at('hang', ROPE_F));
+  if (P.rope && an.hang) { const fw = (P.ropeV || 0) * AN.visFace; return out(at('hang', K.u || K.dn ? 21 : fw > 1.7 ? 16 : fw > 1.1 ? 14 : fw < -1.4 ? 12 : 11)); }
   if (P.cranking && an.push_low) { AN.wasMoving = false; return out(cyc('push_low', .9)); }
   if (AN.tail) {   // the end of a move carried on by another clip (standing up on top)
     const m = an[AN.tail.anim]; AN.tail.f += dt * m.fps * 1.5;
@@ -739,13 +740,18 @@ function chooseAnim(dt) {
   //     (a bump that lifts the feet for a moment is still walking)
   if (P.on) { AN.fallLong = false; AN.apex = -1; }
   const stepping = AN.airKind === 'step' && P.airT < .4;   // stepping down off a crate: the stride goes on
+  if (P.prep > 0 && P.on) {
+    const J = AN.airKind === 'leap' && an.leap ? an.leap : an.jump, name = AN.airKind === 'leap' && an.leap ? 'leap' : 'jump', cr = J.crouch.length ? J.crouch : [0];
+    const k = 1 - P.prep / P.prepN, i0 = Math.floor(cr.length * .35);
+    return out(at(name, cr[Math.min(cr.length - 1, i0 + Math.floor(k * (cr.length - i0)))]));
+  }
   if (!P.on && !stepping && (P.vy < -.5 || P.airT > .12)) {
     AN.wasMoving = false; AN.stopT = -1; AN.landT = -1;
     if (P.y - P.topY > 40 && P.vy > 2 && an.fall && (AN.fallLong || (AN.fallLong = P.y - P.topY + dropBelow(P.x) > FALL.hard))) return out(cyc('fall', 1));   // a long way down
     const J = AN.airKind === 'leap' && an.leap ? an.leap : an.jump, name = AN.airKind === 'leap' && an.leap ? 'leap' : 'jump';
     // going up: the rise frames by time until the top; coming down: the fall frames by time until the ground
-    if (P.vy < 0 && J.rise.length) { AN.apex = -1; const up = P.airT / (P.airT + -P.vy / GRAV / 60 + 1e-3); return out(at(name, J.rise[Math.min(J.rise.length - 1, Math.floor(up * J.rise.length))])); }
-    if (AN.apex < 0) { AN.apex = P.airT; AN.fallDur = Math.max(.12, Math.sqrt(2 * Math.max(4, dropBelow(P.x)) / GRAV) / 60); }
+    if (P.vy < 0 && J.rise.length) { AN.apex = -1; const up = P.airT / (P.airT + -P.vy / G_UP / 60 + 1e-3); return out(at(name, J.rise[Math.min(J.rise.length - 1, Math.floor(up * J.rise.length))])); }
+    if (AN.apex < 0) { AN.apex = P.airT; AN.fallDur = Math.max(.12, Math.sqrt(2 * Math.max(4, dropBelow(P.x)) / G_DN) / 60); }
     const q = Math.min(.999, (P.airT - AN.apex) / AN.fallDur), list = J.fall.length ? J.fall : J.rise;
     return out(at(name, list[Math.floor(q * list.length)]));
   }
@@ -813,13 +819,13 @@ function ledgeAhead(dir, reach) { // the first place to stand on top of the obst
   for (let yt = Math.floor(P.y - STEP); yt >= P.y - MOVES.hang.max; yt--) {
     if (!standable(nx, yt)) continue;
     if (hitSolid(P.x, yt, P.w, P.h, P) || hitSolid(P.x + dir * (d - 1), yt, P.w, P.h, P)) return null;   // no room to climb up
-    return { h: P.y - yt, x1: nx, y1: yt, xh: P.x + dir * (d - 1) };
+    return { h: P.y - yt, x1: nx, y1: yt, xh: P.x + dir * (d - 1), wall: dir > 0 ? P.x + P.w + d - 1 : P.x - d + 1 };
   }
   return null;
 }
 function startMove(type, lg, dir, from) {
   const m = ATLAS.brother && ATLAS.brother.anims[type]; if (!m) return false;
-  P.act = { type, m, dir, f: from != null ? from : MOVES[type].from, x0: P.x, y0: P.y, xh: lg.xh, x1: lg.x1, y1: lg.y1 };
+  P.act = { type, m, dir, f: from != null ? from : MOVES[type].from, x0: P.x, y0: P.y, xh: lg.xh, x1: lg.x1, y1: lg.y1, wall: lg.wall };
   P.vx = P.vy = 0; P.on = false; P.face = AN.visFace = dir; AN.tail = null; AN.landT = -1; AN.stopT = -1; AN.wasMoving = false;
   SFX.creak(); return true;
 }
@@ -837,7 +843,7 @@ function tryMantle(dir) {
   for (let yt = Math.floor(P.y - 6); yt >= P.y + 6 - P.h; yt--) {
     if (!hitSolid(nx, yt, P.w, P.h, P) && hitSolid(nx, yt + 2, P.w, P.h, P)) {
       if (hitSolid(P.x, yt, P.w, P.h, P)) return false; // no room to pull up
-      const A = ATLAS.brother && ATLAS.brother.anims, h = P.y - yt, lg = { x1: nx, y1: yt, xh: P.x };
+      const A = ATLAS.brother && ATLAS.brother.anims, h = P.y - yt, lg = { x1: nx, y1: yt, xh: P.x, wall: dir > 0 ? P.x + P.w : P.x };
       if (A && A.hang && !L.dream) return h < 18 ? startMove('vault', lg, dir, A.vault.keys[0][0]) : startMove('hang', lg, dir, A.hang.keys[1][0] + 2);
       P.mantle = { t: 0, x0: P.x, y0: P.y, x1: nx, y1: yt }; P.vx = P.vy = 0; SFX.creak(); return true;
     }
@@ -859,8 +865,20 @@ function actPose(a) { // where the body is at the clip's current frame
   const m = a.m, i = Math.max(0, Math.min(m.frames - 1, Math.floor(a.f))), s = 40 / ATLAS.brother.bodyH, top = a.y1 + P.h;
   const bottom = keyAt(m.keys, a.f, k => k === 'g0' ? a.y0 + P.h : k === 'g1' ? top : top + m.ext[i] * s - 2);
   const v = keyAt(m.fwd, a.f, x => x);
-  const x = v <= HUG ? a.x0 + (a.xh - a.x0) * (v / HUG) : a.xh + (a.x1 - a.xh) * ((v - HUG) / (1 - HUG));
-  return { x, bottom, base: bottom + (ATLAS.brother.frameH - 3 - m.by[i]) * s };
+  let x = v <= HUG ? a.x0 + (a.xh - a.x0) * (v / HUG) : a.xh + (a.x1 - a.xh) * ((v - HUG) / (1 - HUG));
+  const base = bottom + (ATLAS.brother.frameH - 3 - m.by[i]) * s;
+  // against the wall: nothing below the ledge's top may be inside it; while he hangs, his body touches it
+  if (a.wall != null && m.prof) {
+    const F = ATLAS.brother.frameH, bin = m.profBin || 8, prof = m.prof[i]; let front = -1e9;
+    for (let k = 0; k < prof.length; k++) if (prof[k] > -90 && base - (F - 3 - (k + 1) * bin) * s > top + 1.5) front = Math.max(front, prof[k]);
+    if (front > -1e9) {
+      const cx = x + P.w / 2, reach = cx + a.dir * front * s, over = (reach - a.wall) * a.dir;
+      const hang = keyAt(m.keys, a.f, k => k === 'hand' ? 1 : 0);
+      if (over > 0) x -= a.dir * over;                   // out of the wall
+      else x -= a.dir * over * hang;                     // hanging: pressed to it
+    }
+  }
+  return { x, bottom, base };
 }
 /* =========================================================================
    PHYSICS FEEL — dust and debris, water that moves, ropes that bend, crates
@@ -913,24 +931,30 @@ function waterTick() {
     }
   }
 }
-// ---- ropes: a chain of points (verlet); it hangs, sways, bends, and lets itself be pushed
-function ropeInit(r) { const n = 16; r.seg = r.len / (n - 1); r.pts = Array.from({ length: n }, (_, i) => ({ x: r.x, y: r.y + r.seg * i, px: r.x, py: r.y + r.seg * i })); }
-function ropeVerlet(r) {
-  const Q = r.pts, n = Q.length, held = P && P.rope === r;
-  let hi = 0, hx = 0, hy = 0;
-  if (held) { hx = r.x + Math.sin(r.th) * P.ropeS; hy = r.y + Math.cos(r.th) * P.ropeS; hi = clamp(Math.round(P.ropeS / r.seg), 1, n - 1); }
-  for (let i = 1; i < n; i++) { const p = Q[i], vx = (p.x - p.px) * .988, vy = (p.y - p.py) * .988; p.px = p.x; p.py = p.y; p.x += vx + Math.sin(S.t * .6 + i * .4) * .006; p.y += vy + .22; }
-  if (P && !held && S.state === 'play') for (const p of Q) if (p.x > P.x - 3 && p.x < P.x + P.w + 3 && p.y > P.y && p.y < P.y + P.h) p.x += (P.vx || 0) * .45 + (p.x - (P.x + P.w / 2)) * .05;
-  if (held) for (let i = 1; i <= hi; i++) { const p = Q[i], t = i / hi; p.x = r.x + (hx - r.x) * t; p.y = r.y + (hy - r.y) * t; }
-  for (let it = 0; it < 10; it++) {
+// ---- ropes: a chain of points (verlet). Holding it, the boy is a heavy weight on one of its points:
+// the swing, the bend and the pull all come out of the chain itself.
+const ROPE_W = .03;               // how light the boy's point is, next to a rope point (inverse mass)
+function ropeInit(r) { const n = Math.max(12, Math.round(r.len / 7)) + 1; r.seg = r.len / (n - 1); r.pts = Array.from({ length: n }, (_, i) => ({ x: r.x, y: r.y + r.seg * i, px: r.x, py: r.y + r.seg * i })); r.th = 0; }
+function ropeSim(r, dir) {
+  const Q = r.pts, n = Q.length, k = P && P.rope === r ? P.ropeK : -1;
+  for (let i = 1; i < n; i++) {
+    const p = Q[i], d = i === k ? .999 : k > 0 ? .996 : .985, vx = (p.x - p.px) * d, vy = (p.y - p.py) * d;
+    p.px = p.x; p.py = p.y;
+    let ax = Math.sin(S.t * .6 + i * .4) * .004, ay = .22;
+    if (i === k) { ay = GRAV; const sv = vx * dir; ax += dir * (sv > -.05 ? .09 : 0); }   // kicking with the swing adds, against it barely
+    p.x += vx + ax; p.y += vy + ay;
+  }
+  if (P && k < 0 && S.state === 'play') for (const p of Q) if (p.x > P.x - 3 && p.x < P.x + P.w + 3 && p.y > P.y && p.y < P.y + P.h) p.x += (P.vx || 0) * .45 + (p.x - (P.x + P.w / 2)) * .05;
+  for (let it = 0; it < 26; it++) {
     Q[0].x = r.x; Q[0].y = r.y;
     for (let i = 0; i < n - 1; i++) {
-      const a = Q[i], b = Q[i + 1], dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1, k = (d - r.seg) / d;
-      const fa = i === 0 || (held && i <= hi) ? 0 : .5, fb = held && i + 1 <= hi ? 0 : 1 - fa;
-      a.x += dx * k * fa; a.y += dy * k * fa; b.x -= dx * k * fb; b.y -= dy * k * fb;
+      const A = Q[i], B = Q[i + 1], wa = i === 0 ? 0 : i === k ? ROPE_W : 1, wb = i + 1 === k ? ROPE_W : 1;
+      const dx = B.x - A.x, dy = B.y - A.y, d = Math.hypot(dx, dy) || 1, c = (d - r.seg) / d / (wa + wb);
+      A.x += dx * c * wa; A.y += dy * c * wa; B.x -= dx * c * wb; B.y -= dy * c * wb;
     }
+    if (k > 0) { const h = Q[k], dx = h.x - r.x, dy = h.y - r.y, d = Math.hypot(dx, dy), max = k * r.seg; if (d > max) { h.x = r.x + dx / d * max; h.y = r.y + dy / d * max; } }   // a rope does not stretch
   }
-  if (!held) { const e = Q[n - 1], th = Math.atan2(e.x - r.x, e.y - r.y); r.om = (th - r.th) * 60; r.th = th; }   // where you can grab it follows the chain
+  const e = Q[k > 0 ? k : n - 1]; r.th = Math.atan2(e.x - r.x, e.y - r.y);
 }
 // ---- crates: weight, a little slide after the push, tipping over edges, a wobble when they land
 function crateSpeed(c) { return c ? clamp(Math.sqrt(26 / c.h), .78, 1.2) : 1; }
@@ -951,7 +975,8 @@ function crateTick(c) {
    MECHANICS — the rope, the counterweight lift, the raft, the boulder, the hands
    in the dark, the spider, the rose's light, and leading her by the hand
    ========================================================================= */
-const GPX = GRAV * 3600;                 // px/s², gravity for the pendulum
+const GPX = GRAV * 3600;
+const G_UP = .32, G_DN = .42, G_CUT = .78;   // rising, falling (heavier), rising after letting go of jump                 // px/s², gravity for the pendulum
 const ROSE_R = 70, CARRY_R = 24, ROPE_F = 8, HAND_T = 1;   // HAND_T: seconds in the dark before the hands take you
 let M = null;                            // mamá, when she walks with you
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -970,33 +995,41 @@ function dropFrom(o, x) { for (let k = 0; k < 260; k++) if (hitSolid(x, o.y + k 
 
 // ---- rope: grab it in the air, pump with ← →, let go with ↑
 function ropeTick(dt) {
-  for (const r of L.ropes || []) ropeVerlet(r);
+  for (const r of L.ropes || []) if (!(P && P.rope === r)) ropeSim(r, 0);
 }
 function ropeGrab() {
   if (P.ropeCd > 0) return false;
+  const hx = P.x + P.w / 2, hy = P.y + 3;
   for (const r of L.ropes || []) {
-    const hx = P.x + P.w / 2, hy = P.y + 3, dx = hx - r.x, dy = hy - r.y, sx = Math.sin(r.th), sy = Math.cos(r.th);
-    const along = dx * sx + dy * sy, off = Math.abs(dx * sy - dy * sx);
-    if (along > 24 && along < r.len && off < 9) {
-      const vt = (P.vx * sy - P.vy * sx) * 60;
-      P.rope = r; P.ropeS = along; r.om = vt / (along + 18) * .9; P.vx = P.vy = 0; P.on = false; P.mantle = null;
-      if (M) M.hand = false; SFX.creak(); return true;
-    }
+    let best = -1, bd = 10;
+    for (let i = 3; i < r.pts.length; i++) { const p = r.pts[i], d = Math.hypot(p.x - hx, p.y - hy); if (d < bd) { bd = d; best = i; } }
+    if (best < 0) continue;
+    const p = r.pts[best]; p.x = hx; p.y = hy; p.px = hx - P.vx; p.py = hy - P.vy;   // his momentum goes into the rope
+    P.rope = r; P.ropeK = best; P.ropeClimb = 0; P.vx = P.vy = 0; P.on = false; P.mantle = null; P.ba = r.th; P.bv = 0;
+    if (M) M.hand = false; SFX.creak(); return true;
   }
   return false;
 }
 function ropeStep(dt, dir) {
-  const r = P.rope, Lr = P.ropeS + 18;
-  r.om += -GPX / Lr * Math.sin(r.th) * dt;
-  if (dir && (Math.sign(r.om) === dir || Math.abs(r.om) < .15)) r.om += dir * 2.6 * dt;   // pumping only adds when it goes with the swing
-  r.om *= .998; r.th = clamp(r.th + r.om * dt, -1.35, 1.35); if (Math.abs(r.th) >= 1.35) r.om *= -.3;
-  const hx = r.x + Math.sin(r.th) * P.ropeS, hy = r.y + Math.cos(r.th) * P.ropeS;
-  P.x = hx - P.w / 2; P.y = hy - 3; if (dir) P.face = dir;
+  const r = P.rope, Q = r.pts;
+  // climbing: ↑ and ↓ move his grip along the rope, hand over hand
+  const cl = (K.u ? -1 : 0) + (K.dn ? 1 : 0);
+  if (cl) { P.ropeClimb += dt; if (P.ropeClimb > .16) { P.ropeClimb = 0; const nk = clamp(P.ropeK + cl, 3, Q.length - 1); if (nk !== P.ropeK) { const o = Q[P.ropeK], q = Q[nk]; q.x = o.x; q.y = o.y; q.px = o.px; q.py = o.py; P.ropeK = nk; noise(.06, .03, 'bandpass', 500, 2); } } } else P.ropeClimb = .12;
+  ropeSim(r, dir);
+  const h = Q[P.ropeK];
+  // the body hangs from the hands and lags behind the rope, like a second pendulum
+  const up = Q[P.ropeK - 1], ang = Math.atan2(h.x - up.x, h.y - up.y);
+  P.bv = (P.bv + (ang - P.ba) * .22) * .72; P.ba = clamp(P.ba + P.bv, ang - .14, ang + .14);
+  // the body cannot swing into rock
+  const nx = h.x - P.w / 2, ny = h.y - 3;
+  if (hitSolid(nx, ny, P.w, P.h, P)) { h.x = h.px; h.y = h.py; }
+  P.x = h.x - P.w / 2; P.y = h.y - 3; P.ropeV = h.x - h.px; if (dir) P.face = dir;
 }
 function ropeRelease(dir) {
-  const r = P.rope, v = r.om * (P.ropeS + 10);
-  P.vx = clamp(v * Math.cos(r.th) / 60 + dir * .5, -3.2, 3.2); P.vy = Math.min(-1.5, -v * Math.sin(r.th) / 60 - 2.4);
-  P.rope = null; P.ropeCd = .4; P.airT = 0; P.topY = P.y; P.on = false; AN.airKind = 'leap'; AN.apex = -1; noise(.08, .05, 'bandpass', 700, 1);
+  const h = P.rope.pts[P.ropeK];
+  P.vx = clamp((h.x - h.px) * 1.05 + dir * .35, -3.2, 3.2); P.vy = Math.min(-1.2, (h.y - h.py) - 1.6);
+  P.airMax = Math.max(Math.abs(P.vx), .8);
+  P.rope = null; P.ropeCd = .35; P.airT = 0; P.topY = P.y; P.on = false; AN.airKind = 'leap'; AN.apex = -1; noise(.08, .05, 'bandpass', 700, 1);
 }
 
 // ---- counterweight lift: the heavier side goes down
@@ -1212,8 +1245,8 @@ function stepCore() {
   P.ropeCd = Math.max(0, P.ropeCd - dt); P.cranking = false;
   if (P.rope) {
     ropeStep(dt, dir);
-    if (K.j && !jPrev) ropeRelease(dir);
-    jPrev = K.j; gPrev = K.g; dPrev = K.d;
+    if ((K.sp && !P.spPrev) || (K.j && !jPrev && !K.u)) ropeRelease(dir);
+    jPrev = K.j; gPrev = K.g; dPrev = K.d; P.spPrev = K.sp;
     if (shadowTick()) return; camFollow(); return;
   }
   // the rose: leave it on the ground (it lights the dark and holds the shadow back), pick it up again
@@ -1237,7 +1270,7 @@ function stepCore() {
   if (dir && dir === P.holdDir) P.holdT += dt; else { P.holdT = 0; P.holdDir = dir; }
   if (dir || K.j || !P.on) P.idleT = 0; else P.idleT += dt;
   const chasing = chase && chase.started && !chase.done;
-  let maxv = L.dream ? MOMV : !P.on ? RUN : chasing ? RUNG : P.holdT < .45 ? WALK : Math.min(RUNG, WALK + (P.holdT - .45) * 2.6);
+  let maxv = L.dream ? MOMV : !P.on ? P.airMax : chasing ? RUNG : P.holdT < .45 ? WALK : Math.min(RUNG, WALK + (P.holdT - .45) * 2.6);
   if (!L.dream && P.on && !chasing && P.x > L.goalX - 170) maxv = Math.min(maxv, WALK);
   if (P.on && dir) { const cx = P.x + P.w / 2, sl = (groundAt(cx + dir * 7) - groundAt(cx - dir * 7)) / 14; if (isFinite(sl)) maxv *= clamp(1 + sl * 1.3, .68, 1.22); }
   const pullC = grab && dir ? adjacentCrate(-dir) : null;
@@ -1245,8 +1278,8 @@ function stepCore() {
   if (M && M.hand) maxv = Math.min(maxv, MOMV);
   if (P.cranking) maxv = 0;
   if (inWater) maxv = .8;
-  const acc = P.on ? .32 : .12;
-  if (dir) { P.vx += dir * acc; P.face = dir; } else if (P.on) P.vx *= .68; else P.vx *= .96;
+  const acc = P.on ? .32 : .05;                     // in the air you barely steer
+  if (dir) { P.vx += dir * acc; P.face = dir; } else if (P.on) P.vx *= .68; else P.vx *= .99;
   if (Math.abs(P.vx) < .04) P.vx = 0;
   P.vx = Math.max(-maxv, Math.min(maxv, P.vx));
   if (K.j && !jPrev && !L.dream && AN.standT < 0) P.buf = 7;
@@ -1254,10 +1287,20 @@ function stepCore() {
   P.co = P.on ? 6 : P.co - 1;
   if (P.buf > 0 && M && M.hand) { M.hand = false; tone(330, .5, .03, 'triangle'); }   // you need both hands to jump
   if (P.buf > 0 && P.on && !pullC && !inWater && tryTraverse(dir)) { P.buf = 0; camFollow(); return; }
-  if (P.buf > 0 && P.co > 0 && !pullC && (!inWater || P.y + 8 < inWater.y)) { P.vy = JUMP; P.buf = 0; P.co = 0; P.on = false; P.airT = 0; if (dir) P.vx = dir * Math.max(Math.abs(P.vx), RUNG) * 1.25; /* a held direction makes a full leap */ AN.airKind = dir ? 'leap' : 'jump'; noise(.08, .05, 'bandpass', 700, 1); dust(P.x + P.w / 2, P.y + P.h, 3, .5); }
+  // a jump: he bends first (less when running), then pushes off; how far depends on the speed he had
+  const launch = () => {
+    P.prep = 0; P.vy = JUMP; P.co = 0; P.on = false; P.airT = 0;
+    if (dir) { const v = Math.max(P.vx * dir, (P.prepV || 0) * dir); P.vx = dir * clamp(Math.max(v, 0) + 1.2, 1.5, 2.25); }
+    P.airMax = Math.max(Math.abs(P.vx), .8); AN.airKind = Math.abs(P.vx) > .9 ? 'leap' : 'jump'; AN.apex = -1;
+    noise(.08, .05, 'bandpass', 700, 1); dust(P.x + P.w / 2, P.y + P.h, 3, .5);
+  };
+  if (P.buf > 0 && P.co > 0 && !P.prep && !pullC && (!inWater || P.y + 8 < inWater.y)) {
+    P.buf = 0;
+    if (P.on) { P.prepV = P.vx; P.prepN = P.prep = Math.abs(P.vx) > 1 ? 1 : 4; AN.airKind = Math.abs(P.vx) > .9 || dir ? 'leap' : 'jump'; } else launch();
+  }
+  if (P.prep > 0) { if (!P.on) launch(); else { if (!dir) P.vx *= .8; if (--P.prep === 0) launch(); } }
   P.buf--;
-  if (!K.j && P.vy < -2.6) P.vy = -2.6;
-  P.vy = Math.min(inWater ? .7 : 7, P.vy + (inWater ? .05 : GRAV));
+  P.vy = Math.min(inWater ? .7 : 7, P.vy + (inWater ? .05 : P.vy < 0 ? (K.j ? G_UP : G_CUT) : G_DN));
 
   // horizontal: walking, pushing, pulling, climbing ledges
   const wasOn = P.on;
@@ -1283,6 +1326,7 @@ function stepCore() {
     const drop = P.y - P.topY;    // how far the body came down: a step, a drop, a fall, or too far
     if (!wasOn && !L.dream && drop > FALL.dead && !inWater) { P.vy = 0; P.on = true; die('impact'); return; }
     if (!wasOn) { const J = ATLAS.brother && ATLAS.brother.anims; if (J && !L.dream && drop > FALL.step) { AN.landT = 0; AN.landClip = drop > FALL.hard && J.land ? 'land' : (AN.airKind === 'leap' && J.leap ? 'leap' : 'jump'); AN.landFrom = AN.landClip === 'land' && AN.cur ? match('brother', AN.cur.anim, AN.cur.f, 'land', 0, .4) : 0; } }
+    if (!wasOn) P.vx *= drop > FALL.hard ? .25 : drop > FALL.step ? .6 : .9;
     if (!wasOn && drop > 14) dust(P.x + P.w / 2, P.y + P.h, 3 + Math.min(10, drop / 10), Math.min(1.6, drop / 70));
     if (!wasOn && drop > FALL.step && P.vy > 3.2) { const J = ATLAS.brother && ATLAS.brother.anims.jump; P.landT = J && !L.dream ? Math.min(drop > FALL.hard ? .5 : .3, J.land.length / J.fps) : .16; if (P.vy > 4.5) SFX.land(); }
     P.vy = 0; P.on = true;
@@ -1291,6 +1335,7 @@ function stepCore() {
   else { P.on = false; if (wasOn && P.vy >= 0 && snapDown(P, STEP + 2)) { P.on = true; P.vy = 0; } }
   if (!P.on) { P.airT += dt; P.topY = Math.min(P.topY, P.y); } else { P.airT = 0; P.topY = P.y; }
   if (!P.on && ropeGrab()) { camFollow(); return; }
+  if (!P.on && wasOn && P.vy >= 0 && !P.prep) P.airMax = Math.max(Math.abs(P.vx), .8);
   if (!P.on && wasOn && P.vy >= 0) {   // off an edge: stepping down keeps the stride, a real drop takes the fall pose
     const d = dropBelow(P.x + P.vx * 8);
     AN.airKind = d <= FALL.step ? 'step' : Math.abs(P.vx) > .8 ? 'leap' : 'jump';
@@ -1662,9 +1707,9 @@ function render() {
       if (d.type === 'hands') { c.strokeStyle = '#000'; for (let i = 0; i < 6; i++) { const x = cx + (i - 2.5) * 5, gy = groundAt(x) + 2; c.lineWidth = 2; c.beginPath(); c.moveTo(x, gy); c.quadraticCurveTo(x + 5, gy - 18, cx + Math.sin(i * 2) * 5, base - 6 - i * 3); c.stroke(); } }
     }
   } else if (P && P.rope && ATLAS.brother) {
-    const r = P.rope, A = ATLAS.brother, m = A.anims.hang, f = ROPE_F, s = 40 / A.bodyH, sx = Math.sin(r.th), sy = Math.cos(r.th);
-    const ext = m.ext[f] * s + (A.frameH - 3 - m.by[f]) * s, hx = r.x + sx * P.ropeS, hy = r.y + sy * P.ropeS;
-    drawSprite(c, 'brother', 'hang', f, hx + sx * ext, hy + sy * ext, AN.visFace, -r.th);
+    const r = P.rope, A = ATLAS.brother, m = A.anims.hang, f = AN.cur && AN.cur.anim === 'hang' ? Math.floor(AN.cur.f) : 11, s = 40 / A.bodyH, sx = Math.sin(P.ba), sy = Math.cos(P.ba);
+    const ext = m.ext[f] * s + (A.frameH - 3 - m.by[f]) * s, h = r.pts[P.ropeK], hx = h.x, hy = h.y - 1;
+    drawSprite(c, 'brother', 'hang', f, hx + sx * ext, hy + sy * ext, AN.visFace, -P.ba);
   } else if (S.state !== 'card' || P) {
     const q = P.act ? actPose(P.act) : null;
     const base = (q ? q.base : P.on && !P.mantle ? feetY(P) : P.y + P.h) + 1.5, cx = P.x + P.w / 2;
