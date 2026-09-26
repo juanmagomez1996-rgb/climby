@@ -15,13 +15,35 @@ class LifeData {
         hazards = (raw['hazards'] as Map).cast<String, Json>(),
         spawn = (raw['spawn'] as List).cast<Json>(),
         moments = (raw['moments'] as List).cast<Json>(),
-        events = (raw['events'] as List).cast<Json>();
+        events = (raw['events'] as List).cast<Json>(),
+        paths = ((raw['paths'] ?? {}) as Map).cast<String, Json>(),
+        partners = ((raw['partners'] ?? {}) as Map).cast<String, String>();
 
   final Json raw;
   final List<String> stats;
   final List<double> start;
   final List<Json> stages, spawn, moments, events;
   final Map<String, Json> pickups, hazards;
+  /// Caminos de vida (vocaciones) con sus finales; ver BRANCHES.md.
+  final Map<String, Json> paths;
+  /// Nombre de pareja → sprite base ('Lucía' → 'lucia').
+  final Map<String, String> partners;
+
+  static const totalBranches = 30;
+
+  /// Todos los fondos que usan los caminos (para precargarlos).
+  Iterable<String> get pathBgs sync* {
+    for (final p in paths.values) {
+      for (final st in ((p['stages'] ?? {}) as Map).values) {
+        yield (st as Json)['bg'] as String;
+      }
+      for (final b in ((p['branches'] ?? {}) as Map).values) {
+        for (final st in (((b as Json)['stages'] ?? {}) as Map).values) {
+          yield (st as Json)['bg'] as String;
+        }
+      }
+    }
+  }
 
   static Future<LifeData> load() async =>
       LifeData(jsonDecode(await rootBundle.loadString('assets/data/life.json')) as Json);
@@ -61,6 +83,8 @@ abstract class LifeListener {
   void momentWanted([String? id, Json? opts, void Function(bool ok)? onEnd]);
   void died();
   void familyChanged();
+  /// Se entra en un camino o se llega a un final: [key] es 'futbol' o 'futbol_leyenda'.
+  void pathFound(String key, String head, String name, String icon);
 }
 
 /// Estado y reglas de una vida (sin dibujo ni física): años, stats, eventos y consecuencias.
@@ -78,6 +102,7 @@ class Life {
   final List<double> st;
   final Map<String, bool> flags = {};
   String? partner;
+  String? path, branch;
   int hijaAge = 0, perroAge = 0;
   final List<String> seen = [];
   final List<Json> later = [];
@@ -101,6 +126,46 @@ class Life {
       .replaceAll('{a}', '$age');
 
   static double yearDur(int a) => a < 4 ? 0.8 : 2.0;
+
+  Json? get pathData => path == null ? null : d.paths[path];
+  Json? get branchData => branch == null ? null : ((pathData?['branches'] ?? {}) as Map)[branch] as Json?;
+
+  /// Etapa efectiva: la base, sustituida por la del camino y la del final (fondo, ropa, objetos, velocidad…).
+  Json stageInfo(int i) {
+    final out = <String, dynamic>{'spawn': d.spawn[i], ...d.stages[i]};
+    final ps = ((pathData?['stages'] ?? {}) as Map)['$i'];
+    if (ps != null) out.addAll(ps as Json);
+    final bs = ((branchData?['stages'] ?? {}) as Map)['$i'];
+    if (bs != null) out.addAll(bs as Json);
+    return out;
+  }
+
+  /// Minijuegos propios del camino (se prefieren entre los 13 y los 44).
+  List<String> get pathMoments => age >= 13 && age < 45 ? ((pathData?['moments'] ?? []) as List).cast<String>() : const [];
+
+  void setPath(String id) {
+    final p = d.paths[id];
+    if (p == null || path != null) return;
+    path = id;
+    flags[id] = true;
+    flags['career'] = true;
+    l.pathFound(id, 'NUEVO CAMINO', (p['name'] as String).toUpperCase(), p['icon'] as String);
+  }
+
+  void setBranch(String id) {
+    final b = ((pathData?['branches'] ?? {}) as Map)[id] as Json?;
+    if (b == null || branch != null) return;
+    branch = id;
+    flags['${path}_$id'] = true;
+    l.pathFound('${path}_$id', 'TU FINAL', (b['name'] as String).toUpperCase(), b['icon'] as String);
+  }
+
+  /// Viñeta de la carta: propia (img) o la versión con la pareja actual (pimg: boda_marga…).
+  String cardImg(Json e) {
+    if (e['img'] != null) return e['img'] as String;
+    final pk = d.partners[partner];
+    return e['pimg'] != null && pk != null && pk != 'lucia' ? '${e['id']}_$pk' : e['id'] as String;
+  }
 
   /// Aplica un cambio de stats. [dimin]: los objetos rinden menos cuanto más llena está la barra.
   void apply(List<double> fx, {String? cause, bool silent = false, bool dimin = false}) {
@@ -178,6 +243,13 @@ class Life {
       stage = sg;
       l.stageChanged(sg);
     }
+    // si la vida no pasó por el punto de giro, el camino elige un final
+    final pd = pathData;
+    if (pd != null && branch == null && a >= 44) {
+      final fb = ((pd['fallback'] ?? {}) as Map).cast<String, String>();
+      final f = fb.keys.where((k) => k != '_' && flag(k)).firstOrNull;
+      setBranch(f != null ? fb[f]! : fb['_'] ?? ((pd['branches'] as Map).keys.first as String));
+    }
     for (final c in later.where((c) => c['at'] == a).toList()) {
       banner('CONSECUENCIA · $a AÑOS', c['t'] as String, 'later');
       final fx = fxOf(c['fx']);
@@ -230,7 +302,7 @@ class Life {
     if (ev != null) {
       done.add(ev['id'] as String);
       card = ev;
-      seen.add(ev['id'] as String);
+      seen.add(cardImg(ev));
       lastEvent = a;
       l.cardOpened(ev);
       return;
@@ -244,6 +316,8 @@ class Life {
     if (o['flag'] != null) flags[o['flag'] as String] = true;
     if (o['unflag'] != null) flags[o['unflag'] as String] = false;
     if (o['partner'] != null) partner = o['partner'] as String;
+    if (o['path'] != null) setPath(o['path'] as String);
+    if (o['branch'] != null) setBranch(o['branch'] as String);
     if (o['flag'] == 'hija') hijaAge = age;
     if (o['flag'] == 'perro') perroAge = age;
     if (o['later'] != null) {
@@ -268,7 +342,9 @@ class Life {
     outcome(o);
     if (o['chance'] != null) {
       final c = o['chance'] as Json;
-      final p = (c['p'] as num) + (c['stat'] != null ? (st[(c['stat'] as num).toInt()] - 50) / 250 : 0);
+      final p = (c['p'] as num) +
+          (c['stat'] != null ? (st[(c['stat'] as num).toInt()] - 50) / 250 : 0) +
+          (c['flag'] != null && flag(c['flag'] as String) ? 0.25 : 0);
       final ok = rng.nextDouble() < p;
       outcome((ok ? c['ok'] : c['ko']) as Json?);
       l.sound(ok ? 'good' : 'bad');
@@ -285,7 +361,7 @@ class Life {
     }
     l.familyChanged();
     if (o['game'] != null) {
-      l.momentWanted(o['game'] as String, {'title': o['gameTitle'], 'hint': o['gameHint']}, (ok) {
+      l.momentWanted(o['game'] as String, {'title': o['gameTitle'], 'hint': o['gameHint'], 'single': o['single']}, (ok) {
         outcome((ok ? o['win'] : o['lose']) as Json?);
         l.familyChanged();
       });
@@ -321,7 +397,8 @@ class Life {
     } else {
       low = 'Hizo lo que pudo con lo que le tocó.';
     }
-    return '«Aquí yace Ramón. ${best.first[1]} $low»';
+    final head = branchData?['epitaph'] ?? pathData?['epitaph'] ?? best.first[1];
+    return '«Aquí yace Ramón. $head $low»';
   }
 
   /// Hasta 5 momentos notables repartidos a lo largo de la vida.

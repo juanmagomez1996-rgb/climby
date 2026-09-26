@@ -57,7 +57,12 @@ class VidaGame extends FlameGame implements LifeListener {
 
   // runner
   double dist = 0, speedMul = 1, spawnT = 1.5, fade = 1, stageBanner = 0, deathT = 0, cardT = 0;
-  int prevStage = 0;
+  String bgKey = 'bg_0';
+  String? prevBg;
+  /// Cartel de «NUEVO CAMINO» / «TU FINAL»: (cabecera, nombre, icono, tiempo restante).
+  (String, String, String)? pathBanner;
+  double pathBannerT = 0;
+  final List<String> newFound = [];
   final List<Ent> ents = [];
   final List<Follower> followers = [];
   double py = kGY, pvy = 0, pframe = 0, pland = 0, pstumble = 0, pinv = 0, pv0 = 900, pair = 0, npcT = 3, ambT = 1;
@@ -74,7 +79,17 @@ class VidaGame extends FlameGame implements LifeListener {
   Offset _off = Offset.zero;
 
   Life get L => life!;
-  Json get stageData => data.stages[L.stage];
+  Json? _st;
+  String _stKey = '';
+  /// Etapa efectiva (con la ropa, el fondo y los objetos del camino y del final).
+  Json get stageData {
+    final k = '${L.stage}|${L.path}|${L.branch}';
+    if (k != _stKey) {
+      _stKey = k;
+      _st = L.stageInfo(L.stage);
+    }
+    return _st!;
+  }
 
   /// Se llama cuando cambia algo que la interfaz Flutter debe redibujar.
   void Function()? onUi;
@@ -85,7 +100,16 @@ class VidaGame extends FlameGame implements LifeListener {
     await Gfx.load([
       ...data.pickups.keys, ...data.hazards.keys,
       'hoop', 'basketball', 'car', 'bigcake', 'candle', 'bouquet', 'fish', 'bobber', 'butterfly', 'bird', 'leaf', 'petal', 'photo', 'kite', 'rattle', 'boat', 'cone', 'trophy',
-    ], [for (final s in data.stages) s['bg'] as String], events: [for (final e in data.events) if (e['auto'] == null) e['id'] as String]);
+      'goal', 'keeper', for (final p in data.paths.values) p['icon'] as String,
+      for (final p in data.paths.values) for (final b in (p['branches'] as Map).values) (b as Json)['icon'] as String,
+    ], {for (final s in data.stages) s['bg'] as String, ...data.pathBgs}, events: [
+      for (final e in data.events)
+        if (e['auto'] == null && e['img'] == null) e['id'] as String,
+      for (final e in data.events)
+        if (e['pimg'] != null)
+          for (final k in data.partners.values)
+            if (k != 'lucia') '${e['id']}_$k',
+    ]);
     await Audio.load();
     toMenu();
   }
@@ -106,7 +130,11 @@ class VidaGame extends FlameGame implements LifeListener {
     fade = 1;
     stageBanner = 0;
     deathT = 0;
-    prevStage = 0;
+    bgKey = data.stages[0]['bg'] as String;
+    prevBg = null;
+    pathBanner = null;
+    newFound.clear();
+    _stKey = '';
     ents.clear();
     followers.clear();
     npcs.clear();
@@ -130,6 +158,14 @@ class VidaGame extends FlameGame implements LifeListener {
     overlays.add('hud');
     L.banner('', 'Toca para saltar. Recoge lo bueno, esquiva lo malo.', 'msg');
     Audio.music('music_0');
+    // Depuración: --dart-define=DEBUG_AGE=50 --dart-define=DEBUG_PATH=futbol --dart-define=DEBUG_BRANCH=leyenda
+    const dAge = int.fromEnvironment('DEBUG_AGE'), dPath = String.fromEnvironment('DEBUG_PATH'), dBranch = String.fromEnvironment('DEBUG_BRANCH');
+    if (dAge > 0) {
+      L.age = dAge;
+      L.stage = data.stageOf(dAge);
+    }
+    if (dPath.isNotEmpty) L.setPath(dPath);
+    if (dBranch.isNotEmpty) L.setBranch(dBranch);
   }
 
   void pause() {
@@ -168,7 +204,6 @@ class VidaGame extends FlameGame implements LifeListener {
 
   @override
   void stageChanged(int stage) {
-    fade = 0;
     stageBanner = 2.6;
     Audio.play('stage');
     Audio.music('music_$stage');
@@ -201,6 +236,16 @@ class VidaGame extends FlameGame implements LifeListener {
   @override
   void familyChanged() => syncFollowers();
 
+  @override
+  void pathFound(String key, String head, String name, String icon) {
+    if (Prefs.discover(key)) newFound.add(key);
+    stageBanner = 0;
+    pathBanner = (head, name, icon);
+    pathBannerT = 3;
+    Audio.play('stage');
+    fx.burst(kPX, kGY - 150, const Color(0xFFFFD35A), n: 30, sp: 300, up: 150);
+  }
+
   void choose(int i, {bool auto = false}) {
     if (life?.card == null) return;
     overlays.remove('card');
@@ -218,7 +263,7 @@ class VidaGame extends FlameGame implements LifeListener {
     final l = L, a = l.age, want = <(String, String, double, double)>[];
     String pick(String k, String fallback) => Gfx.meta.containsKey(k) ? k : fallback;
     if (l.flag('pareja')) {
-      final base = l.partner == 'Marga' ? 'marga' : 'lucia';
+      final base = data.partners[l.partner] ?? 'lucia';
       final k = a < 45 ? base : a < 65 ? '${base}_mid' : '${base}_old';
       want.add(('pareja', pick(k, base), 92, a < 45 ? 192 : a < 65 ? 190 : 178));
     }
@@ -325,7 +370,7 @@ class VidaGame extends FlameGame implements LifeListener {
   }
 
   void spawn() {
-    final sp = data.spawn[L.stage], x = kW + 80, r = rnd(0, 1);
+    final sp = stageData['spawn'] as Json, x = kW + 80, r = rnd(0, 1);
     final pk = sp['pick'] as Map, hz = sp['haz'] as Map;
     void addHaz(String id, [double dx = 0]) {
       final h = data.hazards[id]!, air = h['air'] == 1;
@@ -388,7 +433,7 @@ class VidaGame extends FlameGame implements LifeListener {
     spawnT -= dt;
     if (spawnT <= 0 && !L.dead) spawn();
     for (final e in ents) {
-      e.x -= speed * dt * (e.air ? 1.25 : 1);
+      e.x -= speed * dt * (e.air ? 1.25 : e.haz ? ((data.hazards[e.id]!['fast'] as num?) ?? 1) : 1);
     }
     ents.removeWhere((e) => e.x < -120 || e.gone);
     final top = py - h * 0.86, bot = py - 6;
@@ -492,13 +537,20 @@ class VidaGame extends FlameGame implements LifeListener {
         final ages = m['ages'] as List;
         return m['trig'] == null && a >= ages[0] && a <= ages[1] && ((m['need'] as List?)?.every((f) => L.flag(f as String)) ?? true);
       }).toList();
-      if (list.isEmpty) return;
-      id = list[Random().nextInt(list.length)]['id'] as String;
+      final pm = L.pathMoments;
+      if (pm.isNotEmpty && rnd(0, 1) < 0.5) {
+        id = pm[Random().nextInt(pm.length)];
+      } else {
+        if (list.isEmpty) return;
+        id = list[Random().nextInt(list.length)]['id'] as String;
+      }
     }
     final def = kMoments[id];
     if (def == null) return;
     final m = data.moments.where((m) => m['id'] == id).firstOrNull ?? const {};
-    final M = Moment(id, def, (opts?['title'] ?? m['title'] ?? '') as String, (opts?['hint'] ?? m['hint'] ?? '') as String)..onEnd = onEnd;
+    final M = Moment(id, def, (opts?['title'] ?? m['title'] ?? '') as String, (opts?['hint'] ?? m['hint'] ?? '') as String)
+      ..onEnd = onEnd
+      ..single = opts?['single'] != null;
     L.lastMoment = a;
     moment = M;
     def.start(this, M);
@@ -559,8 +611,17 @@ class VidaGame extends FlameGame implements LifeListener {
       flash[i] = max(0, flash[i] - dt * 2);
       shown[i] += (l.st[i] - shown[i]) * min(1, dt * 6);
     }
+    final bg = stageData['bg'] as String;
+    if (bg != bgKey) {
+      prevBg = bgKey;
+      bgKey = bg;
+      fade = 0;
+    }
     fade = min(1, fade + dt / 1.4);
-    if (fade >= 1) prevStage = l.stage;
+    if (pathBanner != null && moment == null && l.card == null) {
+      pathBannerT -= dt;
+      if (pathBannerT <= 0) pathBanner = null;
+    }
     if (stageBanner > 0) stageBanner -= dt;
     if (l.banners.isNotEmpty) {
       l.banners.first.time += dt;
@@ -633,8 +694,8 @@ class VidaGame extends FlameGame implements LifeListener {
     if (fx.shakeA > 0) c.translate(rnd(-fx.shakeA, fx.shakeA), rnd(-fx.shakeA, fx.shakeA));
     c.save();
     c.clipRect(const Rect.fromLTWH(0, kSY, kW, kSH));
-    if (fade < 1) _drawBg(c, data.stages[prevStage]['bg'] as String, 1);
-    _drawBg(c, stageData['bg'] as String, fade);
+    if (fade < 1 && prevBg != null) _drawBg(c, prevBg!, 1);
+    _drawBg(c, bgKey, prevBg != null ? fade : 1);
     for (final b in amb) {
       final s = b.k == 'kite' ? 70.0 : b.k == 'bird' ? 34.0 : 28.0;
       final flap = b.k == 'bird' || b.k == 'butterfly' ? 0.35 + (sin(b.ph * (b.k == 'bird' ? 12 : 9))).abs() * 0.65 : 1.0;
@@ -649,7 +710,8 @@ class VidaGame extends FlameGame implements LifeListener {
         if (!e.air) Gfx.shadow(c, e.x, kGY + 2, e.w * 0.45);
         final wob = e.air ? sin(t * 8 + e.bob) * 6 : 0.0;
         if (e.hitT > 0) e.hitT -= 1 / 60;
-        Gfx.item(c, e.id, e.x, e.air ? e.y + wob : e.y - e.h / 2, e.h * (e.air ? 1 : 1.05), rot: e.hitT > 0 ? sin(t * 40) * 0.2 : 0);
+        Gfx.item(c, e.id, e.x, e.air ? e.y + wob : e.y - e.h / 2, e.h * (e.air ? 1 : 1.05),
+            rot: e.hitT > 0 ? sin(t * 40) * 0.2 : 0, sx: data.hazards[e.id]!['flip'] != null ? -1 : 1);
       } else {
         if (e.y > kGY - 60) Gfx.shadow(c, e.x, kGY + 2, 18);
         Gfx.item(c, e.id, e.x, e.y + sin(t * 4 + e.bob) * 5, 50, sx: 1 + sin(t * 6 + e.bob) * 0.04);
@@ -739,7 +801,23 @@ class VidaGame extends FlameGame implements LifeListener {
       Gfx.text(c, 'NUEVA ETAPA', kW / 2, y - 22, size: 22, color: kAccent, alpha: a, font: 'Chewy');
       Gfx.text(c, stageData['name'] as String, kW / 2, y + 16, size: 50, alpha: a, font: 'Chewy');
     }
-    final l = L;
+    final l = L, pb = pathBanner;
+    if (pb != null && l.card == null && moment == null) {
+      final a = pathBannerT.clamp(0.0, 1.0) * ((3 - pathBannerT) * 3).clamp(0.0, 1.0), y = kSY + 230;
+      final sc = 0.8 + 0.2 * ((3 - pathBannerT) * 4).clamp(0.0, 1.0);
+      c.save();
+      c.translate(kW / 2, y);
+      c.scale(sc);
+      c.translate(-kW / 2, -y);
+      Gfx.paperBox(c, Rect.fromLTWH(50, y - 70, 440, 140), alpha: a);
+      Gfx.item(c, pb.$3, 105, y, 76, alpha: a, rot: sin(time * 3.3) * 0.1);
+      Gfx.text(c, pb.$1, 300, y - 32, size: 24, color: kAccent, alpha: a, font: 'Chewy');
+      final ls = Gfx.wrap(pb.$2, 320, 40, font: 'Chewy');
+      for (var i = 0; i < ls.length; i++) {
+        Gfx.text(c, ls[i], 300, y + 14 + (i - (ls.length - 1) / 2) * 40, size: 40, alpha: a, font: 'Chewy');
+      }
+      c.restore();
+    }
     if (l.banners.isEmpty || l.card != null) return;
     final b = l.banners.first;
     final a = (b.time * 4).clamp(0.0, 1.0) * ((3.2 - b.time) * 3).clamp(0.0, 1.0);

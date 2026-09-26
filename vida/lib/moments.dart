@@ -14,7 +14,7 @@ class Moment {
   final MomentDef def;
   String title, hint;
   double t = 0, dur, endT = 0;
-  bool done = false, ok = false;
+  bool done = false, ok = false, single = false;
   int got = 0;
   void Function(bool ok)? onEnd;
   // estado libre de cada minijuego
@@ -821,6 +821,201 @@ class _Recuerdos extends MomentDef {
   }
 }
 
+/// Penaltis: desliza desde el balón hacia la portería. El portero se tira a un lado; las esquinas son casi
+/// imparables pero si te pasas va fuera. [Moment.single] = un único tiro decisivo (lo decide la carta).
+class _Pen {
+  int shots = 3, need = 2;
+  double bx = kW / 2, by = kSY + 540, bs = 64, brot = 0, sx = 0, sy = 0, tx = 0, ty = 0, ft = 0, vx = 0, vy = 0, wait = 0;
+  int fly = 0; // 0 quieto, 1 volando, 2 parado, 3 fuera, 4 gol
+  double kx = kW / 2, kto = kW / 2, klift = 0, klt = 0, krot = 0;
+  int kdive = 0;
+  List<double>? aim; // x, y, cx, cy
+  void reset() {
+    bx = kW / 2;
+    by = kSY + 540;
+    bs = 64;
+    fly = 0;
+    wait = 0;
+    kx = kW / 2;
+    klift = krot = 0;
+    kdive = 0;
+  }
+}
+
+class _Penaltis extends MomentDef {
+  static const gx = kW / 2, gw = 440.0, gh = gw * 175 / 256, gy = kSY + 150.0;
+  static const x0 = gx - gw * 0.44, x1 = gx + gw * 0.44, y0 = gy + gh * 0.08, y1 = gy + gh * 0.86, k = 1.9;
+  @override
+  double get dur => 12;
+  _Pen _p(Moment m) => m.s['p'] as _Pen;
+
+  @override
+  void start(g, m) {
+    final p = _Pen();
+    if (m.single) {
+      m.dur = 7;
+      p.shots = 1;
+      p.need = 1;
+    }
+    m.s['p'] = p;
+  }
+
+  @override
+  void down(g, m, x, y) {
+    final p = _p(m);
+    if (p.fly == 0 && p.wait <= 0 && p.shots > 0 && (Offset(x, y) - Offset(p.bx, p.by)).distance < 110) p.aim = [x, y, x, y];
+  }
+
+  @override
+  void move(g, m, x, y) {
+    final a = _p(m).aim;
+    if (a != null) {
+      a[2] = x;
+      a[3] = y;
+    }
+  }
+
+  @override
+  void up(g, m, x, y) {
+    final p = _p(m), a = p.aim;
+    if (a == null) return;
+    p.aim = null;
+    final dx = a[2] - a[0], dy = a[3] - a[1];
+    if (dy > -30) return;
+    p
+      ..tx = p.bx + dx * k
+      ..ty = max(kSY + 60, p.by + dy * k)
+      ..fly = 1
+      ..ft = 0
+      ..sx = p.bx
+      ..sy = p.by
+      ..shots -= 1;
+    Audio.play('jump');
+    g.fx.shake(3, 0.1);
+    // el portero adivina el lado con un 40 % de acierto; si no, se tira al otro o se queda
+    final side = p.tx >= gx ? 1 : -1, r = rnd(0, 1);
+    p.kdive = r < 0.4 ? side : (rnd(0, 1) < 0.5 ? -side : 0);
+    p.kto = gx + p.kdive * 115;
+    p.klt = p.kdive != 0 ? rnd(40, 100) : 0;
+  }
+
+  @override
+  void update(g, m, dt) {
+    final p = _p(m);
+    if (p.fly == 0) {
+      p.kx = gx + sin(m.t * 2.4) * 40;
+    } else if (p.fly == 1) {
+      p.ft += dt / 0.5;
+      final f = min(1.0, p.ft);
+      p.bx = p.sx + (p.tx - p.sx) * f;
+      p.by = p.sy + (p.ty - p.sy) * f - sin(f * pi) * 40;
+      p.bs = 64 - 26 * f;
+      p.brot += dt * 14;
+      final kf = (p.ft * 1.6).clamp(0.0, 1.0);
+      p.kx += (p.kto - p.kx) * kf * 0.25;
+      p.klift = p.klt * sin(kf * pi / 2);
+      p.krot = p.kdive * 1.1 * kf;
+      if (f >= 1) {
+        final inside = p.tx > x0 && p.tx < x1 && p.ty > y0 && p.ty < y1;
+        // el portero cubre unos 90 px alrededor de sus manos (más si se tira bien)
+        final hx = p.kx + p.kdive * 60, hy = y1 - 90 - p.klift;
+        final saved = inside && (p.tx - hx).abs() < (p.kdive != 0 ? 85 : 70) && (p.ty - hy).abs() < 95;
+        if (!inside) {
+          p.fly = 3;
+          g.fx.float(p.ty <= y0 ? '¡Al larguero… y fuera!' : '¡Fuera!', kW / 2, kSY + 470, _brown, 36);
+          Audio.play('bad');
+        } else if (saved) {
+          p
+            ..fly = 2
+            ..vx = (p.bx - p.kx) * 4 + rnd(-80, 80)
+            ..vy = 380;
+          g.fx.float('¡PARADÓN!', kW / 2, kSY + 470, kStatCols[0], 40);
+          Audio.play('hit');
+          g.fx.shake(6, 0.2);
+        } else {
+          p.fly = 4;
+          m.got++;
+          g.fx.float('¡GOOOL!', kW / 2, kSY + 470, _green, 50);
+          Audio.play('good');
+          g.fx.shake(8, 0.3);
+          g.fx.burst(p.bx, p.by, kCream, n: 24, sp: 260);
+          g.confetti();
+        }
+        p.wait = 1.1;
+      }
+    } else {
+      if (p.fly == 2) {
+        p.vy += 900 * dt;
+        p.bx += p.vx * dt;
+        p.by += p.vy * dt;
+        p.brot += dt * 10;
+      }
+      if (p.fly == 3) p.bs = max(10, p.bs - dt * 30);
+      p.wait -= dt;
+      if (p.wait <= 0) {
+        if (m.got >= p.need) return g.endMoment(true);
+        if (p.shots <= 0 || m.got + p.shots < p.need) return g.endMoment(false);
+        p.reset();
+      }
+    }
+    if (m.t > m.dur && p.fly == 0) g.endMoment(m.got >= p.need);
+  }
+
+  @override
+  void result(g, m, ok) {
+    if (m.single) return; // la carta que lo lanzó decide qué pasa
+    if (ok) {
+      _win(g, m.got == 3 ? '¡Tres de tres, crack!' : '¡Ganas la tanda!', m.got == 3 ? [1, 0, 6, 2] : [0, 0, 3, 1]);
+    } else {
+      _lose(g, 'El portero se ríe de ti', [0, 0, -2, 0]);
+    }
+  }
+
+  @override
+  void draw(g, m, c, t) {
+    final p = _p(m);
+    for (var i = 0; i < 8; i++) {
+      c.drawRect(Rect.fromLTWH(0, kSY + i * 81, kW, 82), Paint()..color = Color(i.isOdd ? 0xFF6FA845 : 0xFF7CB552));
+    }
+    final line = Paint()
+      ..color = const Color(0xD9FFFFFF)
+      ..strokeWidth = 5
+      ..style = PaintingStyle.stroke;
+    c.drawLine(const Offset(0, gy + gh - 4), const Offset(kW, gy + gh - 4), line);
+    c.drawLine(const Offset(24, gy + gh - 4), const Offset(6, kSY + 630), line);
+    c.drawLine(const Offset(kW - 24, gy + gh - 4), const Offset(kW - 6, kSY + 630), line);
+    c.drawOval(Rect.fromCenter(center: const Offset(kW / 2, kSY + 560), width: 18, height: 8), Paint()..color = kCream);
+    final ripple = p.fly == 4 ? sin(t * 40) * 3 * max(0, p.wait - 0.4) : 0.0;
+    Gfx.item(c, 'goal', gx, gy + gh / 2 + ripple, gh);
+    final behind = p.fly == 4; // el balón entra y queda detrás del portero
+    if (behind) Gfx.item(c, 'soccerball', p.bx, p.by, p.bs, rot: p.brot);
+    c.save();
+    c.translate(p.kx, gy + gh - 10 - p.klift);
+    c.rotate(p.krot);
+    Gfx.shadow(c, 0, 8 + p.klift, 40);
+    Gfx.item(c, 'keeper', 0, -85, 175);
+    c.restore();
+    final a = p.aim;
+    if (a != null) {
+      final dx = (a[2] - a[0]) * k, dy = (a[3] - a[1]) * k, dot = Paint()..color = const Color(0xD9FFF8EC);
+      for (var i = 1; i < 8; i++) {
+        final f = i / 8;
+        c.drawCircle(Offset(p.bx + dx * f, p.by + dy * f - sin(f * pi) * 40), 9 - f * 4, dot);
+      }
+    }
+    if (!behind) {
+      if (p.fly == 0) Gfx.shadow(c, p.bx, p.by + p.bs * 0.45, p.bs * 0.45);
+      Gfx.item(c, 'soccerball', p.bx, p.by, p.bs, rot: p.brot);
+    }
+    for (var i = 0; i < p.shots; i++) {
+      Gfx.item(c, 'soccerball', 40 + i * 34.0, kSY + 610, 28, alpha: 0.9);
+    }
+    for (var i = 0; i < m.got; i++) {
+      Gfx.item(c, 'star', kW - 40 - i * 34.0, kSY + 610, 28);
+    }
+  }
+}
+
 final Map<String, MomentDef> kMoments = {
   'pelota': _Pelota(),
   'monedas': _Lluvia(true),
@@ -831,6 +1026,7 @@ final Map<String, MomentDef> kMoments = {
   'bebe': _Equilibrio(true),
   'velas': _Velas(),
   'canasta': _Canasta(),
+  'penaltis': _Penaltis(),
   'ramo': _Ramo(),
   'aparcar': _Aparcar(),
   'pesca': _Pesca(),

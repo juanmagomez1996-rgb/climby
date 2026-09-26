@@ -11,6 +11,8 @@ class Prefs {
   static bool sfx = true;
   static bool vibration = true;
   static List<Map<String, dynamic>> history = [];
+  /// Caminos y finales descubiertos ('futbol', 'futbol_leyenda'…).
+  static List<String> found = [];
 
   static Future<void> init() async {
     try {
@@ -22,6 +24,7 @@ class Prefs {
       vibration = _p!.getBool('vibration') ?? true;
       final h = _p!.getString('history');
       if (h != null) history = (jsonDecode(h) as List).cast<Map<String, dynamic>>();
+      found = _p!.getStringList('found') ?? [];
     } catch (_) {}
   }
 
@@ -37,7 +40,19 @@ class Prefs {
     return rec;
   }
 
+  /// Guarda un camino o final descubierto. Devuelve true si es nuevo.
+  static bool discover(String key) {
+    if (found.contains(key)) return false;
+    found = [...found, key];
+    _p?.setStringList('found', found);
+    return true;
+  }
+
+  static int get foundBranches => found.where((k) => k.contains('_')).length;
+
   static void reset() {
+    found = [];
+    _p?.remove('found');
     best = 0;
     lives = 0;
     history = [];

@@ -82,7 +82,11 @@ class MenuOverlay extends StatelessWidget {
               Text(Prefs.best > 0 ? 'Récord: ${Prefs.best} pts · ${Prefs.lives} vidas vividas' : 'Una vida entera en unos minutos.',
                   style: _hand.copyWith(fontSize: 22, color: const Color(0xFFFFF4DC), shadows: const [Shadow(color: Color(0x66000000), offset: Offset(0, 2))])),
               const SizedBox(height: 10),
-              PaperButton('Ajustes', () => showDialog(context: context, builder: (_) => const SettingsDialog()), small: true),
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                PaperButton('Caminos', () => showDialog(context: context, builder: (_) => PathsDialog(game.data)), small: true),
+                const SizedBox(width: 10),
+                PaperButton('Ajustes', () => showDialog(context: context, builder: (_) => const SettingsDialog()), small: true),
+              ]),
             ]),
           ]),
         ),
@@ -168,7 +172,7 @@ class _CardOverlayState extends State<CardOverlay> with SingleTickerProviderStat
                     decoration: BoxDecoration(border: Border.all(color: kInk, width: 3), borderRadius: BorderRadius.circular(12)),
                     child: AspectRatio(
                       aspectRatio: 2,
-                      child: Image.asset('assets/ev/${e['id']}.webp', fit: BoxFit.cover, errorBuilder: (_, _, _) => const ColoredBox(color: Color(0xFFF3E2C0))),
+                      child: Image.asset('assets/ev/${l.cardImg(e)}.webp', fit: BoxFit.cover, errorBuilder: (_, _, _) => const ColoredBox(color: Color(0xFFF3E2C0))),
                     ),
                   ),
                 ),
@@ -327,6 +331,20 @@ class OverOverlay extends StatelessWidget {
             Text('Ramón (0 – ${l.age})', style: _chewy.copyWith(fontSize: 46)),
             const SizedBox(height: 6),
             Text(l.epitaph(), textAlign: TextAlign.center, style: _hand.copyWith(fontSize: 26, fontStyle: FontStyle.italic, height: 1.1)),
+            const SizedBox(height: 4),
+            Text.rich(
+                TextSpan(children: [
+                  if (l.pathData != null) ...[
+                    const TextSpan(text: 'Camino: '),
+                    TextSpan(text: l.pathData!['name'] as String, style: const TextStyle(fontWeight: FontWeight.bold)),
+                    if (l.branchData != null) TextSpan(text: ' · ${l.branchData!['name']}'),
+                  ] else
+                    const TextSpan(text: 'Vivió una vida normal, sin vocación.'),
+                  if (game.newFound.isNotEmpty) TextSpan(text: '  ¡Nuevo camino descubierto!', style: _chewy.copyWith(color: kAccent)),
+                  TextSpan(text: '\nCaminos descubiertos: ${Prefs.foundBranches}/${LifeData.totalBranches}'),
+                ]),
+                textAlign: TextAlign.center,
+                style: _hand.copyWith(fontSize: 21, height: 1.15)),
             const SizedBox(height: 6),
             Text('Murió a los ${l.age} años, ${l.cause}.', textAlign: TextAlign.center, style: _hand.copyWith(fontSize: 22, color: kInk.withValues(alpha: 0.8))),
             const SizedBox(height: 10),
@@ -347,5 +365,73 @@ class OverOverlay extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+// ---------------- Caminos de vida descubiertos ----------------
+class PathsDialog extends StatelessWidget {
+  const PathsDialog(this.data, {super.key});
+  final LifeData data;
+  @override
+  Widget build(BuildContext context) {
+    final rest = 10 - data.paths.length;
+    Widget icon(String k) => Image.asset('assets/items/$k.webp', width: 34, height: 34, errorBuilder: (_, _, _) => const SizedBox(width: 34));
+    return Stage540(
+      child: Center(
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            width: 480,
+            constraints: const BoxConstraints(maxHeight: 820),
+            padding: const EdgeInsets.all(22),
+            decoration: paperDeco(),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Text('CAMINOS DE VIDA', style: _chewy.copyWith(fontSize: 30, color: kAccent, letterSpacing: 2)),
+              Text('${Prefs.foundBranches} de ${LifeData.totalBranches} finales descubiertos', style: _hand.copyWith(fontSize: 22, color: kInk.withValues(alpha: 0.8))),
+              const SizedBox(height: 8),
+              Flexible(
+                child: ListView(shrinkWrap: true, children: [
+                  for (final e in data.paths.entries) _pathCard(e.key, e.value, icon),
+                  if (rest > 0)
+                    _box(true, [
+                      Text('+$rest caminos más', style: _chewy.copyWith(fontSize: 28)),
+                      Text('Próximamente', style: _hand.copyWith(fontSize: 19, fontStyle: FontStyle.italic)),
+                    ]),
+                ]),
+              ),
+              const SizedBox(height: 12),
+              PaperButton('Volver', () => Navigator.pop(context)),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _box(bool locked, List<Widget> children) => Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+        decoration: BoxDecoration(
+          color: locked ? const Color(0xFFEADCC2) : kCream,
+          border: Border.all(color: kInk, width: 3),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Opacity(opacity: locked ? 0.6 : 1, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: children)),
+      );
+
+  Widget _pathCard(String id, Json p, Widget Function(String) icon) {
+    final got = Prefs.found.contains(id);
+    return _box(!got, [
+      Row(children: [icon(p['icon'] as String), const SizedBox(width: 10), Text(got ? p['name'] as String : '???', style: _chewy.copyWith(fontSize: 28))]),
+      for (final b in (p['branches'] as Map).entries)
+        Opacity(
+          opacity: Prefs.found.contains('${id}_${b.key}') ? 1 : 0.55,
+          child: Row(children: [
+            if (Prefs.found.contains('${id}_${b.key}')) ...[icon((b.value as Json)['icon'] as String), const SizedBox(width: 8)],
+            Text(Prefs.found.contains('${id}_${b.key}') ? (b.value as Json)['name'] as String : '? ? ?', style: _hand.copyWith(fontSize: 22)),
+          ]),
+        ),
+      if (!got) Text((p['hint'] ?? 'Lo que hagas de niño decide si lo descubres.') as String, style: _hand.copyWith(fontSize: 19, fontStyle: FontStyle.italic)),
+    ]);
   }
 }

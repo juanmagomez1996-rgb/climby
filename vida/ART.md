@@ -111,6 +111,28 @@ no shadows, no texture, no grid lines, no text». Los nombres por celda están e
 **Viñetas de cartas**: prefijo común en `tools/vignettes.py` (`STYLE`) + escena de cada evento. Si una falla (a veces filtran
 escenas con niños en pijama o médicos), basta con reformularla.
 
+## Caminos de vida (vocaciones)
+
+Cada vocación trae su propio arte, generado con las mismas referencias (Ramón en su edad + la lámina de Ramón):
+
+| Pieza | Fútbol |
+|---|---|
+| Fondos (21:9, reparación de la unión) | `bgf_cantera`, `bgf_estadio`, `bgf_tv` (plató), `bgf_barrio` (campo de tierra), `bgf_bar` (bar de la peña) |
+| Ramón con la ropa del camino (andar + salto) | `ramon1_futbol` (cantera), `ramon2_futbol` (profesional), `ramon3_tv` (comentarista), `ramon3_coach` (entrenador), `ramon3_bar` (dueño del bar) |
+| Pareja propia a los 30, 50 y 70 | `vanesa`, `vanesa_mid`, `vanesa_old` (reportera: melena rubia platino, aros dorados, americana roja) |
+| Objetos (lámina `items_futbol`) | balón, bota de oro, tarjetas amarilla y roja, defensa en plancha, silbato, micro, cámara de tele, caña, medalla, camiseta, bebida isotónica, paparazzi, portería, portero, copa |
+| Viñetas | `ojeador`, `debut`, `fichaje`, `vanesa`, `noches`, `mundial`, `lesion`, `estatua`, `alevines`, `hacienda`, `homenaje_*` |
+
+- **Ropa del camino**: el perfil se pide a partir del recorte de Ramón en esa edad cambiando solo la ropa
+  («same face, same big round rosy nose, now wearing…»), y luego andar y salto con Kling como el resto.
+- **Viñetas con pareja**: las escenas en las que sale la pareja (`boda`, `hijos`, marcadas `pimg` en los datos) tienen
+  una versión por pareja (`boda_marga`, `hijos_vanesa`…), con Ramón a los 30 y el perfil de la pareja como referencias.
+- **Uniones rebeldes**: si Nano Banana no repinta bien el centro de la panorámica, se sube solo la franja central (50 %)
+  y se funde con bordes suaves; si aun así queda corte y el fondo no tiene texto, `tools/bg.py` lo enlaza con su
+  reflejo (`MIRROR`), que casa al píxel.
+- Coste del camino del fútbol: unos 110 créditos (5 fondos + reparaciones, 5 ropas × andar y salto, pareja en 3 edades,
+  1 lámina de objetos, 13 viñetas y 4 viñetas de pareja).
+
 ## Música y efectos
 
 Los modelos de música y efectos de Higgsfield (`sonilo_music`, `mirelo_text_to_audio`) solo se permiten dentro de su propio

@@ -13,10 +13,14 @@ los prompts para regenerarlo con coherencia están en [ART.md](ART.md).
 - 5 etapas con su fondo panorámico, su velocidad, su salto (doble salto de los 13 a los 44) y su música.
 - 45 eventos con ilustración propia y ventanas de edad: en cada vida salen unos 25–30 y nunca en el mismo orden.
   Consecuencias diferidas, riesgos, azar que depende de las stats y eventos que solo existen si tienes pareja o hija.
-- 13 minijuegos (`html/moments.js` y `lib/moments.dart`): pelota, corazones, primer baile/batería (ritmo), monedas,
+- **Caminos de vida** ([BRANCHES.md](BRANCHES.md)): lo que haces de niño desbloquea una vocación que cambia los
+  escenarios, la ropa de Ramón, los objetos, la pareja, los eventos y los minijuegos; a mitad de vida un punto de giro
+  decide uno de sus 3 finales, con su propia madurez, epitafio y homenaje. Hecho: **Fútbol** (cantera → estadio →
+  leyenda de la tele / entrenador de barrio / juerguista del bar). La pantalla **Caminos** guarda los finales descubiertos.
+- 14 minijuegos (`html/moments.js` y `lib/moments.dart`): pelota, corazones, primer baile/batería (ritmo), monedas,
   entrega urgente/maratón (pulsar rápido), dormir al bebé, equilibrio, **soplar las velas** en cada cumpleaños redondo,
   **encestar** (tirachinas), **atrapar el ramo** en la boda, **aparcar** en el examen del carné (mantener pulsado),
-  **pescar** al jubilarse y **recuerdos** (memoria con las ilustraciones de las decisiones que viviste).
+  **pescar** al jubilarse, **penaltis** (deslizar hacia la portería) y **recuerdos** (memoria con las ilustraciones de las decisiones que viviste).
   Algunas decisiones lanzan su minijuego y el resultado cambia lo que pasa (el carné depende de cómo aparques).
 - Controles: tocar para saltar (mantener = salto más alto; doble salto de los 13 a los 44), arrastrar y soltar en los minijuegos.
 - 20 segundos para decidir cada carta.
@@ -40,13 +44,14 @@ vida/
     audio.dart    efectos y música por etapa con fundido cruzado
     prefs.dart    récord, vidas vividas y ajustes (shared_preferences)
   html/           prototipo HTML5 jugable (misma lógica y mismos assets); html/data.js es la fuente del contenido
+    paths/        un archivo por camino de vida (futbol.js…): etapas, finales, eventos
   assets/         arte, audio, fuentes y assets/data/life.json (exportado de html/data.js)
   tools/          pipeline de assets (Higgsfield → croma → sprites/fondos), música, simulación y capturas
   android/        proyecto Android (id com.unavida20.game)
   test/           validación de datos y simulación de vidas
 ```
 
-Si cambias el contenido en `html/data.js`, regenera el JSON de Flutter: `node tools/export_data.js`.
+Si cambias el contenido en `html/data.js` o `html/paths/`, regenera el JSON de Flutter: `node tools/export_data.js`.
 
 ## Probar
 
@@ -58,7 +63,9 @@ flutter run                  # en un móvil Android o emulador
 ```
 
 Prototipo HTML: `cd vida/html && python3 -m http.server` y abre `http://localhost:8000`
-(`?auto=1&age=40&fast=4` empieza directamente a los 40 años y a 4× de velocidad).
+(`?auto=1&age=40&fast=4` empieza directamente a los 40 años y a 4× de velocidad;
+`&path=futbol&branch=leyenda` fuerza un camino y un final; `&flags=futbolin` activa marcas).
+En Flutter: `--dart-define=DEBUG_AGE=46 --dart-define=DEBUG_PATH=futbol --dart-define=DEBUG_BRANCH=juerga`.
 
 ## Publicar en Google Play
 
