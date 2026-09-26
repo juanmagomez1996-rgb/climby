@@ -155,7 +155,7 @@ const box = (x, y, w, h, kind, o = {}) => Object.assign({ x, y, w, h, kind, onew
 const deco = (k, x, base, h, layer = 'play', flip = false) => ({ k, x, base, h, layer, flip });
 
 function level1() { // EL BOSQUE
-  const L = { name: 'El bosque', theme: 'forest', w: 3300,
+  const L = { name: 'El bosque', theme: 'forest', w: 3300, rough: 7, flat: [[1186, 1430, 1.2], [2630, 2830, 0], [2880, 2945, 0]],
     terrain: [
       { pts: [[0, 224], [120, 228], [220, 236], [300, 240], [380, 236], [470, 228], [560, 232], [640, 232], [640, 172], [700, 170], [760, 174], [760, 232], [860, 234], [1000, 234], [1100, 230], [1130, 231]] },
       { pts: [[1186, 230], [1300, 228], [1420, 230], [1420, 130], [1560, 128], [1600, 140], [1680, 170], [1760, 200], [1840, 226], [1900, 230], [2150, 230], [2150, 208], [2200, 206], [2200, 230], [2380, 232]] },
@@ -183,7 +183,7 @@ function level1() { // EL BOSQUE
   return L;
 }
 function level2() { // LA CUEVA
-  return { name: 'La cueva', theme: 'cave', w: 3400, caveEnd: 2950,
+  return { name: 'La cueva', theme: 'cave', w: 3400, caveEnd: 2950, rough: 6, flat: [[1270, 1560, .8]],
     terrain: [
       { pts: [[0, 200], [140, 204], [260, 220], [380, 232], [440, 236], [440, 300]] },
       { pts: [[620, 300], [620, 236], [700, 232], [820, 230], [1700, 230]] },
@@ -217,7 +217,7 @@ function level2() { // LA CUEVA
   };
 }
 function level3() { // LA LLUVIA
-  return { name: 'La lluvia', theme: 'rain', w: 3200, closed: true,
+  return { name: 'La lluvia', theme: 'rain', w: 3200, closed: true, rough: 7, flat: [[860, 1120, .8], [1230, 1520, .8]],
     terrain: [
       { pts: [[0, 228], [300, 230], [420, 226], [520, 230], [700, 160], [740, 160], [740, 230], [820, 230], [820, 188], [850, 188], [850, 230], [1850, 230]] },
       { pts: [[1905, 230], [2000, 230], [2000, 172], [2080, 170], [2130, 200], [2200, 230], [2400, 230]] },
@@ -247,7 +247,7 @@ function level3() { // LA LLUVIA
   };
 }
 function level4() { // LA ÚLTIMA NOCHE — she walks toward the light
-  return { name: 'La última noche', theme: 'dream', w: 1800, dream: true,
+  return { name: 'La última noche', theme: 'dream', w: 1800, dream: true, rough: 5,
     terrain: [{ pts: [[0, 230], [300, 228], [520, 222], [760, 226], [1000, 220], [1300, 224], [1800, 222]] }],
     boxes: [], crates: [], traps: [], plates: [], levers: [], stal: [], water: [], chases: [],
     checkpoints: [110], goalX: 1560, houseX: -40,
@@ -280,8 +280,48 @@ const END = [
 const S = { state: 'load', level: 0, t: 0, cp: 0, roses: 0, endStep: 0, shake: 0, debug: false, flash: 0, said: new Set(), dead: null, timer: 0 };
 let L = null, P = null, cam = 0, chase = null;
 
+// Organic ground: flat stretches of the hand-made outline get wide undulations plus small bumps.
+// Segment ends (wall feet, pit edges, ledge corners) never move, so every measured jump stays true.
+function hash(i) { const s = Math.sin(i * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); }
+function roughen(d, seed) {
+  const ampAt = x => { for (const [a, b, amp] of d.flat || []) if (x >= a - 20 && x <= b + 20) return amp; return d.rough ?? 6; };
+  for (const p of d.terrain) {
+    const out = [p.pts[0]];
+    for (let i = 0; i < p.pts.length - 1; i++) {
+      const [x1, y1] = p.pts[i], [x2, y2] = p.pts[i + 1], len = x2 - x1;
+      if (len > 44 && Math.abs(y2 - y1) / len < .8) {
+        for (let x = x1 + 14; x < x2 - 14; x += 11 + hash(x * .37 + seed) * 13) {
+          const base = y1 + (y2 - y1) * (x - x1) / len, taper = Math.min(1, (x - x1) / 26, (x2 - x) / 26);
+          const n = Math.sin(x * .0105 + seed) * .55 + Math.sin(x * .031 + seed * 2.3) * .3 + (hash(x * 1.7 + seed) - .5) * .3;
+          out.push([Math.round(x), base + n * ampAt(x) * taper]);
+        }
+      }
+      out.push([x2, y2]);
+    }
+    p.pts = out;
+  }
+}
+function dress(d, seed) { // stones, roots and grass half-buried along the ground
+  const keep = [...d.traps.map(t => t.x + 12), ...d.plates.map(p => p.x + p.w / 2), ...d.levers.map(l => l.x), ...d.crates.map(c => c.x + 13), ...d.boxes.filter(b => b.kind === 'gate').map(b => b.x), d.goalX, d.houseX + 60, ...d.checkpoints];
+  const kinds = ['grass', 'rock', 'roots', 'grass', 'thorns', 'rock'];
+  for (let x = 40; x < d.w - 40; x += 55 + hash(x + seed) * 90) {
+    if (keep.some(k => Math.abs(k - x) < 34)) continue;
+    const y = surfaceY(x); if (!isFinite(y) || y > VH) continue;
+    if (Math.abs(surfaceY(x - 8) - y) > 6 || Math.abs(surfaceY(x + 8) - y) > 6) continue;   // not on wall edges
+    const k = kinds[Math.floor(hash(x * 3 + seed) * kinds.length)], h = k === 'rock' ? 6 + hash(x) * 6 : 9 + hash(x * 5) * 10;
+    d.decor.push(deco(k, x, y + (k === 'rock' ? 3 : 2), h, 'play', hash(x * 7) > .5));
+  }
+}
 function build(i) {
-  const d = LEVELS[i]();
+  const d = LEVELS[i](), prevL = L;
+  roughen(d, i * 7.3 + 1.1);
+  L = d;
+  d.traps.forEach(t => t.y = surfaceY(t.x + 12));
+  d.plates.forEach(p => p.y = surfaceY(p.x + p.w / 2));
+  d.levers.forEach(l => l.y = surfaceY(l.x));
+  d.crates.forEach(c => c.y = surfaceY(c.x + 13) - 27);
+  dress(d, i * 13.1);
+  L = prevL;
   d.boxes.forEach(b => { b.x0 = b.x; b.y0b = b.y; b.t = -1; b.gone = false; b.vy = 0; });
   d.crates = d.crates.map(c => ({ x: c.x, y: c.y, w: 26, h: 26, vx: 0, vy: 0, on: false, stuck: false, crate: true }));
   d.traps = d.traps.map(t => ({ ...t, w: 24, shut: false }));
@@ -320,7 +360,7 @@ function hitSolid(x, y, w, h, ignore) {
 }
 function onewayBelow(o, s) { // a ledge/plank the body lands on when moving down by s
   const feet = o.y + o.h;
-  for (const b of L.boxes) if (b.oneway && !b.gone && !b.falling && o.x < b.x + b.w && o.x + o.w > b.x && b.y >= feet - .01 && b.y < feet + s + .01) return b;
+  for (const b of L.boxes) if (b.oneway && !b.gone && !b.falling && o.x < b.x + b.w && o.x + o.w > b.x && b.y >= feet - 2 && b.y < feet + s + .01) return b;   // 2 px tolerance: stepping off a slope onto a plank
   return null;
 }
 function supportUnder(o) { // what the body stands on (for fragile planks, plates, traps)
@@ -347,7 +387,7 @@ function moveY(o, dy) {
   const sg = Math.sign(dy); let rem = Math.abs(dy);
   while (rem > 1e-6) {
     const s = Math.min(1, rem) * sg;
-    if (s > 0) { if (hitSolid(o.x, o.y + s, o.w, o.h, o) || onewayBelow(o, s)) return 'land'; }
+    if (s > 0) { if (hitSolid(o.x, o.y + s, o.w, o.h, o)) return 'land'; const ow = onewayBelow(o, s); if (ow) { if (o.y + o.h > ow.y) o.y = ow.y - o.h; return 'land'; } }
     else if (hitSolid(o.x, o.y + s, o.w, o.h, o)) return 'ceil';
     o.y += s; rem -= Math.abs(s);
   }
@@ -500,7 +540,7 @@ function spawn() {
   chase = null;
   for (const c of L.chases) if (cpx >= c.trigger && cpx < c.end) { c.started = true; chase = c; c.x = cpx - 250; }
   cam = Math.max(0, Math.min(L.w - VW, P.x - VW * .38));
-  S.dead = null;
+  S.dead = null; resetAnim();
 }
 function respawn() {
   const cp = S.cp, said = S.said, roses = S.roses;
@@ -535,42 +575,81 @@ function die(type) {
 /* =========================================================================
    STEP
    ========================================================================= */
-function pose() {
+/* ---------- ANIMATOR: picks the clip, keeps every clip continuous, fades between them ---------- */
+const AN = { cur: null, prev: null, fade: 1, clk: {}, visFace: 1, lastSpeed: 0, moveT: 0, stopT: -1, stopClip: '', turnT: -1, turnFrom: 1, standT: -1, kneelF: 0, wasMoving: false };
+function frameOf(m, t, mode) { // mode: loop | once | pingpong | hold
+  const n = m.frames, x = t * m.fps;
+  if (n <= 1) return 0;
+  if (mode === 'once') return Math.min(n - 1, x);
+  if (mode === 'pingpong') { const p = 2 * (n - 1), q = x % p; return q < n - 1 ? q : p - q; }
+  if (mode === 'hold') { if (x < n - 1) return x; const a = m.loopFrom || 0, p = 2 * (n - 1 - a), q = p > 0 ? (x - (n - 1)) % p : 0; return q < n - 1 - a ? (n - 1) - q : a + (q - (n - 1 - a)); }
+  return x % n;
+}
+function resetAnim() { Object.assign(AN, { cur: null, prev: null, fade: 1, clk: {}, visFace: P ? P.face : 1, moveT: 0, stopT: -1, turnT: -1, standT: -1, wasMoving: false }); }
+function chooseAnim(dt) {
   const sheet = L.dream ? 'mother' : 'brother', A = ATLAS[sheet]; if (!A) return null;
-  const an = A.anims;
-  // frame of an animation at time t; loops (or loops only the tail for "hold" clips) or stops at the end
-  const fr = (name, t, fps, loop = true) => {
-    const m = an[name]; if (!m) return null;
-    let f = Math.floor(t * fps);
-    if (!loop) f = Math.min(m.frames - 1, f);
-    else if (m.loopFrom !== undefined) { if (f >= m.frames) f = m.loopFrom + (f - m.frames) % (m.frames - m.loopFrom); }
-    else f %= m.frames;
-    return { sheet, anim: name, f };
-  };
+  const an = A.anims, clk = AN.clk, v = Math.abs(P.vx);
+  const tick = (name, rate = 1) => (clk[name] = (clk[name] || 0) + dt * rate);
+  const use = (name, f) => ({ sheet, anim: name, f: Math.max(0, Math.min(an[name].frames - 1, f)) });
+  const chasing = chase && chase.started && !chase.done;
+  // facing: turn in place when reversing slowly on the ground; instant in the air or in a chase
+  const dir = (K.r ? 1 : 0) - (K.l ? 1 : 0);
+  if (S.state === 'play' && dir && dir !== AN.visFace && AN.turnT < 0 && AN.standT < 0) {
+    if (P.on && !chasing && v < 1.3 && an.turn && !P.pushing && !P.pulling) { AN.turnT = 0; AN.turnFrom = AN.visFace; } else AN.visFace = dir;
+  }
+  if (AN.turnT >= 0) { AN.turnT += dt; const m = an.turn, f = AN.turnT * m.fps * 1.9; if (f >= m.frames - 1 || !P.on) { AN.turnT = -1; AN.visFace = -AN.turnFrom; } else return { ...use('turn', f), face: AN.turnFrom }; }
+  const face = AN.visFace;
+  const out = (o) => ({ ...o, face });
   if (L.dream) {
-    if (S.state === 'meet') return fr('receive', S.timer / 60, 10);
-    if (Math.abs(P.vx) > .15) return fr('walk', P.animT, 14 * Math.abs(P.vx) / 1.1);
-    return fr('idle', P.animT, 8);
+    if (S.state === 'meet') return out(use('receive', frameOf(an.receive, S.timer / 60, 'hold')));
+    const moving = v > .12;
+    if (moving) { AN.stopT = -1; AN.moveT += dt; if (!AN.wasMoving) AN.moveT = 0; AN.wasMoving = true; }
+    else if (AN.wasMoving) { AN.wasMoving = false; AN.stopT = 0; AN.stopClip = 'walk_stop'; }
+    if (moving) {
+      if (AN.moveT < an.walk_start.frames / an.walk_start.fps * .8) return out(use('walk_start', AN.moveT * an.walk_start.fps));
+      return out(use('walk', frameOf(an.walk, tick('walk', v / 1.1), 'loop')));
+    }
+    if (AN.stopT >= 0) { AN.stopT += dt; const m = an.walk_stop, f = AN.stopT * m.fps; if (f < m.frames - 1) return out(use('walk_stop', f)); AN.stopT = -1; }
+    return out(use('idle', frameOf(an.idle, tick('idle'), 'pingpong')));
   }
-  if (S.state === 'deliver') return fr('offer', S.timer / 60, 12, false);
+  if (S.state === 'deliver') return out(use('offer', frameOf(an.offer, S.timer / 60, 'hold')));
+  // standing back up after kneeling (kneel played backwards)
+  if (AN.standT >= 0) { AN.standT += dt; const f = AN.kneelF - AN.standT * an.kneel.fps * 1.6; if (f > 0) return out(use('kneel', f)); AN.standT = -1; }
+  if (P.mantle && an.climb) return out(use('climb', (.2 + .8 * Math.min(1, P.mantle.t)) * (an.climb.frames - 1)));
   const J = an.jump;
-  if (P.mantle && an.climb) { const k = Math.min(1, P.mantle.t); return { sheet, anim: 'climb', f: Math.floor((.25 + .75 * k) * (an.climb.frames - 1)) }; }
   if (!P.on) {
-    if (P.airT > .5 && P.vy > 0 && an.fall) return fr('fall', P.airT, 12);
-    const seq = P.vy < 0 ? J.rise : J.fall;
-    const k = P.vy < 0 ? Math.floor((1 + P.vy / -JUMP) * seq.length) : Math.floor(P.airT * 8);
-    return { sheet, anim: 'jump', f: seq[Math.max(0, Math.min(seq.length - 1, k))] };
+    AN.wasMoving = false; AN.stopT = -1;
+    if (P.airT > .55 && P.vy > 0 && an.fall) return out(use('fall', frameOf(an.fall, tick('fall'), 'loop')));
+    if (P.vy < 0) { const p = Math.max(0, Math.min(.999, 1 + P.vy / -JUMP)); return out(use('jump', J.rise[Math.floor(p * J.rise.length)])); }
+    const p = Math.max(0, Math.min(.999, P.vy / 6.5)); return out(use('jump', J.fall[Math.floor(p * J.fall.length)]));
   }
-  if (P.landT > 0 && J.land.length) return { sheet, anim: 'jump', f: J.land[Math.min(J.land.length - 1, Math.floor((1 - P.landT / .16) * J.land.length))] };
-  if (P.pushing > 0 && an.push) return fr('push', P.animT, 11);
-  if (P.pulling > 0 && an.pull) return fr('pull', P.animT, 11);
-  const v = Math.abs(P.vx);
-  if (v > .2) return v > 1.55 ? fr('run', P.animT, 16 * v / RUN) : fr('walk', P.animT, 12 * Math.max(.6, v / WALK));
-  // standing still: sad breathing, now and then a look back, and after a while he kneels to cry
-  if (P.idleT > 16 && an.kneel) return fr('kneel', P.idleT - 16, 9);
-  const cyc = P.idleT % 9, lookLen = an.look ? an.look.frames / 10 : 0;
-  if (P.idleT > 5 && an.look && cyc > 5 && cyc < 5 + lookLen) return fr('look', cyc - 5, 10, false);
-  return fr('idle', P.animT, 8);
+  if (P.landT > 0 && J.land.length) { const p = 1 - P.landT / (J.land.length / J.fps); return out(use('jump', J.land[Math.max(0, Math.min(J.land.length - 1, Math.floor(p * J.land.length)))])); }
+  if (P.pushing > 0 && an.push) { AN.wasMoving = false; return out(use('push', frameOf(an.push, tick('push', .9), 'loop'))); }
+  if (P.pulling > 0 && an.pull) { AN.wasMoving = false; return out(use('pull', frameOf(an.pull, tick('pull', .9), 'loop'))); }
+  const moving = v > .18;
+  if (moving) {
+    if (!AN.wasMoving) AN.moveT = 0; AN.wasMoving = true; AN.stopT = -1; AN.moveT += dt; AN.lastSpeed = v;
+    const running = v > 1.55;
+    const st = running ? an.run_start : an.walk_start, stName = running ? 'run_start' : 'walk_start';
+    if (st && AN.moveT < st.frames / st.fps * .75) return out(use(stName, AN.moveT * st.fps));
+    // cycles advance with the distance covered, so the feet never slide
+    return running ? out(use('run', frameOf(an.run, tick('run', v / RUN), 'loop'))) : out(use('walk', frameOf(an.walk, tick('walk', Math.max(.55, v / WALK)), 'loop')));
+  }
+  if (AN.wasMoving) { AN.wasMoving = false; AN.stopT = 0; AN.stopClip = AN.lastSpeed > 1.55 ? 'run_stop' : 'walk_stop'; }
+  if (AN.stopT >= 0 && an[AN.stopClip]) { AN.stopT += dt; const m = an[AN.stopClip], f = AN.stopT * m.fps; if (f < m.frames - 1) return out(use(AN.stopClip, f)); AN.stopT = -1; }
+  // standing still: sad breathing (forth and back, never restarting), a look back now and then, then kneeling
+  if (P.idleT > 16 && an.kneel) { const f = frameOf(an.kneel, P.idleT - 16, 'hold'); AN.kneelF = f; return out(use('kneel', f)); }
+  const cyc = P.idleT % 10, lookLen = an.look ? (an.look.frames - 1) / an.look.fps : 0;
+  if (P.idleT > 6 && an.look && cyc > 6 && cyc < 6 + lookLen) return out(use('look', (cyc - 6) * an.look.fps));
+  return out(use('idle', frameOf(an.idle, tick('idle'), 'pingpong')));
+}
+function animate(dt) {
+  if (!L || !P || S.state === 'card' && !AN.cur) return;
+  // moving while kneeling: stand up first
+  if (S.state === 'play' && AN.cur && AN.cur.anim === 'kneel' && AN.standT < 0 && ((K.l || K.r || K.j) || P.idleT < 16) && AN.kneelF > 0) { AN.standT = 0; P.idleT = 0; }
+  const want = chooseAnim(dt); if (!want) return;
+  if (!AN.cur || want.anim !== AN.cur.anim || want.face !== AN.cur.face) { AN.prev = AN.cur; AN.fade = 0; }
+  AN.cur = want; AN.fade = Math.min(1, AN.fade + dt / .12);
 }
 function adjacentCrate(side) { // crate touching the player's side (side = ±1)
   for (const c of L.crates) {
@@ -589,7 +668,8 @@ function tryMantle(dir) {
   }
   return false;
 }
-function step() {
+function step() { stepCore(); animate(1 / 60); }
+function stepCore() {
   const dt = 1 / 60; S.t += dt; S.shake *= .86; S.flash = Math.max(0, S.flash - .03);
   if (!L) return;
   audioTick(dt);
@@ -649,7 +729,7 @@ function step() {
     if (k >= 1) { P.mantle = null; P.on = true; P.landT = .12; }
     camFollow(); return;
   }
-  const dir = (K.r ? 1 : 0) - (K.l ? 1 : 0);
+  const dir = AN.standT >= 0 ? 0 : (K.r ? 1 : 0) - (K.l ? 1 : 0);
   const inWater = L.water.find(w => P.x + P.w / 2 > w.x && P.x + P.w / 2 < w.x + w.w && P.y + P.h > w.y);
   const grab = K.g && P.on;
   // levers
@@ -667,7 +747,7 @@ function step() {
   if (dir) { P.vx += dir * acc; P.face = dir; } else if (P.on) P.vx *= .68; else P.vx *= .96;
   if (Math.abs(P.vx) < .04) P.vx = 0;
   P.vx = Math.max(-maxv, Math.min(maxv, P.vx));
-  if (K.j && !jPrev && !L.dream) P.buf = 7;
+  if (K.j && !jPrev && !L.dream && AN.standT < 0) P.buf = 7;
   jPrev = K.j;
   P.co = P.on ? 6 : P.co - 1;
   if (P.buf > 0 && P.co > 0 && !pullC && (!inWater || P.y + 8 < inWater.y)) { P.vy = JUMP; P.buf = 0; P.co = 0; P.on = false; P.airT = 0; noise(.08, .05, 'bandpass', 700, 1); }
@@ -695,7 +775,7 @@ function step() {
   P.x = Math.max(0, Math.min(L.w - P.w, P.x));
   // vertical
   const vr = moveY(P, P.vy);
-  if (vr === 'land') { if (!wasOn && P.vy > 4.5) { P.landT = .16; SFX.land(); } P.vy = 0; P.on = true; }
+  if (vr === 'land') { if (!wasOn && P.vy > 3.2) { const J = ATLAS.brother && ATLAS.brother.anims.jump; P.landT = J && !L.dream ? Math.min(.35, J.land.length / J.fps) : .16; if (P.vy > 4.5) SFX.land(); } P.vy = 0; P.on = true; }
   else if (vr === 'ceil') { P.vy = 0; P.on = false; }
   else { P.on = false; if (wasOn && P.vy >= 0 && snapDown(P, STEP + 2)) { P.on = true; P.vy = 0; } }
   if (!P.on) P.airT += dt; else P.airT = 0;
@@ -722,7 +802,7 @@ function step() {
   if (L.dream && P.x > L.goalX - 26) { S.state = 'meet'; S.timer = 0; P.vx = 0; }
   camFollow();
 }
-function camFollow() { const target = P.x + P.w / 2 - VW * .42 + P.face * 26; cam += (target - cam) * .06; cam = Math.max(0, Math.min(L.w - VW, cam)); }
+function camFollow() { const target = P.x + P.w / 2 - VW * .42 + AN.visFace * 26; cam += (target - cam) * .06; cam = Math.max(0, Math.min(L.w - VW, cam)); }
 
 /* =========================================================================
    RENDER
@@ -821,7 +901,7 @@ function rose(c, x, y, r) {
 }
 function drawSprite(c, sheet, anim, frame, x, base, face, rot = 0, alpha = 1) {
   const A = ATLAS[sheet], im = IMG[sheet]; if (!A || !im) return;
-  const m = A.anims[anim], s = (sheet === 'mother' ? 43 : 40) / A.bodyH, f = Math.max(0, Math.min(m.frames - 1, frame | 0));
+  const m = A.anims[anim]; if (!m) return; const s = (sheet === 'mother' ? 43 : 40) / A.bodyH, f = Math.max(0, Math.min(m.frames - 1, Math.floor(frame)));
   const blit = () => { c.translate(x, base); if (rot) c.rotate(rot); c.scale(face * s, s); c.drawImage(im, f * A.frameW, m.row * A.frameH, A.frameW, A.frameH, -A.anchorX, -A.anchorY, A.frameW, A.frameH); };
   // faint rim light so the figure reads in front of black shapes — only on the upper body,
   // fading out above the knees, so the legs melt into the black ground
@@ -893,14 +973,14 @@ function render() {
   if (L.dream) {
     const gy = surfaceY(L.goalX), g = c.createRadialGradient(L.goalX, gy - 30, 4, L.goalX, gy - 30, 120);
     g.addColorStop(0, 'rgba(255,255,250,.55)'); g.addColorStop(1, 'rgba(255,255,250,0)'); c.fillStyle = g; c.fillRect(L.goalX - 120, gy - 150, 240, 170);
-    const A = ATLAS.brother; if (A) { if (S.state === 'meet') drawSprite(c, 'brother', 'offer', Math.min(A.anims.offer.frames - 1, Math.floor(S.timer / 60 * 12)), L.goalX, gy + 1.5, -1); else drawSprite(c, 'brother', 'idle', Math.floor(t * 8) % A.anims.idle.frames, L.goalX, gy + 1.5, -1); }
+    const A = ATLAS.brother; if (A) { if (S.state === 'meet') drawSprite(c, 'brother', 'offer', frameOf(A.anims.offer, S.timer / 60, 'hold'), L.goalX, gy + 1.5, -1); else drawSprite(c, 'brother', 'idle', frameOf(A.anims.idle, t, 'pingpong'), L.goalX, gy + 1.5, -1); }
   }
   // the boy (or his body)
   const d = S.dead;
   if (d) {
     const base = (d.type === 'fall' ? d.y : d.y) + P.h, cx = d.x + P.w / 2, A = ATLAS.brother;
     if (A && !L.dream) {
-      const an = A.anims, col = Math.min(an.collapse.frames - 1, Math.floor(d.t * 16)), fl = Math.floor(d.t * 12) % an.fall.frames;
+      const an = A.anims, col = frameOf(an.collapse, d.t * 1.15, 'once'), fl = frameOf(an.fall, d.t, 'loop');
       if (d.type === 'drown') drawSprite(c, 'brother', 'fall', fl, cx, base, d.face, .25, Math.max(0, 1 - d.t / 1.6));
       else if (d.type === 'fall') drawSprite(c, 'brother', 'fall', fl, cx, base, d.face);
       else if (d.type === 'shadow') drawSprite(c, 'brother', 'collapse', col, cx, base, d.face, 0, Math.max(0, 1 - d.t / 1.4));
@@ -908,7 +988,9 @@ function render() {
       if (d.type === 'trap') { const tr = IMG.trapShut; if (tr) c.drawImage(tr, cx - 14, base - 12, 28, 12); }
     }
   } else if (S.state !== 'card' || P) {
-    const p = pose(); if (p) drawSprite(c, p.sheet, p.anim, p.f, P.x + P.w / 2, (P.on && !P.mantle ? feetY(P) : P.y + P.h) + 1.5, P.face);
+    const base = (P.on && !P.mantle ? feetY(P) : P.y + P.h) + 1.5, cx = P.x + P.w / 2;
+    if (AN.prev && AN.fade < 1) drawSprite(c, AN.prev.sheet, AN.prev.anim, AN.prev.f, cx, base, AN.prev.face, 0, 1 - AN.fade);
+    if (AN.cur) drawSprite(c, AN.cur.sheet, AN.cur.anim, AN.cur.f, cx, base, AN.cur.face, 0, AN.prev && AN.fade < 1 ? AN.fade : 1);
   }
   if (S.state === 'deliver' && S.sill && S.timer > 70) {
     const k = Math.max(0, Math.min(1, (S.timer - 70) / 60)), e = k * k * (3 - 2 * k), tx = S.sill.x + 1 + S.roses * 6, ty = S.sill.y - 6;

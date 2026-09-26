@@ -1,91 +1,147 @@
 {
- "frameW": 160,
- "frameH": 160,
- "anchorX": 80.0,
- "anchorY": 156,
- "bodyH": 127,
+ "frameW": 128,
+ "frameH": 128,
+ "anchorX": 64.0,
+ "anchorY": 125,
+ "bodyH": 102,
  "anims": {
   "idle": {
    "row": 0,
-   "frames": 24,
-   "mode": "idle"
+   "frames": 44,
+   "kind": "pingpong",
+   "fps": 24
   },
   "look": {
    "row": 1,
-   "frames": 28,
-   "mode": "once"
+   "frames": 45,
+   "kind": "clip",
+   "fps": 24
   },
   "walk": {
    "row": 2,
-   "frames": 19,
-   "mode": "loop"
+   "frames": 39,
+   "kind": "cycle",
+   "fps": 24
+  },
+  "walk_start": {
+   "row": 3,
+   "frames": 16,
+   "kind": "start",
+   "fps": 24
+  },
+  "walk_stop": {
+   "row": 4,
+   "frames": 22,
+   "kind": "stop",
+   "fps": 24
   },
   "run": {
-   "row": 3,
+   "row": 5,
    "frames": 19,
-   "mode": "loop"
+   "kind": "cycle",
+   "fps": 24
+  },
+  "run_start": {
+   "row": 6,
+   "frames": 12,
+   "kind": "start",
+   "fps": 24
+  },
+  "run_stop": {
+   "row": 7,
+   "frames": 22,
+   "kind": "stop",
+   "fps": 24
+  },
+  "turn": {
+   "row": 8,
+   "frames": 45,
+   "kind": "clip",
+   "fps": 24
   },
   "jump": {
-   "row": 4,
-   "frames": 30,
-   "mode": "jump",
+   "row": 9,
+   "frames": 48,
+   "kind": "jump",
+   "fps": 14.77,
+   "crouch": [
+    3,
+    4,
+    5,
+    6,
+    7,
+    8
+   ],
    "rise": [
-    15,
-    16,
-    17
-   ],
-   "fall": [
-    18,
-    19,
-    20
-   ],
-   "land": [
+    9,
+    10,
     21,
     22,
     23
    ],
-   "crouch": [
-    11,
-    12,
-    13,
-    14
+   "fall": [
+    24,
+    25,
+    26,
+    32,
+    33,
+    34,
+    35
+   ],
+   "land": [
+    36,
+    37,
+    38,
+    39,
+    40,
+    41,
+    42,
+    43
    ]
   },
   "push": {
-   "row": 5,
-   "frames": 14,
-   "mode": "loop"
+   "row": 10,
+   "frames": 28,
+   "kind": "cycle",
+   "fps": 24
   },
   "pull": {
-   "row": 6,
-   "frames": 10,
-   "mode": "loop"
+   "row": 11,
+   "frames": 14,
+   "kind": "cycle",
+   "fps": 24
   },
   "climb": {
-   "row": 7,
-   "frames": 28,
-   "mode": "once"
+   "row": 12,
+   "frames": 48,
+   "kind": "clip",
+   "fps": 13.24
   },
   "fall": {
-   "row": 8,
+   "row": 13,
    "frames": 12,
-   "mode": "loop"
+   "kind": "cycle",
+   "fps": 24
   },
   "collapse": {
-   "row": 9,
-   "frames": 28,
-   "mode": "once"
+   "row": 14,
+   "frames": 36,
+   "kind": "clip",
+   "fps": 24
   },
   "kneel": {
-   "row": 10,
-   "frames": 32,
-   "mode": "hold",
-   "loopFrom": 19
+   "row": 15,
+   "frames": 48,
+   "kind": "hold",
+   "fps": 15.36,
+   "loopFrom": 29
   },
   "offer": {
-   "row": 11,
-   "frames": 28,
-   "mode": "once"
+   "row": 16,
+   "frames": 48,
+   "kind": "hold",
+   "fps": 9.68,
+   "loopFrom": 29
   }
  }
 }

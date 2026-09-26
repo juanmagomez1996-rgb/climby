@@ -1,25 +1,40 @@
 {
- "frameW": 160,
- "frameH": 160,
- "anchorX": 80.0,
- "anchorY": 156,
- "bodyH": 127,
+ "frameW": 128,
+ "frameH": 128,
+ "anchorX": 64.0,
+ "anchorY": 125,
+ "bodyH": 101,
  "anims": {
   "idle": {
    "row": 0,
-   "frames": 24,
-   "mode": "idle"
+   "frames": 44,
+   "kind": "pingpong",
+   "fps": 24
   },
   "walk": {
    "row": 1,
-   "frames": 19,
-   "mode": "loop"
+   "frames": 38,
+   "kind": "cycle",
+   "fps": 24
+  },
+  "walk_start": {
+   "row": 2,
+   "frames": 16,
+   "kind": "start",
+   "fps": 24
+  },
+  "walk_stop": {
+   "row": 3,
+   "frames": 22,
+   "kind": "stop",
+   "fps": 24
   },
   "receive": {
-   "row": 2,
-   "frames": 32,
-   "mode": "hold",
-   "loopFrom": 19
+   "row": 4,
+   "frames": 38,
+   "kind": "hold",
+   "fps": 24,
+   "loopFrom": 23
   }
  }
 }
