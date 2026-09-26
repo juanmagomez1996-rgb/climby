@@ -112,7 +112,7 @@ class _ClayButtonState extends State<ClayButton> {
                 right: widget.width * (1 - kButtonFace.right),
                 top: h * kButtonFace.top,
                 bottom: h * (1 - kButtonFace.bottom),
-                child: FittedBox(fit: BoxFit.scaleDown, child: ClayText(widget.label, size: 30)),
+                child: FittedBox(fit: BoxFit.scaleDown, child: ClayText(widget.label, size: 42)),
               ),
             ]),
           ),
@@ -142,15 +142,45 @@ class _IconButton extends StatelessWidget {
       );
 }
 
+/// Escenario de los menús: se coloca exactamente sobre la tele (mismo encaje que el juego)
+/// y escala un diseño fijo de 432x768, así todo cabe igual en cualquier pantalla.
+class Stage extends StatelessWidget {
+  final Widget child;
+  static const Size design = Size(432, 768);
+  const Stage({super.key, required this.child});
+  @override
+  Widget build(BuildContext context) {
+    final safe = MediaQuery.viewPaddingOf(context);
+    return LayoutBuilder(builder: (context, box) {
+      final r = ZappingGame.stageFor(box.biggest, safe);
+      return Stack(children: [
+        Positioned.fromRect(
+          rect: r,
+          child: FittedBox(
+            child: SizedBox.fromSize(
+              size: design,
+              child: MediaQuery.removePadding(
+                  context: context, removeTop: true, removeBottom: true, removeLeft: true, removeRight: true, child: child),
+            ),
+          ),
+        ),
+      ]);
+    });
+  }
+}
+
 class _Scrim extends StatelessWidget {
   final Widget child;
   const _Scrim({required this.child});
   @override
   Widget build(BuildContext context) => Container(
         color: const Color(0xB31A1424),
-        alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: SafeArea(child: Center(child: SingleChildScrollView(child: child))),
+        child: Stage(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Center(child: SingleChildScrollView(child: child)),
+          ),
+        ),
       );
 }
 
@@ -184,11 +214,11 @@ class _MenuOverlayState extends State<MenuOverlay> {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
+    return Stage(
       child: LayoutBuilder(builder: (context, box) {
         return Column(children: [
           SizedBox(height: box.maxHeight * .02),
-          Image.asset('assets/images/logo.webp', width: box.maxWidth * .74),
+          Image.asset('assets/images/logo.webp', width: box.maxWidth * (_help ? .5 : .74)),
           const Spacer(),
           if (_help)
             Padding(
@@ -286,7 +316,7 @@ class SandboxOverlay extends StatelessWidget {
     final names = [for (var i = 0; i < game.channelCount; i++) game.makeChannel(i).name];
     return Container(
       color: const Color(0xE61A1424),
-      child: SafeArea(
+      child: Stage(
         child: LayoutBuilder(builder: (context, box) {
           final w = box.maxWidth.clamp(200.0, 460.0) - 32;
           return Column(children: [

@@ -48,7 +48,9 @@ class _ZappingAppState extends State<ZappingApp> {
         },
         child: Scaffold(
           backgroundColor: const Color(0xFF1A1424),
-          body: Listener(
+          body: Builder(builder: (context) {
+            game.safeArea = MediaQuery.viewPaddingOf(context);
+            return Listener(
             behavior: HitTestBehavior.translucent,
             onPointerDown: (e) => game.pointerDown(e.pointer, e.localPosition),
             onPointerMove: (e) => game.pointerMove(e.pointer, e.localPosition),
@@ -67,7 +69,8 @@ class _ZappingAppState extends State<ZappingApp> {
                 'sandbox': (_, g) => SandboxOverlay(g),
               },
             ),
-          ),
+          );
+          }),
         ),
       ),
     );

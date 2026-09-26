@@ -42,6 +42,8 @@ class ZappingGame extends FlameGame {
   /// Solo para capturas: `--dart-define=TOUR=true` recorre los canales en orden sin perder vidas.
   static const bool tour = bool.fromEnvironment('TOUR');
   static const int tourFrom = int.fromEnvironment('TOUR_FROM');
+  /// Solo para pruebas: `--dart-define=PRACTICE=n` abre directamente el canal n del sandbox.
+  static const int practiceFrom = int.fromEnvironment('PRACTICE', defaultValue: -1);
 
   /// Sandbox: índice del canal que se está probando (null = partida normal).
   /// El último índice (allChannels.length) es el jefe.
@@ -78,13 +80,34 @@ class ZappingGame extends FlameGame {
     await Sfx.load();
     mode = Mode.menu;
     overlays.add('menu');
+    if (practiceFrom >= 0) startPractice(practiceFrom);
   }
 
   @override
   void onGameResize(Vector2 size) {
     super.onGameResize(size);
-    _k = math.min(size.x / W, size.y / H);
-    _off = Offset((size.x - W * _k) / 2, (size.y - H * _k) / 2);
+    _layout();
+  }
+
+  /// Márgenes del sistema (muesca, barra de gestos): la tele nunca queda debajo.
+  EdgeInsets _safe = EdgeInsets.zero;
+  set safeArea(EdgeInsets e) {
+    if (e == _safe) return;
+    _safe = e;
+    if (hasLayout) _layout();
+  }
+
+  /// Rectángulo (en píxeles del widget) donde cabe el mundo lógico 540x960 sin deformarse.
+  static Rect stageFor(Size s, EdgeInsets safe) {
+    final aw = math.max(1.0, s.width - safe.horizontal), ah = math.max(1.0, s.height - safe.vertical);
+    final k = math.min(aw / W, ah / H);
+    return Rect.fromLTWH(safe.left + (aw - W * k) / 2, safe.top + (ah - H * k) / 2, W * k, H * k);
+  }
+
+  void _layout() {
+    final r = stageFor(Size(size.x, size.y), _safe);
+    _k = r.width / W;
+    _off = r.topLeft;
   }
 
   // ───────────── Entrada (desde un Listener de Flutter) ─────────────
@@ -203,6 +226,7 @@ class ZappingGame extends FlameGame {
     cur = null;
     mode = Mode.menu;
     overlays.add('menu');
+    if (practiceFrom >= 0) startPractice(practiceFrom);
   }
 
   @override
@@ -387,6 +411,10 @@ class ZappingGame extends FlameGame {
     ch.render(c);
     if (phase == Phase.play && ch.t < .8) {
       final k = 1 + math.max(0.0, .4 - ch.t) * 1.5;
+      final a = clamp01((.8 - ch.t) * 5);
+      final sz = Gfx.measure(ch.ins, 42, maxW: S.width - 30);
+      Gfx.clayPanel(c, Rect.fromCenter(center: Offset(S.center.dx, S.top + 70), width: (sz.width + 44) * k, height: (math.min(sz.height, 110) + 26) * k),
+          Color.fromRGBO(0x2A, 0x1F, 0x3A, .9 * a), radius: 18);
       Gfx.text(c, ch.ins, S.center.dx, S.top + 70, 42,
           scale: k, rot: math.sin(ch.t * 30) * .04, maxW: S.width - 30, fitH: 110);
     }

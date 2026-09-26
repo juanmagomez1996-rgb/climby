@@ -46,11 +46,11 @@ class AnimInfo {
 
 const anims = <String, AnimInfo>{
   'host_head': AnimInfo(193, 256),
-  'glutton_open': AnimInfo(194, 256),
+  'glutton_open': AnimInfo(242, 320, frames: 14),
   'reporter': AnimInfo(159, 256),
   'chef': AnimInfo(141, 256),
   'quizhost': AnimInfo(256, 223),
-  'redbutton': AnimInfo(256, 240),
+  'redbutton': AnimInfo(320, 299, frames: 32),
   'weather_sleep': AnimInfo(186, 256),
   'boss': AnimInfo(246, 256),
   'sensei': AnimInfo(215, 256),
@@ -77,10 +77,10 @@ const spriteNames = [
   'pen', 'singer_red', 'singer_red_sing', 'singer_blue', 'singer_blue_sing',
   'singer_yellow', 'singer_yellow_sing', 'singer_green', 'singer_green_sing',
   'ufo', 'cake', 'cakeplate', 'kid', 'kid_gum', 'bubble', 'cloneA',
-  'cloneA_odd', 'cloneB', 'cloneB_odd', 'hole', 'mole', 'mole_hit', 'nigiri',
+  'cloneA_odd', 'cloneB', 'cloneB_odd', 'hole', 'hole_front', 'mole', 'mole_hit', 'nigiri',
   'maki', 'chili', 'asteroid', 'pad', 'guest_top', 'guest_cowboy',
   'guest_bald', 'guest_curly', 'key', 'monster', 'monster_clean', 'sponge',
-  'mud', 'paddle', 'opponent_lose',
+  'mud', 'tub_front', 'paddle', 'opponent_lose',
   'bg_dojo', 'bg_fair', 'bg_desk', 'bg_karaoke', 'bg_night', 'bg_bakery',
   'bg_bedroom', 'bg_lab', 'bg_garden', 'bg_sushi', 'bg_circus', 'bg_space',
   'bg_disco', 'bg_club', 'bg_vault', 'bg_bathroom', 'bg_ranch', 'bg_pingpong',
@@ -510,8 +510,13 @@ class Fx {
     }
     for (final f in floats) {
       final k = 1 - f.life / 1.1;
+      final a = clamp01(f.life * 2);
+      // placa oscura detrás: el aviso se lee aunque pase por encima de otros textos del canal
+      final sz = Gfx.measure(f.s, f.size, maxW: 360);
+      Gfx.clayPanel(c, Rect.fromCenter(center: Offset(f.x, f.y), width: sz.width + 40, height: sz.height + 22),
+          Color.fromRGBO(0x2A, 0x1F, 0x3A, .92 * a), radius: 16);
       Gfx.text(c, f.s, f.x, f.y, f.size,
-          color: f.col, alpha: clamp01(f.life * 2), scale: 1 + math.max(0, .25 - k) * 1.6);
+          color: f.col, alpha: a, maxW: 360, scale: 1 + math.max(0, .25 - k) * 1.6);
     }
   }
 

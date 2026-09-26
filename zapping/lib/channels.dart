@@ -246,7 +246,8 @@ class FakeArms extends Channel {
       Gfx.text(c, 'AQUÍ', sockX - 40, sockY - 44, 18, color: Pal.gold);
     }
     // brazo colgando de un cable
-    const armH = 175.0;
+    // mismo tamaño que el brazo de verdad del cliente (es su brazo derecho, reflejado)
+    const armH = custH * .33;
     final drop = res == 0 ? 0.0 : clamp01(since / .22);
     final topY = res == 1
         ? lerp(st + 24, sockY - 12, drop)
@@ -422,6 +423,38 @@ class Kitchen extends Channel {
     }
   }
 
+  /// Mira: línea de puntos desde el filo hasta la cinta y una diana en el punto de corte.
+  /// Se ilumina en verde si hay verdura debajo y en rosa si lo que pasa es un dedo.
+  void _aim(Canvas c, double ky) {
+    _Item? under;
+    for (final it in items) {
+      if (!it.cut && (it.x - cx).abs() < 50) under = it;
+    }
+    final col = under == null ? Pal.gold : (under.finger ? Pal.pink : Pal.lime);
+    final dot = Paint()..color = col.withValues(alpha: .85);
+    for (var y = ky + 14; y < iy - 22; y += 14) {
+      c.drawCircle(Offset(cx, y + (vt * 40) % 14), 3.2, dot);
+    }
+    final pulse = 1 + math.sin(vt * 8) * .08;
+    final ring = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 5
+      ..color = col.withValues(alpha: .9);
+    final r = Rect.fromCenter(center: Offset(cx, iy + 6), width: 104 * pulse, height: 34 * pulse);
+    c.drawOval(r.shift(const Offset(0, 3)), Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 5
+      ..color = const Color(0x55000000));
+    c.drawOval(r, ring);
+    // flecha hacia abajo sobre la diana
+    final a = Path()
+      ..moveTo(cx - 12, iy - 36)
+      ..lineTo(cx + 12, iy - 36)
+      ..lineTo(cx, iy - 20)
+      ..close();
+    c.drawPath(a, Paint()..color = col);
+  }
+
   @override
   void render(Canvas c) {
     drawBg(c);
@@ -448,6 +481,7 @@ class Kitchen extends Channel {
       }
     }
     final ky = lerp(st + 105, iy - 20, chop);
+    _aim(c, ky);
     Gfx.sprite(c, 'knife', cx, ky, 150, ay: .9);
     Gfx.text(c, '$cut/3', sr - 20, st + 36, 32, color: Pal.gold, align: 1);
   }
@@ -657,13 +691,14 @@ class Forbidden extends Channel {
   @override
   void render(Canvas c) {
     drawBg(c);
-    final pulse = 1 + math.sin(vt * 5) * .05;
-    final squash = res == -1 ? 1 - clamp01(since * 6) * .35 : 1.0;
-    Gfx.shadow(c, cx, sb - 72, 230 * pulse, alpha: .45);
-    Gfx.anim(c, 'redbutton', vt, cx + math.sin(vt * 30) * 3, sb - 70, 220 * pulse,
-        ay: 1, sy: squash, sx: 2 - squash);
-    Gfx.text(c, msg, cx, st + 70, 44, color: Pal.gold, rot: math.sin(vt * 4) * .05);
-    Gfx.text(c, 'pulsa pulsa pulsa', cx + math.sin(vt * 9) * 18, st + 122, 22, font: kBody);
+    // Al tocarlo se hunde un poco (sin estirar la figura); el resto del tiempo solo respira en el vídeo.
+    final press = res == -1 ? 1 - clamp01(since * 6) * .18 : 1.0;
+    Gfx.shadow(c, cx, sb - 74, 250, alpha: .5);
+    Gfx.anim(c, 'redbutton', vt, cx, sb - 70, 210, ay: 1, sy: press, fps: 10);
+    if (res == 0) {
+      Gfx.text(c, msg, cx, st + 70, 44, color: Pal.gold, rot: math.sin(vt * 4) * .05, maxW: S.width - 40);
+      Gfx.text(c, 'pulsa pulsa pulsa', cx + math.sin(vt * 9) * 18, st + 122, 22, font: kBody);
+    }
   }
 }
 
@@ -874,9 +909,10 @@ class Glutton extends Channel {
 
   double hx = 0, hy = 0, mx = 0, spd = 0;
   bool grab = false;
-  static const gh = 200.0;
-  double get gy => st + 20;
-  Offset get mouth => Offset(mx, gy + gh * .42);
+  static const gh = 210.0;
+  /// Pies sobre el suelo de baldosas del restaurante (no pegado a la pared).
+  double get gy => by(.7) - gh;
+  Offset get mouth => Offset(mx, gy + gh * .36);
 
   @override
   void init(int l) {
@@ -910,11 +946,11 @@ class Glutton extends Channel {
     drawBg(c);
     if (res == 1) {
       final b = 1 + math.sin(since * 22) * .05 * clamp01(1 - since);
-      Gfx.shadow(c, mx, gy + gh - 6, 150);
-      Gfx.sprite(c, 'glutton_chew', mx, gy, gh, ay: 0, sx: b, sy: 2 - b);
+      Gfx.shadow(c, mx, gy + gh - 4, 170, alpha: .55);
+      Gfx.sprite(c, 'glutton_chew', mx, gy + gh, gh, ay: 1, sx: b, sy: 2 - b);
     } else {
-      Gfx.shadow(c, mx, gy + gh - 6, 150);
-      Gfx.anim(c, 'glutton_open', vt, mx, gy, gh, ay: 0);
+      Gfx.shadow(c, mx, gy + gh - 4, 170, alpha: .55);
+      Gfx.anim(c, 'glutton_open', vt, mx, gy + gh, gh, ay: 1, fps: 9);
     }
     if (res != 1) {
       Gfx.sprite(c, 'burger', hx, hy, grab ? 86 : 78, rot: boil(vt, 5) * .04, drop: grab ? const Offset(10, 26) : const Offset(4, 8));

@@ -271,7 +271,7 @@ class Signature extends Channel {
   @override
   String get bg => 'bg_desk';
   @override
-  double get dur => 5.5;
+  double get dur => 5.0;
 
   final pts = <Offset>[];
   int k = 0;
@@ -280,10 +280,12 @@ class Signature extends Channel {
   @override
   void init(int l) {
     final x0 = bx(.2), x1 = bx(.8), yc = by(.52);
-    final ph = rnd(0, tau), loops = 1.2 + l * .25;
-    for (var i = 0; i <= 60; i++) {
-      final u = i / 60;
-      pts.add(Offset(lerp(x0, x1, u), yc + math.sin(u * tau * loops + ph) * (48 - 14 * u)));
+    // Más ondas, un garabato encima y menos margen: una firma de verdad.
+    final ph = rnd(0, tau), loops = 1.9 + l * .3, ph2 = rnd(0, tau);
+    for (var i = 0; i <= 90; i++) {
+      final u = i / 90;
+      pts.add(Offset(lerp(x0, x1, u),
+          yc + math.sin(u * tau * loops + ph) * 50 + math.sin(u * tau * loops * 2.4 + ph2) * 16));
     }
   }
 
@@ -299,13 +301,13 @@ class Signature extends Channel {
     final f = Offset(p.x, p.y);
     // avanza por los puntos cercanos
     for (var j = k + 1; j < math.min(pts.length, k + 5); j++) {
-      if ((f - pts[j]).distance < 30) k = j;
+      if ((f - pts[j]).distance < 24) k = j;
     }
     var near = double.infinity;
     for (var j = math.max(0, k - 3); j < math.min(pts.length, k + 6); j++) {
       near = math.min(near, (f - pts[j]).distance);
     }
-    if (near > 46) {
+    if (near > 32) {
       lose('¡Firma torcida!');
       Sfx.play('boing');
     } else if (k >= pts.length - 1) {
@@ -321,7 +323,7 @@ class Signature extends Channel {
   void render(Canvas c) {
     drawBg(c);
     // guía punteada
-    for (var j = k; j < pts.length; j += 2) {
+    for (var j = k; j < pts.length; j += 3) {
       c.drawCircle(pts[j], 3.5, Paint()..color = const Color(0x88404050));
     }
     // tinta
@@ -535,9 +537,13 @@ class CakeStack extends Channel {
   double mx = 0, dir = 1, spd = 0, dropT = -1, dropFrom = 0;
   double? fallX;
   double fallT = 0;
+  final landAt = <double>[];
+  String rate = '';
+  double rateAt = -9;
   static const w = 150.0;
   double get lh => w / Gfx.aspect('cake');
-  double get plateTop => by(.62) - 26;
+  // el primer piso apoya justo en la superficie del soporte (no se hunde en él)
+  double get plateTop => by(.62) - 40 - lh * .22;
   double levelY(int n) => plateTop - n * lh * .78;
 
   @override
@@ -562,7 +568,13 @@ class CakeStack extends Channel {
           lose('¡Se cayó la tarta!');
           Sfx.play('splat');
         } else {
-          stack.add(mx);
+          final off = (mx - topX).abs();
+          // encaja un poco hacia el piso de abajo para que se vea bien asentado
+          final x = off < w * .12 ? topX : mx;
+          stack.add(x);
+          landAt.add(t);
+          rate = off < w * .12 ? '¡PERFECTO!' : off < w * .3 ? '¡BIEN!' : '¡POR POCO!';
+          rateAt = t;
           Sfx.play('squish');
           g.fx.burst(mx, levelY(stack.length), const Color(0xFFFFF4E6), 10, size: 5);
           if (stack.length >= need) {
@@ -593,7 +605,13 @@ class CakeStack extends Channel {
     Gfx.shadow(c, cx, by(.62) + 16, 170, alpha: .35);
     Gfx.sprite(c, 'cakeplate', cx, by(.62) + 20, 70, ay: 1);
     for (var i = 0; i < stack.length; i++) {
-      Gfx.sprite(c, 'cake', stack[i], levelY(i + 1) + lh * .5, lh, sy: 1 + boil(vt, i.toDouble()) * .01);
+      // aplastón al caer: se ve que el piso se asienta sobre el de abajo
+      final lt = t - landAt[i];
+      final sq = lt < .35 ? math.sin(lt / .35 * math.pi) * .16 * (1 - lt / .35) : 0.0;
+      final baseY = levelY(i + 1) + lh - 5;
+      Gfx.shadow(c, stack[i], baseY, w * .95, alpha: .45, ratio: .16);
+      Gfx.sprite(c, 'cake', stack[i], levelY(i + 1) + lh, lh,
+          ay: 1, sy: 1 - sq + boil(vt, i.toDouble()) * .01, sx: 1 + sq * .8);
     }
     if (res == 1) Gfx.clayBall(c, stack.last, levelY(stack.length) + 6, 12, const Color(0xFFD0203A));
     if (fallX != null) {
@@ -602,6 +620,11 @@ class CakeStack extends Channel {
     } else if (res == 0) {
       final y = dropT >= 0 ? lerp(dropFrom, levelY(stack.length + 1) + lh * .5, dropT / .16) : levelY(stack.length + 1) - 70;
       Gfx.sprite(c, 'cake', mx, y, lh);
+    }
+    if (t - rateAt < .9 && stack.isNotEmpty) {
+      final k = t - rateAt;
+      Gfx.text(c, rate, stack.last, levelY(stack.length) - 30 - k * 40, 30,
+          color: rate == '¡PERFECTO!' ? Pal.lime : Pal.gold, scale: 1 + math.max(0.0, .15 - k) * 3);
     }
     Gfx.text(c, '${stack.length}/$need', sr - 24, st + 34, 30, align: 1, color: Pal.gold);
   }
@@ -839,24 +862,25 @@ class Moles extends Channel {
   @override
   void render(Canvas c) {
     drawBg(c);
-    // El agujero se pinta en dos capas: primero entero (fondo y borde trasero), luego el topo recortado
-    // por encima de la mitad de la boca y, delante, otra vez la mitad inferior del agujero (borde delantero).
+    // Capas: agujero entero; el topo recortado por la boca (arriba libre, abajo la elipse oscura);
+    // delante, solo el borde de tierra delantero (sin nada oscuro que tape al topo).
     const hw = 120.0;
     final hh = hw / Gfx.aspect('hole');
     for (final h in holes) {
       Gfx.sprite(c, 'hole', h.o.dx, h.o.dy, hh);
-      final mouthY = h.o.dy - hh / 2 + hh * .407;
       if (h.up > 0) {
+        final x0 = h.o.dx - hw / 2, y0 = h.o.dy - hh / 2;
+        final mouth = Rect.fromLTRB(x0 + hw * .238, y0 + hh * .19, x0 + hw * .776, y0 + hh * .62);
+        final clip = Path()
+          ..addRect(Rect.fromLTRB(h.o.dx - 90, h.o.dy - 220, h.o.dx + 90, mouth.center.dy))
+          ..addOval(mouth);
         c.save();
-        c.clipRect(Rect.fromLTRB(h.o.dx - 90, h.o.dy - 220, h.o.dx + 90, mouthY));
-        final bottom = mouthY + 100 - h.up * 82;
-        Gfx.sprite(c, h.state == 3 ? 'mole_hit' : 'mole', h.o.dx + 2, bottom, 95,
+        c.clipPath(clip);
+        final bottom = mouth.bottom + 96 - h.up * 90;
+        Gfx.sprite(c, h.state == 3 ? 'mole_hit' : 'mole', h.o.dx + 2, bottom, 92,
             ay: 1, sy: 1 + (h.state == 3 ? -.06 : boil(vt, h.o.dx) * .015));
         c.restore();
-        c.save();
-        c.clipRect(Rect.fromLTRB(h.o.dx - 90, mouthY, h.o.dx + 90, h.o.dy + hh));
-        Gfx.sprite(c, 'hole', h.o.dx, h.o.dy, hh);
-        c.restore();
+        Gfx.sprite(c, 'hole_front', h.o.dx, h.o.dy, hh);
       }
     }
     Gfx.text(c, '$hits/$need', sr - 24, st + 34, 30, align: 1, color: Pal.gold);
@@ -1007,8 +1031,8 @@ class Balance extends Channel {
   @override
   void init(int l) {
     x = cx;
-    th = (rng.nextBool() ? 1 : -1) * .04;
-    gain = 2.4 + l * .35;
+    th = (rng.nextBool() ? 1 : -1) * .03;
+    gain = 1.8 + l * .25;
   }
 
   @override
@@ -1026,14 +1050,14 @@ class Balance extends Channel {
     }
     if ((gust -= dt) <= 0) {
       gust = rnd(.8, 1.4);
-      w += rnd(-.25, .25);
+      w += rnd(-.12, .12);
     }
     // péndulo invertido: la gravedad lo tumba y mover la base lo endereza
-    final alpha = gain * math.sin(th) - (ax / 260).clamp(-10, 10) * math.cos(th);
+    final alpha = gain * math.sin(th) - (ax / 200).clamp(-10, 10) * math.cos(th);
     w += alpha * dt;
-    w *= math.pow(.6, dt).toDouble();
+    w *= math.pow(.35, dt).toDouble();
     th += w * dt;
-    if (th.abs() > .9) {
+    if (th.abs() > 1.05) {
       lose('¡Al suelo!');
       Sfx.play('boing');
       g.fx.shake(8);
@@ -1055,7 +1079,7 @@ class Balance extends Channel {
     c.drawRRect(RRect.fromRectAndRadius(r, const Radius.circular(7)), Paint()..color = const Color(0x88120D1A));
     c.drawRRect(RRect.fromRectAndRadius(Rect.fromCenter(center: r.center, width: 60, height: 14), const Radius.circular(7)),
         Paint()..color = const Color(0x8853D8C3));
-    Gfx.clayBall(c, r.center.dx + (th / .9).clamp(-1, 1) * 110, r.center.dy, 10, th.abs() > .55 ? Pal.pink : Pal.gold);
+    Gfx.clayBall(c, r.center.dx + (th / 1.05).clamp(-1, 1) * 110, r.center.dy, 10, th.abs() > .65 ? Pal.pink : Pal.gold);
   }
 }
 
@@ -1272,10 +1296,22 @@ class Doorman extends Channel {
   void render(Canvas c) {
     drawBg(c);
     // cartel con la norma
-    final sign = Rect.fromLTWH(sl + 20, st + 16, S.width - 40, 50);
-    Gfx.clayPanel(c, sign, const Color(0xFF2A1F3A), radius: 14);
-    Gfx.text(c, wantHat ? 'SOLO CON SOMBRERO' : 'PROHIBIDO EL SOMBRERO', sign.center.dx, sign.center.dy, 24,
-        color: wantHat ? Pal.lime : Pal.pink, fitW: sign.width - 24);
+    // cartel grande con la norma: es lo más importante de la pantalla
+    final sw = math.sin(vt * 2.2) * .025;
+    // baja colgando justo cuando desaparece el «¡DECIDE!» del principio
+    final drop = 1 - clamp01((t - .7) / .3);
+    final sign = Rect.fromLTWH(sl + 14, st + 12 - drop * drop * 150, S.width - 28, 104);
+    c.save();
+    c.translate(sign.center.dx, sign.top);
+    c.rotate(sw);
+    c.translate(-sign.center.dx, -sign.top);
+    Gfx.clayPanel(c, sign, const Color(0xFFF7F1E3), radius: 18);
+    Gfx.text(c, 'NORMA DEL PORTERO', sign.center.dx, sign.top + 26, 18, color: const Color(0xFF6A3FA0), fitW: sign.width - 40);
+    final pulse = 1 + math.sin(vt * 6) * .04;
+    Gfx.text(c, wantHat ? 'SOLO CON SOMBRERO' : 'PROHIBIDO EL SOMBRERO', sign.center.dx, sign.top + 66, 34,
+        color: wantHat ? const Color(0xFF1E9E54) : const Color(0xFFD02050),
+        fitW: sign.width - 36, fitH: 44, scale: pulse);
+    c.restore();
     final floorY = by(.78);
     // cola al fondo
     for (var i = queue.length - 1; i > idx; i--) {
@@ -1441,7 +1477,7 @@ class WashMonster extends Channel {
   void init(int l) {
     final n = 5 + math.min(l, 4);
     while (mud.length < n) {
-      final o = Offset(cx + rnd(-mw * .32, mw * .32), footY - mh * rnd(.35, .82));
+      final o = Offset(cx + rnd(-mw * .32, mw * .32), footY - mh * rnd(.45, .82));
       if (mud.every((m) => (m.o - o).distance > 40)) mud.add(_Mud(o, rnd(22, 30)));
     }
   }
@@ -1474,11 +1510,8 @@ class WashMonster extends Channel {
     for (final m in mud) {
       if (m.dirt > 0) Gfx.sprite(c, 'mud', m.o.dx, m.o.dy, m.r * 2.2, rot: m.rot, alpha: m.dirt);
     }
-    // la parte delantera de la bañera tapa al monstruo: vuelve a pintar ese trozo del decorado
-    c.save();
-    c.clipRect(Rect.fromLTRB(ZappingGame.bleed.left, by(.665), ZappingGame.bleed.right, ZappingGame.bleed.bottom));
-    drawBg(c);
-    c.restore();
+    // capa delantera: la espuma y el frente de la bañera (recortados siguiendo las burbujas) tapan a Blubu
+    Gfx.cover(c, 'tub_front', ZappingGame.bleed);
     if (p.down && res == 0) Gfx.sprite(c, 'sponge', p.x, p.y, 62, rot: math.sin(vt * 20) * .15);
   }
 }
@@ -1618,6 +1651,8 @@ class PingPong extends Channel {
   static const padW = 110.0;
   double get padY => sb - 42;
   double get oppY => st + 70;
+  static const serveAt = 1.0;
+  bool served = false;
 
   @override
   void init(int l) {
@@ -1625,16 +1660,24 @@ class PingPong extends Channel {
     ox = cx;
     spd = 380 + l * 45;
     b = Offset(cx, oppY + 40);
-    final a = rnd(.4, .9) * (rng.nextBool() ? 1 : -1);
-    v = Offset(math.sin(a), math.cos(a)) * spd;
   }
 
   @override
   void update(double dt) {
     if (p.down && pointerIn) px = lerp(px, p.x, 1 - math.exp(-dt * 18));
     px = px.clamp(sl + padW / 2, sr - padW / 2);
-    ox = lerp(ox, b.dx, 1 - math.exp(-dt * 4));
     if (res == -1) return;
+    // saque: el alien bota la pelota en la mano y la lanza al decir ¡YA!
+    if (!served) {
+      ox = lerp(ox, cx, 1 - math.exp(-dt * 4));
+      b = Offset(ox + 34, oppY + 20 - (math.sin(t * 9)).abs() * 22);
+      if (t < serveAt) return;
+      served = true;
+      final a = rnd(.3, .6) * (px < cx ? -1 : 1);
+      v = Offset(math.sin(a), math.cos(a)) * spd * .85;
+      Sfx.play('pop');
+    }
+    ox = lerp(ox, b.dx, 1 - math.exp(-dt * 4));
     b += v * dt;
     z = math.sin(clamp01((b.dy - oppY) / (padY - oppY)) * math.pi);
     if (b.dx < sl + 14 || b.dx > sr - 14) {
@@ -1673,5 +1716,11 @@ class PingPong extends Channel {
     c.drawOval(Rect.fromCenter(center: b.translate(6, 8), width: 22, height: 10), Paint()..color = const Color(0x55000000));
     Gfx.clayBall(c, b.dx, b.dy - z * 26, 12 + z * 5, const Color(0xFFFFF4E6));
     Gfx.sprite(c, 'paddle', px, padY, padW / Gfx.aspect('paddle'), drop: const Offset(5, 8));
+    if (!served) {
+      Gfx.text(c, '¡PREPÁRATE!', cx, cy + 10, 40, color: Pal.gold, scale: 1 + math.sin(vt * 8) * .04);
+    } else if (t - serveAt < .7) {
+      final k = t - serveAt;
+      Gfx.text(c, '¡YA!', cx, cy + 10, 80, color: Pal.lime, scale: 1 + math.max(0.0, .25 - k) * 2.4);
+    }
   }
 }
