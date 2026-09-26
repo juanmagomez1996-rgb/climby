@@ -361,8 +361,8 @@ class Signature extends Channel {
     Gfx.clayBall(c, pts[0].dx, pts[0].dy, 12, Pal.lime);
     Gfx.clayBall(c, pts.last.dx, pts.last.dy, 12, Pal.pink);
     // el funcionario vigila
-    Gfx.shadow(c, bx(.83), by(.93) - 4, 120, alpha: .3);
-    Gfx.anim(c, 'notary', vt, bx(.83), by(.93), 150, ay: 1, rot: res == -1 ? math.sin(vt * 20) * .08 : 0);
+    Gfx.shadow(c, bx(.83), foot(.93) - 4, 120, alpha: .3);
+    Gfx.anim(c, 'notary', vt, bx(.83), foot(.93), 150, ay: 1, rot: res == -1 ? math.sin(vt * 20) * .08 : 0);
     if (res == 1) {
       Gfx.text(c, 'APROBADO', cx, by(.3), 40,
           color: const Color(0xFFD02030), rot: -.2, scale: 1 + math.max(0.0, .2 - since) * 3);
@@ -617,8 +617,8 @@ class CakeStack extends Channel {
   @override
   void render(Canvas c) {
     drawBg(c);
-    Gfx.shadow(c, bx(.84), by(.97), 120);
-    Gfx.anim(c, 'baker', vt, bx(.84), by(.97), 170, ay: 1);
+    Gfx.shadow(c, bx(.84), foot(.97), 120);
+    Gfx.anim(c, 'baker', vt, bx(.84), foot(.97), 170, ay: 1);
     Gfx.shadow(c, cx, by(.62) + 16, 170, alpha: .35);
     Gfx.sprite(c, 'cakeplate', cx, by(.62) + 20, 70, ay: 1);
     for (var i = 0; i < stack.length; i++) {
@@ -759,11 +759,11 @@ class OddClone extends Channel {
   }
 
   Offset cell(int i) {
-    final w = (S.width - 20) / cols, top = st + 30, h = (by(.93) - top) / rows;
+    final w = (S.width - 20) / cols, top = st + 30, h = (foot(.93) - top) / rows;
     return Offset(sl + 10 + w * (i % cols + .5), top + h * (i ~/ cols + 1));
   }
 
-  double get ch => math.min((S.width - 20) / cols, (by(.93) - st - 30) / rows) * .95;
+  double get ch => math.min((S.width - 20) / cols, (foot(.93) - st - 30) / rows) * .95;
 
   @override
   void update(double dt) {
@@ -1678,8 +1678,9 @@ class PingPong extends Channel {
   static const padW = 110.0;
   double get padY => sb - 42;
   double get oppY => st + 70;
-  static const serveAt = 1.0;
+  static const serveAt = 1.3;
   bool served = false;
+  double serveT = 0;
 
   @override
   void init(int l) {
@@ -1694,14 +1695,16 @@ class PingPong extends Channel {
     if (p.down && pointerIn) px = lerp(px, p.x, 1 - math.exp(-dt * 18));
     px = px.clamp(sl + padW / 2, sr - padW / 2);
     if (res == -1) return;
-    // saque: el alien bota la pelota en la mano y la lanza al decir ¡YA!
+    // saque: sacas tú. La pelota bota sobre tu pala y sale hacia el alien al decir ¡YA!
+    // (o antes, si tocas); así te da tiempo a colocarte.
     if (!served) {
       ox = lerp(ox, cx, 1 - math.exp(-dt * 4));
-      b = Offset(ox + 34, oppY + 20 - (math.sin(t * 9)).abs() * 22);
-      if (t < serveAt) return;
+      b = Offset(px, padY - 16 - (math.sin(t * 7)).abs() * 34);
+      if (t < serveAt && !(tap && t > .35)) return;
       served = true;
-      final a = rnd(.3, .6) * (px < cx ? -1 : 1);
-      v = Offset(math.sin(a), math.cos(a)) * spd * .9;
+      serveT = t;
+      final a = rnd(-.35, .35);
+      v = Offset(math.sin(a), -math.cos(a)) * spd * .8;
       Sfx.play('pop');
     }
     ox = lerp(ox, b.dx, 1 - math.exp(-dt * 4));
@@ -1744,9 +1747,9 @@ class PingPong extends Channel {
     Gfx.clayBall(c, b.dx, b.dy - z * 26, 12 + z * 5, const Color(0xFFFFF4E6));
     Gfx.sprite(c, 'paddle', px, padY, padW / Gfx.aspect('paddle'), drop: const Offset(5, 8));
     if (!served) {
-      Gfx.text(c, '¡PREPÁRATE!', cx, cy + 10, 40, color: Pal.gold, scale: 1 + math.sin(vt * 8) * .04);
-    } else if (t - serveAt < .7) {
-      final k = t - serveAt;
+      Gfx.text(c, '¡SACAS TÚ!', cx, cy + 10, 40, color: Pal.gold, scale: 1 + math.sin(vt * 8) * .04);
+    } else if (t - serveT < .7) {
+      final k = t - serveT;
       Gfx.text(c, '¡YA!', cx, cy + 10, 80, color: Pal.lime, scale: 1 + math.max(0.0, .25 - k) * 2.4);
     }
   }

@@ -65,6 +65,10 @@ abstract class Channel {
   double bx(double f) => sl - 14 + f * 449;
   double by(double f) => st - 50.62 + f * 561.25;
 
+  /// Suelo para apoyar pies: la tele solo enseña del 9 % al 91 % del decorado, así que por debajo
+  /// quedaría tapado por el marco. Nunca baja de [sb] - 10 (siempre se ven los pies).
+  double foot(double f) => math.min(by(f), sb - 10);
+
   /// Deslizamiento terminado en este frame (vector desde donde empezó), o null.
   Offset? swipe({double min = 40}) {
     if (!p.released) return null;

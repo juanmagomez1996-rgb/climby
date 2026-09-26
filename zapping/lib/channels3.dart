@@ -153,7 +153,7 @@ class Inspector extends Channel {
             ..strokeCap = StrokeCap.round
             ..color = Pal.gold);
     }
-    Gfx.anim(c, 'detective', vt, bx(.1), by(.935), 130, ay: 1);
+    Gfx.anim(c, 'detective', vt, bx(.1), foot(.935), 130, ay: 1);
   }
 }
 
@@ -211,7 +211,7 @@ class Meatballs extends Channel {
     if (res == 0 && (next -= dt) <= 0) {
       next = rnd(.45, .7);
       final boot = rng.nextDouble() < bootP && items.where((i) => i.boot).length < 2;
-      items.add(_Fall(bx(.14), by(.5), rnd(120, 300), rnd(-460, -300), boot));
+      items.add(_Fall(bx(.29), by(.47), rnd(90, 260), rnd(-440, -300), boot));
     }
     for (final i in items) {
       if (i.done) continue;
@@ -245,7 +245,9 @@ class Meatballs extends Channel {
   @override
   void render(Canvas c) {
     drawBg(c);
-    Gfx.anim(c, 'nonna', vt, bx(.12), by(.655), 150, ay: 1);
+    // la nonna sale por su puerta y se queda en la acera, junto al marco
+    Gfx.shadow(c, bx(.22), by(.705), 110, alpha: .45);
+    Gfx.anim(c, 'nonna', vt, bx(.22), by(.71), 165, ay: 1);
     for (final i in items) {
       if (i.done) continue;
       Gfx.sprite(c, i.boot ? 'boot' : 'meatball2', i.x, i.y, i.boot ? 50 : 36, rot: i.rot, drop: const Offset(4, 8));
@@ -393,11 +395,13 @@ class JetChicken extends Channel {
 
   @override
   void init(int l) {
-    y = cy;
-    spd = 190 + l * 22;
-    gap = math.max(150, 190 - l * 10);
+    // arranca con un impulso hacia arriba y el primer tenedor lejos: da tiempo a entender
+    y = cy + 60;
+    vy = -380;
+    spd = 165 + l * 18;
+    gap = math.max(175, 215 - l * 10);
     need = 3;
-    var x = sr + 80;
+    var x = sr + 170;
     var yc = cy;
     for (var i = 0; i < need; i++) {
       // cada hueco cerca del anterior: exige reflejos, no teletransportarse
@@ -416,12 +420,12 @@ class JetChicken extends Channel {
     }
     scroll += spd * dt;
     if (p.down && pointerIn) {
-      vy -= 2300 * dt;
+      vy -= 1900 * dt;
       Sfx.play('shake', volume: .2, minGapMs: 120);
       if (rng.nextDouble() < .6) g.fx.burst(cxp - 30, y + 18, Pal.gold, 1, speed: 140, size: 5);
     }
-    vy += 1100 * dt;
-    vy = vy.clamp(-420.0, 480.0);
+    vy += 820 * dt;
+    vy = vy.clamp(-360.0, 400.0);
     y += vy * dt;
     if (res != 0) return;
     if (y < st + 18 || y > sb - 18) {
@@ -544,7 +548,9 @@ class ShellGame extends Channel {
   @override
   void render(Canvas c) {
     drawBg(c);
-    Gfx.anim(c, 'octopus', vt, cx, tableY - 38, 190, ay: 1);
+    // el pulpo se apoya en la parte de atrás del mantel: los tentáculos descansan sobre la mesa
+    Gfx.shadow(c, cx, by(.715), 250, alpha: .45, ratio: .12);
+    Gfx.anim(c, 'octopus', vt, cx, by(.728), 215, ay: 1);
     for (var cup = 0; cup < 3; cup++) {
       final o = cupAt(cup);
       final showBall = t < 1.0 || (res != 0 && (cup == ball));
@@ -657,7 +663,7 @@ class SockPairs extends Channel {
   @override
   void render(Canvas c) {
     drawBg(c);
-    Gfx.anim(c, 'washer', vt, bx(.85), by(.93), 150, ay: 1);
+    Gfx.anim(c, 'washer', vt, bx(.85), foot(.93), 150, ay: 1);
     for (var i = 0; i < 6; i++) {
       final r = card(i);
       final f = clamp01((vt - flipAt[i]) / .16);
@@ -809,7 +815,7 @@ class SausageThrow extends Channel {
   @override
   void init(int l) {
     w = (2.0 + l * .3) * (rng.nextBool() ? 1 : -1);
-    need = 4 + math.min(l ~/ 2, 2);
+    need = 3;
     for (var i = 0; i < 2 + math.min(l, 2); i++) {
       stuck.add(i * tau / (2 + math.min(l, 2)) + rnd(-.3, .3));
     }
@@ -876,7 +882,7 @@ class SausageThrow extends Channel {
           rot: bounceT * 12, sx: 1.7);
     }
     if (flyY < 0 && res == 0) Gfx.sprite(c, 'sausage', cx, launchY, sl0, ay: 0, sx: 1.7, rot: math.sin(vt * 8) * .05);
-    Gfx.anim(c, 'dogchef', vt, bx(.16), by(.95), 170, ay: 1);
+    Gfx.anim(c, 'dogchef', vt, bx(.16), foot(.95), 170, ay: 1);
     for (var i = 0; i < need; i++) {
       Gfx.sprite(c, 'sausage', sr - 24 - i * 20, st + 34, 36, sx: 1.7, alpha: i < need - thrown ? 1 : .25);
     }
@@ -1086,7 +1092,7 @@ class CloudSheep extends Channel {
   @override
   void render(Canvas c) {
     drawBg(c);
-    Gfx.anim(c, 'shepherd', vt, bx(.14), by(.93), 150, ay: 1);
+    Gfx.anim(c, 'shepherd', vt, bx(.14), foot(.93), 150, ay: 1);
     void draw(_Sheep s) {
       final bob = math.sin(vt * 3 + s.ph) * 4;
       Gfx.sprite(c, 'sheep', s.o.dx, s.o.dy + bob, 58, flip: s.v.dx < -5, drop: const Offset(0, 20));
@@ -1132,7 +1138,7 @@ class DivaSpot extends Channel {
   void init(int l) {
     diva = Offset(cx, by(.84));
     to = diva;
-    spot = Offset(cx, cy);
+    spot = Offset(cx - 120, by(.62));
     spd = 90 + l * 18;
     need = 2.2 + l * .15;
   }
@@ -1171,22 +1177,55 @@ class DivaSpot extends Channel {
     drawBg(c);
     Gfx.shadow(c, diva.dx, diva.dy - 2, 110, alpha: .5);
     Gfx.anim(c, 'diva', vt, diva.dx, diva.dy, 170, ay: 1, flip: left);
-    // oscuridad y el cono del foco
+    // foco de teatro: un cañón en el techo proyecta un cono de luz cálida que termina en un óvalo
+    const r = 80.0;
+    final lamp = Offset(cx + (spot.dx - cx) * .35, st - 6);
+    final ang = math.atan2(spot.dy - lamp.dy, spot.dx - lamp.dx) - math.pi / 2;
+    Path cone(double spread) {
+      final nx = math.cos(ang), ny = math.sin(ang);
+      return Path()
+        ..moveTo(lamp.dx - nx * 12, lamp.dy - ny * 12)
+        ..lineTo(lamp.dx + nx * 12, lamp.dy + ny * 12)
+        ..lineTo(spot.dx + nx * r * spread, spot.dy + ny * r * spread)
+        ..lineTo(spot.dx - nx * r * spread, spot.dy - ny * r * spread)
+        ..close();
+    }
+
+    final dark = res == 1 ? .15 : .7;
     c.saveLayer(ZappingGame.bleed, Paint());
-    c.drawRect(ZappingGame.bleed, Paint()..color = Color.fromRGBO(5, 3, 12, res == 1 ? .2 : .66));
-    final dst = Paint()
+    c.drawRect(ZappingGame.bleed, Paint()..color = Color.fromRGBO(6, 3, 14, dark));
+    // el cono aclara un poco (aire con polvo) y el óvalo del suelo ilumina del todo
+    c.drawPath(cone(.95), Paint()
       ..blendMode = BlendMode.dstOut
-      ..shader = Gradient.radial(spot, 78, [const Color(0xFFFFFFFF), const Color(0xEEFFFFFF), const Color(0x00FFFFFF)], [0, .75, 1]);
-    c.drawCircle(spot, 78, dst);
+      ..color = const Color(0x99FFFFFF)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8));
+    c.drawOval(Rect.fromCenter(center: spot, width: r * 2, height: r * 2.1), Paint()
+      ..blendMode = BlendMode.dstOut
+      ..shader = Gradient.radial(spot, r * 1.05, [const Color(0xFFFFFFFF), const Color(0xF0FFFFFF), const Color(0x00FFFFFF)], [0, .72, 1]));
     c.restore();
-    final beam = Path()
-      ..moveTo(spot.dx - 10, st - 20)
-      ..lineTo(spot.dx + 10, st - 20)
-      ..lineTo(spot.dx + 70, spot.dy)
-      ..lineTo(spot.dx - 70, spot.dy)
-      ..close();
-    c.drawPath(beam, Paint()..color = Color.fromRGBO(255, 236, 170, lit ? .18 : .1));
-    c.drawCircle(spot, 78, Paint()..color = Color.fromRGBO(255, 230, 150, lit ? .16 : .06));
+    // brillo cálido encima (suma de luz)
+    final warm = lit ? 1.0 : .6;
+    c.drawPath(cone(.95), Paint()
+      ..blendMode = BlendMode.plus
+      ..color = Color.fromRGBO(150, 115, 50, .45 * warm)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10));
+    c.drawCircle(spot, r, Paint()
+      ..blendMode = BlendMode.plus
+      ..shader = Gradient.radial(spot, r, [Color.fromRGBO(160, 125, 55, .6 * warm), const Color(0x00000000)]));
+    // motas de polvo flotando dentro del haz
+    for (var k = 0; k < 14; k++) {
+      final u = ((k * .137 + vt * .08) % 1);
+      final o = Offset.lerp(lamp, spot, u)! + Offset(math.sin(k * 7.3 + vt) * r * .7 * u, math.cos(k * 3.1 + vt * .7) * 10);
+      c.drawCircle(o, 1.6, Paint()..color = Color.fromRGBO(255, 240, 200, .5 * (1 - u * .5)));
+    }
+    // el cañón de luz
+    c.save();
+    c.translate(lamp.dx, lamp.dy);
+    c.rotate(ang);
+    c.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(-17, -26, 34, 34), const Radius.circular(8)), Paint()..color = const Color(0xFF3A3346));
+    c.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(-19, 2, 38, 8), const Radius.circular(4)), Paint()..color = const Color(0xFFD9A441));
+    c.restore();
+    if (res == 0 && !lit) Gfx.text(c, 'ARRASTRA EL FOCO HASTA ELLA', cx, st + 78, 18, color: Pal.gold, alpha: .6 + math.sin(vt * 5) * .3);
     Gfx.sprite(c, 'audience', cx, sb + 14, 96, ay: 1, sx: 1.05);
     Gfx.clayBar(c, Rect.fromLTWH(sl + 70, st + 22, S.width - 140, 18), clamp01(fill / need), Pal.gold);
     Gfx.text(c, 'APLAUSOS', cx, st + 52, 16, color: Pal.gold);
@@ -1212,7 +1251,7 @@ class Grandpa extends Channel {
   double kx = 0, walkT = 0, phaseT = 0, sleepFor = 0, caught = 0;
   int state = 0; // 0 duerme, 1 se remueve (aviso), 2 despierto
   bool moving = false;
-  double get floor => by(.92);
+  double get floor => foot(.92);
   double get jarX => bx(.87);
 
   @override
@@ -1310,53 +1349,96 @@ class WhatChanged extends Channel {
   @override
   String get ins => '¡FÍJATE BIEN!';
   @override
-  String get hint => 'Toca al que ha cambiado';
+  String get hint => 'Toca al que ha cambiado o se ha movido';
   @override
   String get bg => 'bg_photo';
   @override
-  double get dur => look + 3.6;
+  double get dur => look + dark + 3.4;
 
   final before = <_Pose>[], after = <_Pose>[];
-  int changed = 0, n = 5;
-  double look = 1.8;
-  double get row => by(.62);
-  double slotX(int i) => lerp(bx(.17), bx(.83), i / (n - 1));
-  bool get showAfter => t > look + .45;
+  final jitter = <double>[];
+  final changed = <int>{};
+  int n = 6;
+  double look = 2, dark = .9;
+  String kind = '';
+
+  // dos filas: la de atrás sobre el banco alto, la de delante en el suelo
+  int get perRow => (n + 1) ~/ 2;
+  bool back(int i) => i < perRow;
+  double rowY(int i) => back(i) ? by(.555) : by(.665);
+  double slotX(int i) {
+    final k = back(i) ? i : i - perRow;
+    final m = back(i) ? perRow : n - perRow;
+    // libre de la cámara del trípode (a la derecha)
+    return lerp(bx(.14), bx(.68), m == 1 ? .5 : k / (m - 1)) + (back(i) ? 0 : 22);
+  }
+
+  double hOf(int i) => back(i) ? 78 : 92;
+  bool get lightsOff => t > look && t < look + dark;
+  bool get showAfter => t >= look + dark;
 
   @override
   void init(int l) {
-    n = l >= 3 ? 6 : 5;
-    look = math.max(1.1, 1.9 - l * .15);
-    final pool = ['player', 'rival', 'cloneA', 'cloneB', 'guest_bald', 'guest_curly', 'guest_top', 'sheep']..shuffle(rng);
+    n = l >= 3 ? 8 : (l >= 1 ? 7 : 6);
+    look = math.max(1.4, 2.2 - l * .15);
+    final pool = ['player', 'rival', 'cloneA', 'cloneB', 'guest_bald', 'guest_curly', 'guest_top', 'guest_cowboy', 'sheep', 'gnome']..shuffle(rng);
     for (var i = 0; i < n; i++) {
-      before.add(_Pose(pool[i], null, rng.nextDouble() < .35, rng.nextBool(), 1));
+      before.add(_Pose(pool[i], null, rng.nextDouble() < .3, rng.nextBool(), 1));
+      jitter.add(rnd(-7, 7));
     }
     after.addAll(before.map((p) => p.copy()));
-    changed = rng.nextInt(n);
-    final a = after[changed];
+    final a = rng.nextInt(n);
     switch (rng.nextInt(4)) {
-      case 0:
-        a.hat = !a.hat;
+      case 0: // dos se cambian de sitio
+        var b = rng.nextInt(n);
+        while (b == a || before[b].spr == before[a].spr) {
+          b = rng.nextInt(n);
+        }
+        final tmp = after[a];
+        after[a] = after[b];
+        after[b] = tmp;
+        changed.addAll([a, b]);
+        kind = 'se cambiaron de sitio';
       case 1:
-        a.tint = pick(const [Color(0xFFFF9AA2), Color(0xFF9AD0FF), Color(0xFFFFE08A)]);
+        after[a].hat = !after[a].hat;
+        changed.add(a);
+        kind = after[a].hat ? 'se puso gorro' : 'se quitó el gorro';
       case 2:
-        a.flip = !a.flip;
+        after[a].flip = !after[a].flip;
+        changed.add(a);
+        kind = 'se dio la vuelta';
       default:
-        a.spr = pool[n];
+        after[a].spr = pool[n];
+        changed.add(a);
+        kind = 'lo cambiaron por otro';
     }
   }
 
   @override
   void update(double dt) {
     if (res != 0 || !showAfter || !tap) return;
+    // la fila de delante tapa en parte a la de atrás: gana el personaje más cercano al dedo
+    var best = -1;
+    var bd = double.infinity;
     for (var i = 0; i < n; i++) {
-      if ((p.x - slotX(i)).abs() < 34 && p.y > row - 110 && p.y < row + 10) {
-        if (i == changed) {
+      final x = slotX(i), y = rowY(i);
+      if ((p.x - x).abs() < 32 && p.y > y - hOf(i) && p.y < y + 6) {
+        final d = (Offset(p.x, p.y) - Offset(x, y - hOf(i) / 2)).distance;
+        if (d < bd) {
+          bd = d;
+          best = i;
+        }
+      }
+    }
+    for (final i in [best]) {
+      if (i >= 0) {
+        final x = slotX(i), y = rowY(i);
+        if (changed.contains(i)) {
           win();
           Sfx.play('bonus');
-          g.fx.burst(slotX(i), row - 60, Pal.gold, 18);
+          g.fx.burst(x, y - 50, Pal.gold, 18);
         } else {
-          lose('¡No era ese!');
+          lose('¡No fue ese! ${changed.length > 1 ? 'Dos' : 'Uno'} $kind');
           Sfx.play('boing');
         }
         return;
@@ -1368,29 +1450,36 @@ class WhatChanged extends Channel {
   void render(Canvas c) {
     drawBg(c);
     final list = showAfter ? after : before;
-    for (var i = 0; i < n; i++) {
+    for (final i in [for (var k = 0; k < n; k++) k]) {
       final ps = list[i];
-      const h = 92.0;
-      Gfx.shadow(c, slotX(i), row - 2, 60, alpha: .4);
-      Gfx.sprite(c, ps.spr, slotX(i), row, h * ps.scale, ay: 1, flip: ps.flip, tint: ps.tint,
-          sy: 1 + boil(vt, i.toDouble()) * .02);
-      if (ps.hat) Gfx.sprite(c, 'partyhat', slotX(i), row - h * .9, 34, ay: 1, rot: -.15);
-      if (res == -1 && i == changed) {
-        c.drawCircle(Offset(slotX(i), row - 46), 52,
+      final h = hOf(i);
+      // tras el apagón todos se recolocan un poco: el cambio no salta a la vista
+      final x = slotX(i) + (showAfter ? jitter[i] : 0);
+      final y = rowY(i);
+      Gfx.shadow(c, x, y - 2, h * .62, alpha: .4);
+      Gfx.sprite(c, ps.spr, x, y, h, ay: 1, flip: ps.flip, sy: 1 + boil(vt, i.toDouble()) * .02);
+      if (ps.hat) Gfx.sprite(c, 'partyhat', x, y - h * .9, h * .36, ay: 1, rot: -.15);
+      if (res == -1 && changed.contains(i)) {
+        c.drawCircle(Offset(x, y - h / 2), h * .55,
             Paint()
               ..style = PaintingStyle.stroke
               ..strokeWidth = 5
               ..color = Pal.lime);
       }
     }
-    // flash de la cámara (apagón)
+    // apagón total (flash, negro y vuelve la luz)
     final ft = t - look;
-    if (ft > 0 && ft < .45) {
-      c.drawRect(ZappingGame.bleed, Paint()..color = Color.fromRGBO(255, 255, 255, 1 - ft / .45));
+    if (ft > 0 && ft < dark) {
+      final k = ft < .12 ? 1 - ft / .12 : 0.0;
+      c.drawRect(ZappingGame.bleed, Paint()..color = const Color(0xFF050308));
+      if (k > 0) c.drawRect(ZappingGame.bleed, Paint()..color = Color.fromRGBO(255, 255, 255, k));
+      Gfx.text(c, '¡SE FUE LA LUZ!', cx, cy, 30, color: Pal.dim);
+    } else if (ft >= dark && ft < dark + .2) {
+      c.drawRect(ZappingGame.bleed, Paint()..color = Color.fromRGBO(5, 3, 8, 1 - (ft - dark) / .2));
     }
-    if (!showAfter) {
-      Gfx.text(c, 'MEMORIZA', cx, st + 40, 30, color: Pal.gold, scale: 1 + math.sin(vt * 6) * .04);
-    } else if (res == 0) {
+    if (t < look) {
+      Gfx.text(c, 'MEMORIZA LA FOTO', cx, st + 40, 28, color: Pal.gold, scale: 1 + math.sin(vt * 6) * .04);
+    } else if (showAfter && res == 0) {
       Gfx.text(c, '¿QUIÉN HA CAMBIADO?', cx, st + 40, 26, color: Pal.gold, maxW: S.width - 40);
     }
   }
@@ -1489,12 +1578,14 @@ class FireJelly extends Channel {
   final flames = <List<double>>[]; // [x, y, vida]
   Offset aim = Offset.zero;
   bool spraying = false;
-  Offset get nozzle => Offset(bx(.27), by(.8));
+  // boquilla de la manguera en las manos del bombero
+  Offset get nozzle => Offset(bx(.2) + 44, foot(.95) - 110);
   double burn = .75;
 
   @override
   void init(int l) {
-    for (final f in const [[.37, .38], [.57, .38], [.66, .58]]) {
+    // centro de las tres ventanas de la casa (medido sobre el decorado)
+    for (final f in const [[.37, .345], [.615, .345], [.655, .605]]) {
       flames.add([bx(f[0]), by(f[1]), 1]);
     }
     burn = .7 + l * .08;
@@ -1535,7 +1626,10 @@ class FireJelly extends Channel {
         Gfx.clayBall(c, f[0] + math.sin(vt * 2 + i) * 6, f[1] - 20 - (vt * 30) % 30, 10, const Color(0xFFB8B8C0));
         continue;
       }
-      Gfx.anim(c, 'flame', vt + i * .7, f[0], f[1] + 26, 64 * (.45 + .55 * f[2]), ay: 1);
+      // la llama nace del alféizar de su ventana y la ilumina por dentro
+      c.drawRect(Rect.fromCenter(center: Offset(f[0], f[1]), width: 62, height: 60),
+          Paint()..color = Color.fromRGBO(255, 150, 40, .35 * f[2] + math.sin(vt * 9 + i) * .05));
+      Gfx.anim(c, 'flame', vt + i * .7, f[0], f[1] + 30, 76 * (.45 + .55 * f[2]), ay: 1);
     }
     // chorro: gotas a lo largo de una curva desde la boquilla
     if (spraying) {
@@ -1547,7 +1641,7 @@ class FireJelly extends Channel {
         Gfx.clayBall(c, o.dx, o.dy, 5 + u * 3, const Color(0xFF7FC8FF));
       }
     }
-    Gfx.anim(c, 'gummy', vt, bx(.2), by(.95), 150, ay: 1);
+    Gfx.anim(c, 'gummy', vt, bx(.2), foot(.95), 150, ay: 1);
   }
 }
 
@@ -1642,7 +1736,7 @@ class WormBand extends Channel {
       if (y < topY - 20 || y > lineY + 40) continue;
       Gfx.note(c, laneX(n[0].toInt()), y, 44, cols[n[0].toInt()]);
     }
-    Gfx.anim(c, 'worms', vt, cx, by(.93), 150, ay: 1, fps: 14);
+    Gfx.anim(c, 'worms', vt, cx, foot(.93), 150, ay: 1, fps: 14);
     for (var k = 0; k < maxMiss; k++) {
       Gfx.mark(c, k >= misses, sr - 30 - k * 36, st + 32, 30);
     }
@@ -1955,15 +2049,16 @@ class ShadowPuppets extends Channel {
     drawBg(c);
     // sombra sobre la pantalla de papel (silueta exacta del animal, borrosa y temblona)
     final sx = cx + math.sin(vt * 1.3) * 10, sy = by(.4);
+    // al resolver, el animal aparece exactamente encima de su sombra (mismo tamaño, giro y lado)
     c.save();
     c.translate(sx, sy);
     c.rotate(rot + math.sin(vt * 2) * .03);
     c.scale(flip ? -1 : 1, 1);
-    for (var k = 0; k < 2; k++) {
+    for (var k = 0; k < 3; k++) {
       Gfx.silhouette(c, opts[answer], 0, 0, 190);
     }
+    if (res != 0) Gfx.sprite(c, opts[answer], 0, 0, 190, alpha: clamp01(since * 3));
     c.restore();
-    if (res != 0) Gfx.sprite(c, opts[answer], sx, sy, 150, flip: flip, alpha: clamp01(since * 3));
     for (var i = 0; i < 3; i++) {
       final r = opt(i);
       final s = picked == i ? 1.08 : 1 + math.sin(vt * 5 + i) * .02;
@@ -1999,7 +2094,7 @@ class MonsterBar extends Channel {
   int grab = -1;
   double get counter => by(.535);
   double custX(int i) => bx(.2 + i * .3);
-  Offset home(int k) => Offset(bx(.14 + k * .24), by(.86));
+  Offset home(int k) => Offset(bx(.12 + k * .19), sb - 14);
   Offset botFrom = Offset.zero; // solo para los tests con bot
 
   @override
@@ -2064,17 +2159,40 @@ class MonsterBar extends Channel {
       Gfx.sprite(c, who[i], custX(i), counter + 6, 118, ay: 1,
           rot: ok ? math.sin(vt * 10 + i) * .05 : boil(vt, i.toDouble()) * .02);
       if (!ok) {
-        // bocadillo con el batido que pide
-        final b = Offset(custX(i) + 20, counter - 150);
-        Gfx.clayPanel(c, Rect.fromCenter(center: b, width: 62, height: 70), const Color(0xFFF7F1E3));
-        Gfx.sprite(c, 'glass', b.dx, b.dy, 50, tint: cols[want[i]]);
+        // bocadillo grande con el batido que pide (late para llamar la atención)
+        final pulse = 1 + math.sin(vt * 5 + i * 2) * .05;
+        final b = Offset(custX(i) + 14, counter - 168);
+        final tail = Path()
+          ..moveTo(b.dx - 14, b.dy + 40)
+          ..lineTo(b.dx + 8, b.dy + 40)
+          ..lineTo(custX(i) - 4, counter - 104)
+          ..close();
+        c.drawPath(tail, Paint()..color = const Color(0xFFF7F1E3));
+        Gfx.clayPanel(c, Rect.fromCenter(center: b, width: 88 * pulse, height: 96 * pulse), const Color(0xFFF7F1E3));
+        Gfx.sprite(c, 'glass', b.dx, b.dy + 2, 74 * pulse, tint: cols[want[i]]);
+      } else {
+        Gfx.mark(c, true, custX(i) + 30, counter - 120, 40);
       }
     }
-    Gfx.anim(c, 'bartender', vt, bx(.9), by(.97), 150, ay: 1);
+    Gfx.anim(c, 'bartender', vt, bx(.9), foot(.97), 130, ay: 1);
+    // bandeja con los batidos para arrastrar
+    final tray = Rect.fromLTRB(bx(.03), by(.72), bx(.8), sb - 4);
+    Gfx.clayPanel(c, tray, const Color(0xE62A1F3A), radius: 16);
     for (var k = 0; k < glasses.length; k++) {
       final gl = glasses[k];
-      Gfx.sprite(c, 'glass', gl[1], gl[2], k == grab ? 76 : 68, ay: 1, tint: cols[gl[0].toInt()],
+      if (gl[3] == 1) continue;
+      Gfx.sprite(c, 'glass', gl[1], gl[2], k == grab ? 96 : 84, ay: 1, tint: cols[gl[0].toInt()],
           drop: k == grab ? const Offset(8, 18) : const Offset(3, 5));
+    }
+    for (var k = 0; k < glasses.length; k++) {
+      final gl = glasses[k];
+      if (gl[3] == 1) Gfx.sprite(c, 'glass', gl[1], gl[2], 60, ay: 1, tint: cols[gl[0].toInt()]);
+    }
+    if (res == 0 && t < 2 && grab < 0) {
+      final k = (vt * .8) % 1;
+      final a = home(0), b = Offset(custX(0), counter);
+      final o = Offset.lerp(a, b, k * k * (3 - 2 * k))!;
+      Gfx.sprite(c, 'finger', o.dx + 14, o.dy - 20, 50, rot: -.3, alpha: 1 - k * .5);
     }
   }
 }
@@ -2197,10 +2315,34 @@ class BombWires extends Channel {
     final shake = res == 0 ? math.sin(vt * 30) * clamp01(t / dur) * 3 : 0.0;
     Gfx.sprite(c, 'bomb', bombC.dx + shake, bombC.dy, 150, drop: const Offset(6, 10));
     // la palabra en la pantalla del reloj (pintada con la tinta engañosa)
-    Gfx.text(c, names[word], bombC.dx + shake, bombC.dy + 14, 22, color: cols[ink], maxW: 70);
+    Gfx.text(c, names[word], bombC.dx + shake, bombC.dy + 14, 26, color: cols[ink], fitW: 78);
+    // mini tutorial: un dedo corta un cable gris deslizando por encima
+    if (res == 0 && t < 3) {
+      final r = Rect.fromLTWH(sr - 128, st + 12, 116, 86);
+      Gfx.clayPanel(c, r, const Color(0xF22A1F3A), radius: 14);
+      final k = (vt * .9) % 1;
+      final wy = r.center.dy + 6;
+      final cutNow = k > .5;
+      final wp = Paint()
+        ..strokeWidth = 7
+        ..strokeCap = StrokeCap.round
+        ..color = const Color(0xFFB0B4BE);
+      if (cutNow) {
+        c.drawLine(Offset(r.left + 22, wy), Offset(r.center.dx - 6, wy + 4), wp);
+        c.drawLine(Offset(r.center.dx + 6, wy + 4), Offset(r.right - 22, wy), wp);
+      } else {
+        c.drawLine(Offset(r.left + 22, wy), Offset(r.right - 22, wy), wp);
+      }
+      final fy = lerp(r.top + 18, r.bottom - 12, k);
+      c.drawLine(Offset(r.center.dx, r.top + 14), Offset(r.center.dx, fy), Paint()
+        ..strokeWidth = 3
+        ..color = Color.fromRGBO(255, 214, 90, .8));
+      Gfx.sprite(c, 'finger', r.center.dx + 8, fy + 8, 30, rot: -.4);
+      Gfx.text(c, 'DESLIZA', r.center.dx, r.top + 14, 14, color: Pal.gold);
+    }
     final left = math.max(0, dur - t);
     Gfx.text(c, left.toStringAsFixed(1), bombC.dx + 50, bombC.dy - 70, 20, color: Pal.pink);
-    Gfx.anim(c, 'bombtech', vt, bx(.12), by(.99), 150, ay: 1);
+    Gfx.anim(c, 'bombtech', vt, bx(.12), foot(.99), 150, ay: 1);
   }
 }
 
@@ -2214,30 +2356,41 @@ class PizzaToss extends Channel {
   @override
   String get ins => '¡LANZA LA PIZZA!';
   @override
-  String get hint => 'Desliza hacia arriba apuntando a la ventana';
+  String get hint => 'Arrastra hacia la ventana: la línea te enseña por dónde irá. Suelta para lanzar';
   @override
   String get bg => 'bg_building';
   @override
-  double get dur => 7;
+  double get dur => 8;
 
   int target = 0, got = 0, need = 2;
   Offset? fly;
   Offset v = Offset.zero;
   double spin = 0, popT = 0;
   final done = <int>{};
-  Offset win_(int i) => Offset(bx([.215, .5, .79][i % 3]), by([.13, .33, .52][i ~/ 3]));
-  Offset get hand => Offset(cx, by(.8));
+  static const g0 = 900.0;
+  // centro del hueco de cada ventana (medido sobre el decorado) y su alféizar
+  Offset win_(int i) => Offset(bx([.225, .5, .77][i % 3]), by([.14, .345, .545][i ~/ 3]));
+  double sill(int i) => win_(i).dy + 31;
+  Offset get hand => Offset(cx - 46, foot(.99) - 128);
 
-  /// Bot de prueba: busca un deslizamiento que lleve la pizza a [w] (simulando el vuelo).
+  Offset _vel(Offset drag) {
+    final len = drag.distance.clamp(40.0, 300.0);
+    return drag / drag.distance * (560 + len * 1.9);
+  }
+
+  bool _hits(Offset o, int w) => (o - win_(w)).distance < 40;
+
+  /// Bot de prueba: busca un arrastre que lleve la pizza a [w] (simulando el vuelo).
   Offset? aimFor(Offset w) {
-    for (var len = 60.0; len <= 320; len += 8) {
-      for (var a = -1.2; a <= 1.2; a += .04) {
-        final dir = Offset(math.sin(a), -math.cos(a));
-        var o = hand, vv = dir * (620 + len * 1.6);
+    final wi = [for (var k = 0; k < 9; k++) k].firstWhere((k) => win_(k) == w);
+    for (var len = 40.0; len <= 300; len += 6) {
+      for (var a = -1.2; a <= 1.2; a += .03) {
+        final d = Offset(math.sin(a), -math.cos(a)) * len;
+        var o = hand, vv = _vel(d);
         for (var k = 0; k < 120; k++) {
-          vv = Offset(vv.dx, vv.dy + 900 / 60);
+          vv = Offset(vv.dx, vv.dy + g0 / 60);
           o += vv / 60;
-          if (vv.dy > -80 && (o - w).distance < 30) return dir * len;
+          if (_hits(o, wi)) return d;
           if (o.dy > sb + 60) break;
         }
       }
@@ -2255,11 +2408,11 @@ class PizzaToss extends Channel {
   void update(double dt) {
     popT += dt;
     if (fly != null) {
-      v = Offset(v.dx, v.dy + 900 * dt);
+      v = Offset(v.dx, v.dy + g0 * dt);
       fly = fly! + v * dt;
       spin += dt * 12;
       final w = win_(target);
-      if (v.dy > -80 && (fly! - w).distance < 44 && res == 0) {
+      if (_hits(fly!, target) && res == 0) {
         got++;
         done.add(target);
         Sfx.play('gulp');
@@ -2276,20 +2429,16 @@ class PizzaToss extends Channel {
           target = n;
           popT = 0;
         }
-      } else if (fly!.dy > sb + 60) {
+      } else if (fly!.dy > sb + 60 || fly!.dx < sl - 60 || fly!.dx > sr + 60) {
         fly = null;
         Sfx.play('splat', volume: .6);
       }
     }
     if (res != 0 || fly != null) return;
     final s = swipe(min: 30);
-    if (s != null && s.dy < -30) {
-      // la velocidad sale del gesto: dirección del deslizamiento y fuerza por su longitud
-      final len = s.distance.clamp(60.0, 320.0);
-      final dir = s / s.distance;
-      final power = 620 + len * 1.6;
+    if (s != null) {
       fly = hand;
-      v = dir * power;
+      v = _vel(s);
       Sfx.play('click');
     }
   }
@@ -2297,26 +2446,44 @@ class PizzaToss extends Channel {
   @override
   void render(Canvas c) {
     drawBg(c);
-    for (var i = 0; i < 9; i++) {
+    // clientes asomados a su ventana: el cuerpo se esconde bajo el alféizar
+    void lean(int i, double rise, {bool eating = false}) {
       final w = win_(i);
-      if (done.contains(i)) {
-        Gfx.sprite(c, 'hungry', w.dx, w.dy + 30, 64, ay: 1);
-        Gfx.sprite(c, 'pizza', w.dx + 16, w.dy + 14, 26);
+      c.save();
+      c.clipRect(Rect.fromLTRB(w.dx - 70, w.dy - 110, w.dx + 70, sill(i)));
+      Gfx.sprite(c, 'hungry', w.dx, sill(i) + 18 - rise * 22, 66, ay: 1, rot: eating ? 0 : math.sin(vt * 8 + i) * .06);
+      c.restore();
+      if (eating) Gfx.sprite(c, 'pizza', w.dx + 14, sill(i) - 18, 26);
+    }
+
+    for (final i in done) {
+      lean(i, 1, eating: true);
+    }
+    if (res != 1) {
+      lean(target, clamp01(popT * 4));
+      Gfx.text(c, '¡AQUÍ!', win_(target).dx, win_(target).dy - 52, 18, color: Pal.gold, scale: 1 + math.sin(vt * 10) * .08);
+    }
+    Gfx.anim(c, 'pizzaiolo', vt, cx, foot(.99), 160, ay: 1);
+    // línea de puntos mientras arrastras: por dónde irá la pizza
+    if (p.down && fly == null && res == 0) {
+      final d = Offset(p.x - p.sx, p.y - p.sy);
+      if (d.distance > 12) {
+        var o = hand, vv = _vel(d);
+        for (var k = 0; k < 70; k++) {
+          vv = Offset(vv.dx, vv.dy + g0 / 60);
+          o += vv / 60;
+          if (k % 3 == 0) c.drawCircle(o, 4.5 - k * .04, Paint()..color = Color.fromRGBO(255, 214, 90, 1 - k / 80));
+          if (o.dy > sb) break;
+        }
       }
     }
-    if (res == 0 || res == -1) {
-      final w = win_(target);
-      final up = clamp01(popT * 4);
-      c.save();
-      c.clipRect(Rect.fromCenter(center: w, width: 90, height: 84));
-      Gfx.sprite(c, 'hungry', w.dx, w.dy + 42 - up * 14, 70, ay: 1, rot: math.sin(vt * 8) * .06);
-      c.restore();
-      Gfx.text(c, '¡AQUÍ!', w.dx, w.dy - 50, 18, color: Pal.gold, scale: 1 + math.sin(vt * 10) * .08);
-    }
-    Gfx.anim(c, 'pizzaiolo', vt, cx, by(.99), 160, ay: 1);
     if (fly != null) {
       final k = clamp01((hand.dy - fly!.dy) / 400);
       Gfx.sprite(c, 'pizza', fly!.dx, fly!.dy, 56 - k * 20, rot: spin, drop: const Offset(6, 12));
+    }
+    if (res == 0 && t < 2.2 && !p.down) {
+      final k = (vt * .8) % 1;
+      Gfx.sprite(c, 'finger', hand.dx + 20 + k * 30, hand.dy + 30 - k * 90, 50, rot: -.3, alpha: 1 - k);
     }
     Gfx.text(c, '$got/$need', sr - 24, st + 34, 30, align: 1, color: Pal.gold);
   }
@@ -2340,7 +2507,7 @@ class ItchyBear extends Channel {
 
   Offset spot = Offset.zero;
   double hold = 0, warm = 0;
-  double get base => by(.97);
+  double get base => foot(.97);
   static const bh = 380.0;
 
   @override
@@ -2418,7 +2585,7 @@ class CinemaSneeze extends Channel {
   int got = 0, need = 4, blew = -1;
   double next = .6, fuse = 1.3;
   double sx(int i) => bx(.14 + i * .24);
-  double get sy => by(.93);
+  double get sy => foot(.93);
 
   @override
   void init(int l) {
@@ -2489,23 +2656,24 @@ class CrocDentist extends Channel {
   @override
   String get sub => 'Uno de sus dientes está podrido';
   @override
-  String get ins => '¡SACA EL MALO!';
+  String get ins => '¡ARRANCA EL MALO!';
   @override
-  String get hint => 'Toca solo el diente podrido. ¡Cuidado, muerde!';
+  String get hint => 'Agarra el diente podrido y tira de él. ¡Si es sano, muerde!';
   @override
   String get bg => 'bg_dentist';
   @override
-  double get dur => 5;
+  double get dur => 6;
 
   final teeth = <Offset>[];
   final upper = <bool>[];
-  int bad = 0, picked = -1;
-  double subtle = 1;
-  double get base => by(.98);
-  static const ch = 380.0;
-  // dientes repartidos por el borde de la boca abierta (medido en el vídeo del cocodrilo)
-  static const upperJaw = [[.27, .435], [.39, .415], [.5, .405], [.61, .415], [.73, .435]];
-  static const lowerJaw = [[.31, .835], [.44, .855], [.57, .855], [.70, .835]];
+  int bad = 0, picked = -1, grab = -1;
+  double subtle = 1, pull = 0;
+  Offset grabAt = Offset.zero;
+  double get base => foot(.98);
+  static const ch = 380.0, th = 46.0, pullNeed = 48.0;
+  // encías medidas sobre el vídeo del cocodrilo: arriba siguiendo el labio, abajo a los lados de la lengua
+  static const upperJaw = [[.22, .49], [.34, .45], [.5, .44], [.66, .45], [.78, .49]];
+  static const lowerJaw = [[.22, .725], [.33, .79], [.67, .79], [.78, .725]];
 
   @override
   void init(int l) {
@@ -2523,30 +2691,46 @@ class CrocDentist extends Channel {
     subtle = math.max(.35, 1 - l * .15);
   }
 
+  /// Centro del diente (el ancla es la encía; la punta va hacia dentro de la boca).
+  Offset toothCenter(int i) => teeth[i] + Offset(0, upper[i] ? th / 2 : -th / 2);
+
   @override
   void update(double dt) {
-    if (res != 0 || !tap) return;
-    // el diente más cercano al dedo (están muy juntos: nunca el primero que entre en el radio)
-    var best = -1;
-    var bd = 26.0;
-    for (var i = 0; i < teeth.length; i++) {
-      final d = (Offset(p.x, p.y) - teeth[i]).distance;
-      if (d < bd) {
-        bd = d;
-        best = i;
+    if (res != 0) return;
+    final f = Offset(p.x, p.y);
+    if (p.pressed) {
+      grab = -1;
+      var bd = 30.0;
+      for (var i = 0; i < teeth.length; i++) {
+        final d = (f - toothCenter(i)).distance;
+        if (d < bd) {
+          bd = d;
+          grab = i;
+        }
+      }
+      grabAt = f;
+      pull = 0;
+    }
+    if (grab >= 0 && p.down) {
+      pull = (f - grabAt).distance;
+      Sfx.play('ratchet', volume: .25, minGapMs: 140);
+      if (pull >= pullNeed) {
+        picked = grab;
+        if (grab == bad) {
+          win();
+          Sfx.play('pop');
+          Sfx.play('bonus');
+        } else {
+          lose('¡ÑAM! Ese estaba sano');
+          Sfx.play('boing');
+          g.fx.shake(12, .3);
+        }
+        grab = -1;
       }
     }
-    if (best >= 0) {
-      picked = best;
-      if (best == bad) {
-        win();
-        Sfx.play('pop');
-        Sfx.play('bonus');
-      } else {
-        lose('¡ÑAM! Ese estaba sano');
-        Sfx.play('boing');
-        g.fx.shake(12, .3);
-      }
+    if (!p.down) {
+      grab = -1;
+      pull = 0;
     }
   }
 
@@ -2558,15 +2742,31 @@ class CrocDentist extends Channel {
     if (bite > .8) return;
     for (var i = 0; i < teeth.length; i++) {
       final o = teeth[i];
-      if (res == 1 && i == bad) {
-        // el diente sale volando
-        Gfx.sprite(c, 'tooth_bad', o.dx + since * 120, o.dy - since * 300 + since * since * 600, 42, rot: since * 8);
+      final isBad = i == bad;
+      if (i == picked) {
+        // el diente arrancado sale volando
+        final k = since;
+        Gfx.sprite(c, isBad ? 'tooth_bad' : 'tooth', o.dx + k * 140, o.dy - k * 260 + k * k * 700, th, rot: k * 9);
         continue;
       }
-      final isBad = i == bad;
-      final wob = isBad ? math.sin(vt * 14) * .08 * subtle : 0.0;
-      Gfx.sprite(c, isBad ? 'tooth_bad' : 'tooth', o.dx, o.dy, 42,
-          ay: upper[i] ? 0 : 1, rot: wob + (upper[i] ? 0 : math.pi), alpha: isBad ? 1 : 1);
+      // el diente agarrado se estira un poco hacia el dedo y tiembla
+      var off = Offset.zero;
+      var wob = isBad ? math.sin(vt * 14) * .07 * subtle : 0.0;
+      if (i == grab) {
+        final d = Offset(p.x, p.y) - grabAt;
+        off = d.distance == 0 ? Offset.zero : d / d.distance * math.min(pull, pullNeed) * .35;
+        wob += math.sin(vt * 40) * .08;
+      }
+      Gfx.sprite(c, isBad ? 'tooth_bad' : 'tooth', o.dx + off.dx, o.dy + off.dy, th,
+          ay: 0, rot: wob + (upper[i] ? 0 : math.pi), drop: const Offset(2, 3));
+    }
+    if (grab >= 0) {
+      Gfx.clayBar(c, Rect.fromLTWH(cx - 80, st + 20, 160, 16), clamp01(pull / pullNeed), Pal.gold);
+      Gfx.text(c, '¡TIRA!', cx, st + 50, 20, color: Pal.gold);
+    } else if (res == 0 && t < 2.4) {
+      final k = (vt * .9) % 1;
+      final o = toothCenter(2);
+      Gfx.sprite(c, 'finger', o.dx + 10, o.dy + 20 + k * 50, 48, rot: -.3, alpha: 1 - k);
     }
   }
 }
@@ -2661,7 +2861,7 @@ class HotelLift extends Channel {
     } else {
       Gfx.sprite(c, 'ghost', cx + dk * 160, y - 40 - dk * 30, 46, alpha: clamp01(1 - dk / .7));
     }
-    Gfx.anim(c, 'bellhop', vt, bx(.1), by(.97), 110, ay: 1);
+    Gfx.anim(c, 'bellhop', vt, bx(.1), foot(.97), 110, ay: 1);
     Gfx.button(c, 'btn_teal', '', btn(0), size: 30);
     Gfx.sprite(c, 'arrow', btn(0).center.dx, btn(0).center.dy - 4, 30, rot: -math.pi / 2);
     Gfx.button(c, 'btn_pink', '', btn(1), size: 30);
@@ -2799,15 +2999,26 @@ class ToyTrain extends Channel {
     _track(c, bottom);
     Gfx.sprite(c, 'station', top.last.dx + 26, top.last.dy - 10, 86, tint: cols[0], drop: const Offset(4, 6));
     Gfx.sprite(c, 'station', bottom.last.dx + 26, bottom.last.dy - 10, 86, tint: cols[1], drop: const Offset(4, 6));
-    // palanca de la aguja
+    // palanca de la aguja: base, palo y pomo son una sola pieza que gira junta
     final j = trunk.last;
-    c.save();
-    c.translate(j.dx, j.dy + 40);
-    c.rotate((up ? -.5 : .5) * (1 - flip * .3));
-    c.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(-5, -40, 10, 40), const Radius.circular(5)), Paint()..color = const Color(0xFF55565E));
-    c.restore();
-    Gfx.clayBall(c, j.dx + (up ? -20 : 20), j.dy + 4, 12, Pal.gold);
-    Gfx.sprite(c, 'arrow', j.dx + 30, j.dy + (up ? -22 : 22), 26, rot: up ? -.6 : .6);
+    final pv = Offset(j.dx - 4, j.dy + 46);
+    final ang = (up ? -.55 : .55) + math.sin(flip * math.pi) * (up ? -.12 : .12);
+    Gfx.shadow(c, pv.dx, pv.dy + 6, 54, alpha: .45);
+    c.drawRRect(RRect.fromRectAndRadius(Rect.fromCenter(center: pv, width: 40, height: 14), const Radius.circular(7)),
+        Paint()..color = const Color(0xFF3A3346));
+    final tip = pv + Offset(math.sin(ang) * 46, -math.cos(ang) * 46);
+    c.drawLine(pv, tip, Paint()
+      ..strokeWidth = 9
+      ..strokeCap = StrokeCap.round
+      ..color = const Color(0xFF6F7480));
+    c.drawLine(pv + const Offset(-2, -2), tip + const Offset(-2, -2), Paint()
+      ..strokeWidth = 3
+      ..strokeCap = StrokeCap.round
+      ..color = const Color(0x55FFFFFF));
+    Gfx.clayBall(c, tip.dx, tip.dy, 13, up ? cols[0] : cols[1]);
+    Gfx.clayBall(c, pv.dx, pv.dy, 7, const Color(0xFF9AA0AA));
+    // flecha hacia la vía elegida, del color de su estación
+    Gfx.sprite(c, 'arrow', j.dx + 34, j.dy + (up ? -24 : 24), 26, rot: up ? -.6 : .6, tint: up ? cols[0] : cols[1]);
     // tren
     if (res != 1) {
       final lt = _len(trunk);
@@ -2921,7 +3132,7 @@ class MarketScale extends Channel {
   double tilt = 0, tv = 0, level = 0;
   Offset get pivot => Offset(cx, by(.33));
   static const arm = 118.0;
-  Offset tray(int k) => Offset(bx(.14 + k * .18), by(.86));
+  Offset tray(int k) => Offset(bx(.14 + k * .18), by(.8));
   Offset panAt(double side) => pivot + Offset(side * arm * math.cos(tilt), side * arm * math.sin(tilt)) + const Offset(0, 96);
   int get right => [for (var k = 0; k < 5; k++) if (onPan[k]) kinds[k]].fold(0, (a, b) => a + b);
   Offset botFrom = Offset.zero; // solo para los tests con bot
@@ -2989,7 +3200,7 @@ class MarketScale extends Channel {
   @override
   void render(Canvas c) {
     drawBg(c);
-    Gfx.anim(c, 'walrus', vt, bx(.9), by(.62), 125, ay: 1);
+    Gfx.anim(c, 'walrus', vt, bx(.9), by(.64), 125, ay: 1);
     Gfx.sprite(c, 'scalebase', pivot.dx, by(.64), by(.64) - pivot.dy + 16, ay: 1);
     // brazo de la balanza (latón)
     c.save();
@@ -3016,12 +3227,28 @@ class MarketScale extends Channel {
       ..strokeCap = StrokeCap.round
       ..color = level > 0 ? Pal.lime : Pal.pink);
     c.restore();
+    // bandeja clara con las pesas (antes se perdían sobre el fondo oscuro)
+    final trayR = Rect.fromLTRB(bx(.05), by(.715), bx(.95), sb - 4);
+    Gfx.clayPanel(c, trayR, const Color(0xFFF7F1E3), radius: 16);
+    Gfx.text(c, 'PESAS', trayR.left + 44, trayR.top + 16, 14, color: const Color(0xFF6A3FA0));
     for (var k = 0; k < 5; k++) {
       final o = pos[k];
-      final h = 40.0 + kinds[k] * 7;
-      Gfx.sprite(c, 'weight', o.dx, o.dy + h / 2, h, ay: 1, drop: k == grab ? const Offset(6, 14) : const Offset(2, 4));
-      Gfx.text(c, '${kinds[k]}', o.dx, o.dy + h * .1, 14 + kinds[k] * 1.5, color: Pal.gold);
+      final h = 44.0 + kinds[k] * 7;
+      final lift = k == grab ? 1.08 : 1 + math.sin(vt * 4 + k) * .015;
+      Gfx.sprite(c, 'weight', o.dx, o.dy + h / 2, h * lift, ay: 1, drop: k == grab ? const Offset(6, 14) : const Offset(2, 4));
+      Gfx.clayBall(c, o.dx, o.dy + h * .12, 12 + kinds[k] * .8, Pal.gold);
+      Gfx.text(c, '${kinds[k]}', o.dx, o.dy + h * .12, 16.0 + kinds[k], color: Pal.ink);
     }
+    Gfx.text(c, '?', lp.dx, lp.dy - 38, 26, color: Pal.gold);
     Gfx.text(c, 'PESAS: $right', bx(.72), st + 34, 20, color: Pal.gold);
+    // demostración: un dedo arrastra una pesa al platillo
+    if (res == 0 && t < 2.6 && grab < 0 && right == 0) {
+      final k = (vt * .7) % 1;
+      final e = k * k * (3 - 2 * k);
+      final o = Offset.lerp(tray(0), panAt(1), e)!;
+      Gfx.sprite(c, 'weight', o.dx, o.dy + 25, 50, ay: 1, alpha: .6);
+      Gfx.sprite(c, 'finger', o.dx + 16, o.dy + 10, 50, rot: -.3, alpha: 1 - k * .4);
+      Gfx.text(c, 'ARRASTRA LAS PESAS AL PLATILLO', cx, trayR.top - 16, 17, color: Pal.gold, maxW: S.width - 30);
+    }
   }
 }

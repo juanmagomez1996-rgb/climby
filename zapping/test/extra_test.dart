@@ -202,11 +202,16 @@ void main() {
   test('43 qué ha cambiado: tocar al cambiado gana y a otro pierde', () {
     expect(play(WhatChanged.new, (c, p, f) {
       final w = c as WhatChanged;
-      if (w.showAfter) touch(p, w.slotX(w.changed), w.row - 50);
+      final i = w.changed.first;
+      if (w.showAfter) touch(p, w.slotX(i), w.rowY(i) - w.hOf(i) / 2);
     }), 1);
     expect(play(WhatChanged.new, (c, p, f) {
       final w = c as WhatChanged;
-      if (w.showAfter) touch(p, w.slotX((w.changed + 1) % w.n), w.row - 50);
+      var i = 0;
+      while (w.changed.contains(i)) {
+        i++;
+      }
+      if (w.showAfter) touch(p, w.slotX(i), w.rowY(i) - w.hOf(i) / 2);
     }), -1);
   });
 
@@ -374,16 +379,19 @@ void main() {
     expect(play(CinemaSneeze.new, (c, p, f) {}), -1);
   });
 
-  test('56 cocodrilo: el diente malo gana; uno sano muerde', () {
+  test('56 cocodrilo: arrancar el diente malo gana; uno sano muerde; tocar sin tirar no hace nada', () {
+    int pullTooth(int Function(CrocDentist) which) => play(CrocDentist.new, (c, p, f) {
+          final k = c as CrocDentist;
+          final o = k.toothCenter(which(k));
+          if (f >= 30 && f < 44) touch(p, o.dx, o.dy + (f - 30) * 6);
+        });
+    expect(pullTooth((k) => k.bad), 1);
+    expect(pullTooth((k) => (k.bad + 1) % k.teeth.length), -1);
     expect(play(CrocDentist.new, (c, p, f) {
       final k = c as CrocDentist;
-      if (f == 30) touch(p, k.teeth[k.bad].dx, k.teeth[k.bad].dy);
-    }), 1);
-    expect(play(CrocDentist.new, (c, p, f) {
-      final k = c as CrocDentist;
-      final o = k.teeth[(k.bad + 1) % k.teeth.length];
+      final o = k.toothCenter(k.bad);
       if (f == 30) touch(p, o.dx, o.dy);
-    }), -1);
+    }), 0);
   });
 
   test('57 ascensor: frenar en cada planta gana; sin tocar no', () {
