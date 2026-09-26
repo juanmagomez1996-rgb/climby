@@ -10,6 +10,7 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v)), lerp = (a, b, t) => a + 
 const pick = a => a[Math.floor(Math.random() * a.length)];
 const wpick = o => { let s = 0; for (const k in o) s += o[k]; let r = Math.random() * s; for (const k in o) if ((r -= o[k]) < 0) return k; return Object.keys(o)[0]; };
 const $ = id => document.getElementById(id);
+const Q = new URLSearchParams(location.search), FAST = Math.max(1, +(Q.get('fast') || 1));
 
 // ---------------- Guardado ----------------
 const SAVE_KEY = 'vida20.v1';
@@ -39,7 +40,7 @@ const ITEMS = [...Object.keys(L.pickups), ...Object.keys(L.hazards)];
 async function loadAll() {
   const jobs = [];
   L.stages.forEach(s => jobs.push(loadImg(s.bg, `assets/bg/${s.bg}.webp`)));
-  jobs.push(loadImg('title', 'assets/bg/title.webp'));
+  jobs.push(loadImg('title', 'assets/bg/title.webp'), loadImg('tomb', 'assets/bg/tomb.webp'));
   CHARS.forEach(c => META[c] && jobs.push(loadImg(c, `assets/chars/${c}.webp`)));
   ITEMS.forEach(i => jobs.push(loadImg(i, `assets/items/${i}.webp`)));
   jobs.push(document.fonts.load("30px 'Chewy'"), document.fonts.load("30px 'Patrick Hand'"));
@@ -47,7 +48,7 @@ async function loadAll() {
 }
 
 // ---------------- Audio ----------------
-let AC = null, master = null, musicEl = null;
+let AC = null, master = null;
 function audio() {
   if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); master = AC.createGain(); master.gain.value = 0.5; master.connect(AC.destination); } catch (e) {} }
   if (AC && AC.state === 'suspended') AC.resume();
@@ -84,9 +85,31 @@ const SFX = {
   bday: () => [523, 523, 587, 523, 698, 659].forEach((f, i) => tone(f, 0.18, 'square', 0.06, 0, i * 0.15)),
 };
 const vib = ms => { if (save.vib && navigator.vibrate) try { navigator.vibrate(ms); } catch (e) {} };
+// Música: un tema por etapa (music_0..4) y el del epitafio, con fundidos cruzados.
+const MUS = {}; let musCur = null, musKey = null, musBus = null;
+async function loadMusic() {
+  if (!audio() || Object.keys(MUS).length) return;
+  musBus = AC.createGain(); musBus.gain.value = 0.55; musBus.connect(AC.destination);
+  await Promise.all(['music_0', 'music_1', 'music_2', 'music_3', 'music_4', 'music_end'].map(async k => {
+    try { const r = await fetch(`assets/audio/${k}.mp3`); MUS[k] = await AC.decodeAudioData(await r.arrayBuffer()); } catch (e) {}
+  }));
+  if (musKey) { const k = musKey; musKey = null; music(k); }
+}
+function music(key) {
+  if (key === musKey) return;
+  musKey = key;
+  if (!AC || !musBus) return;
+  const t = AC.currentTime;
+  if (musCur) { const old = musCur; old.g.gain.cancelScheduledValues(t); old.g.gain.setValueAtTime(old.g.gain.value, t); old.g.gain.linearRampToValueAtTime(0, t + 1.2); old.s.stop(t + 1.3); musCur = null; }
+  if (!key || !save.music || !MUS[key]) return;
+  const s = AC.createBufferSource(), gn = AC.createGain();
+  s.buffer = MUS[key]; s.loop = true; s.loopStart = 0.03; s.loopEnd = MUS[key].duration - 0.03;
+  gn.gain.setValueAtTime(0, t); gn.gain.linearRampToValueAtTime(1, t + 1.2);
+  s.connect(gn); gn.connect(musBus); s.start(t, 0.03); musCur = { s, g: gn };
+}
 function setMusic(on) {
-  if (!musicEl) { musicEl = new Audio('assets/audio/music.mp3'); musicEl.loop = true; musicEl.volume = 0.45; }
-  if (on && save.music) musicEl.play().catch(() => {}); else musicEl.pause();
+  if (!on || !save.music) { const k = musKey; music(null); musKey = on ? k : null; return; }
+  loadMusic(); if (G) music(G.dead ? 'music_end' : 'music_' + G.stage);
 }
 
 // ---------------- Dibujo básico ----------------
@@ -168,13 +191,15 @@ function newLife() {
   parts = []; floats = [];
 }
 
-function apply(fx, cause, silent) {
+function apply(fx, cause, silent, dimin) {
   if (!fx) return;
   fx.forEach((v, i) => {
     if (!v) return;
-    const dv = Math.round(v * rand(0.8, 1.2)) || Math.sign(v);
+    // los objetos rinden menos cuanto más llena está la barra
+    const k = dimin && v > 0 ? Math.max(0.15, 1 - G.st[i] / 115) : 1;
+    const dv = dimin ? Math.round(v * k * 10) / 10 : (Math.round(v * rand(0.8, 1.2)) || Math.sign(v));
     G.st[i] = clamp(G.st[i] + dv, 0, 100); G.flash[i] = 1;
-    if (!silent) float((dv > 0 ? '+' : '') + dv, 506, 790 + i * 42, COLS[i], 26);
+    if (!silent) float((dv > 0 ? '+' : '') + Math.round(dv), 506, 790 + i * 42, COLS[i], 26);
     if (i === 0 && dv < 0 && cause) G.lastHurt = cause;
   });
   if (G.st[0] <= 0) die();
@@ -185,7 +210,7 @@ function die(cause) {
   if (G.dead) return;
   G.dead = true; G.deathT = 0; G.card = null; G.moment = null; hideCard();
   G.cause = cause || (G.lastHurt ? 'por ' + G.lastHurt : 'por no cuidarse');
-  shake(8, 0.5); SFX.death(); vib([60, 80, 120]);
+  shake(8, 0.5); SFX.death(); vib([60, 80, 120]); music('music_end');
 }
 
 // ---------------- Seguidores (familia) ----------------
@@ -214,17 +239,26 @@ function syncFollowers() {
 function yearTick() {
   G.age++;
   const s = G.st, a = G.age;
-  if (a > 40) s[0] -= 0.5; if (a > 60) s[0] -= 0.9; if (a > 75) s[0] -= 0.8; if (s[2] < 20) s[0] -= 1;
-  if (a >= 19 && a < 65) s[1] += 0.6; else if (a >= 65) s[1] -= 0.4;
-  if (!G.flags.pareja && a > 30) s[3] -= 0.4;
-  if (s[3] > 70) s[2] += 0.3;
+  // salud: el cuerpo se gasta; la tristeza también pasa factura
+  if (a > 40) s[0] -= 0.5; if (a > 60) s[0] -= 0.8; if (a > 75) s[0] -= 0.7; if (s[2] < 20) s[0] -= 1;
+  // dinero: sueldo, coste de vida, hijos y pensión
+  if (a >= 18) s[1] -= 1.2;
+  if (a >= 19 && !G.flags.jubilado && a < 67) s[1] += G.flags.curro ? 2.2 : 1.6;
+  if (G.flags.jubilado || a >= 67) s[1] += 0.8;
+  if (G.flags.hija && a - G.hijaAge < 22) s[1] -= 0.8;
+  // la felicidad y las relaciones vuelven poco a poco a su punto medio (y se desgastan si no se cuidan)
+  s[2] -= (s[2] - 45) * 0.05 + (a < 13 ? 0 : 0.4); s[3] -= (s[3] - 40) * 0.05 + (a < 13 ? 0 : 0.4);
+  if (a < 28) s[0] += 1.2;
+  if (!G.flags.pareja && a > 30) s[3] -= 0.5;
+  if (G.flags.pareja) s[2] += 0.4; if (G.flags.perro) s[2] += 0.3;
+  if (s[3] > 70) s[2] += 0.3; if (s[1] < 10 && a > 18) s[2] -= 0.6;
   for (let i = 0; i < 4; i++) s[i] = clamp(s[i], 0, 100);
   G.score += (s[2] + s[3] + s[0] * 0.5 + s[1] * 0.3) / 10;
   SFX.tick();
   if (a % 10 === 0 && a <= 90) { SFX.bday(); burst(PX, GY - 200, '#ffd35a', 24, 300, 200); float(`¡${a} AÑOS!`, PX, GY - 250, '#e0673c', 34); }
 
   const sg = stageOf(a);
-  if (sg !== G.stage) { G.prevStage = G.stage; G.stage = sg; G.fade = 0; G.stageBanner = 2.6; SFX.stage(); burst(PX, GY - 100, '#fff', 30, 220, 80); }
+  if (sg !== G.stage) { G.prevStage = G.stage; G.stage = sg; G.fade = 0; G.stageBanner = 2.6; SFX.stage(); music('music_' + sg); burst(PX, GY - 100, '#fff', 30, 220, 80); }
 
   for (const c of G.later.filter(c => c.at === a)) {
     banner('CONSECUENCIA · ' + a + ' AÑOS', c.t, '#9b59b6'); apply(c.fx, c.cause);
@@ -235,7 +269,7 @@ function yearTick() {
   syncFollowers();
   if (G.dead) return;
   if (s[0] <= 0) return die();
-  if (a >= 100 || (a >= 68 && Math.random() < (a - 66) * 0.012 + (100 - s[0]) / 900)) return die(a >= 95 ? 'de viejísimo' : 'de viejo, en su cama');
+  if (a >= 100 || (a >= 70 && Math.random() < (a - 69) * 0.009 + (100 - s[0]) / 1500)) return die(a >= 95 ? 'de viejísimo' : 'de viejo, en su cama');
 
   // eventos automáticos
   for (const e of L.events) {
@@ -262,6 +296,7 @@ const condOk = e => (!e.need || e.need.every(f => G.flags[f])) && (!e.not || e.n
 // ---------------- Cartas ----------------
 function openCard(e) {
   G.card = { e, t: 0, dur: 10 }; G.lastEvent = G.age; SFX.card(); vib(15);
+  const ci = $('card-img'); ci.hidden = true; ci.onload = () => { ci.hidden = false; }; ci.onerror = () => { ci.hidden = true; }; ci.src = `assets/ev/${e.id}.webp`;
   $('card-age').textContent = `A LOS ${G.age} AÑOS`;
   $('card-q').textContent = tr(e.q);
   const box = $('card-opts'); box.innerHTML = '';
@@ -400,7 +435,7 @@ function updateRunner(dt) {
   for (const e of G.ents) {
     if (e.k === 'pick') {
       if (Math.abs(e.x - PX) < 42 && e.y > top - 20 && e.y < bot + 10) {
-        e.gone = 1; const pk = L.pickups[e.id]; apply(pk.fx, null, true); G.picked++; G.score += 3;
+        e.gone = 1; const pk = L.pickups[e.id]; apply(pk.fx, null, true, true); G.picked++; G.score += 3;
         const main = pk.fx.reduce((b, v, i) => v > pk.fx[b] ? i : b, 0);
         burst(e.x, e.y, COLS[main], 12, 200); pk.treat ? SFX.treat() : SFX.pick(main);
         float(`+${pk.fx[main]}`, e.x, e.y - 30, COLS[main], 28);
@@ -409,7 +444,7 @@ function updateRunner(dt) {
     } else if (P.inv <= 0) {
       const hw = e.w * 0.32, htop = e.air ? e.y - e.h * 0.35 : e.y - e.h * 0.8, hbot = e.air ? e.y + e.h * 0.35 : e.y;
       if (Math.abs(e.x - PX) < hw + 16 && bot > htop && top < hbot) {
-        const hz = L.hazards[e.id]; apply(hz.fx, hz.msg.toLowerCase().replace(/[¡!]/g, '')); G.hits++;
+        const hz = L.hazards[e.id], kid = G.age < 13 ? 0.5 : 1; apply(hz.fx.map((v, i) => i === 0 ? v * 0.7 * kid : v), hz.cause); G.hits++;
         P.stumble = 0.6; P.inv = 1.3; shake(9, 0.25); SFX.hit(); vib(40); burst(PX + 20, P.y - h * 0.5, '#fff', 10, 180);
         float(hz.msg, PX, P.y - h - 20, '#e2574c', 30); e.hitT = 0.5;
       }
@@ -429,7 +464,7 @@ const keys = {};
 let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
-  if (mode === 'play' && !paused) update(dt);
+  if (mode === 'play' && !paused) for (let i = 0; i < FAST; i++) update(dt);
   fx(dt); draw(); requestAnimationFrame(frame);
 }
 function fx(dt) {
@@ -505,6 +540,7 @@ function draw() {
   ctx.restore();
   for (const f of floats) text(f.s, f.x, f.y, { size: f.size, color: f.col, stroke: '#fff8ec', sw: 6, alpha: clamp(f.life, 0, 1), font: "'Chewy', cursive" });
   drawHud(t);
+  if (G.dead && G.deathT > 2.4 && IMG.tomb) { const im = IMG.tomb, a = clamp((G.deathT - 2.4) / 1.2, 0, 1), h = im.height * W / im.width; ctx.globalAlpha = a; ctx.drawImage(im, 0, (H - h) / 2, W, h); ctx.globalAlpha = 1; }
   ctx.restore();
 }
 function drawRamon(P, h, t) {
@@ -641,12 +677,12 @@ function showEnd() {
 
 // ---------------- Pantallas y entrada ----------------
 function toMenu() {
-  mode = 'menu'; ['end', 'settings', 'card', 'loading'].forEach(i => $(i).classList.add('hidden'));
+  mode = 'menu'; music(null); ['end', 'settings', 'card', 'loading'].forEach(i => $(i).classList.add('hidden'));
   $('menu').classList.remove('hidden'); $('btn-pause').classList.add('hidden');
   $('menu-best').textContent = save.best ? `Récord: ${save.best} pts · ${save.lives} vidas vividas` : 'Una vida entera en unos minutos.';
 }
 function play() {
-  audio(); setMusic(true); newLife(); mode = 'play'; paused = false;
+  audio(); newLife(); musKey = null; setMusic(true); mode = 'play'; paused = false;
   ['menu', 'end', 'settings'].forEach(i => $(i).classList.add('hidden')); $('btn-pause').classList.remove('hidden');
   banner('', 'Toca para saltar. Recoge lo bueno, esquiva lo malo.', '#3b2416');
 }
@@ -678,14 +714,15 @@ addEventListener('keydown', e => {
   if (e.key === ' ' || e.key === 'ArrowUp') { e.preventDefault(); if (G.moment) momentTap(W / 2, SY + 300); else jump(); }
 });
 addEventListener('keyup', e => { keys[e.key] = false; });
-document.addEventListener('visibilitychange', () => { if (document.hidden && mode === 'play') { paused = true; if (musicEl) musicEl.pause(); openSettings(); } });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { if (AC) AC.suspend(); if (mode === 'play') { paused = true; openSettings(); } } else if (AC) AC.resume(); });
 
 // Depuración: ?age=40 empieza a esa edad; ?fast=3 acelera el tiempo
-const Q = new URLSearchParams(location.search);
-window.__vida = { get G() { return G; }, play, jump, choose, startMoment };
+
+window.__vida = { get G() { return G; }, play, jump, choose, startMoment, momentTap, PX, GY, L };
 
 loadAll().then(() => {
   toMenu();
+  setTimeout(() => L.events.forEach(e => { const i = new Image(); i.src = `assets/ev/${e.id}.webp`; }), 1500);
   if (Q.get('auto')) { play(); if (Q.get('age')) { G.age = +Q.get('age'); G.stage = G.prevStage = stageOf(G.age); } }
 });
 requestAnimationFrame(frame);

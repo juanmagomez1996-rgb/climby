@@ -28,22 +28,22 @@ window.LIFE = {
   },
   // Obstáculos (h: altura aproximada en px del juego; air: vuela a media altura)
   hazards: {
-    puddle: { fx: [-2, 0, -2, 0], h: 22, w: 90, msg: '¡Chof!' },
-    rock: { fx: [-5, 0, -1, 0], h: 52, w: 64, msg: '¡Au!' },
-    goose: { fx: [-2, 0, -4, 0], h: 80, w: 80, msg: '¡Un ganso!' },
-    duck: { fx: [0, 0, -2, 0], h: 44, w: 48, msg: '¡Cuac!' },
-    homework: { fx: [0, 0, -5, 0], h: 84, w: 66, msg: 'Deberes...' },
-    skate: { fx: [-4, 0, -1, 0], h: 30, w: 86, msg: '¡Patinazo!' },
-    cone: { fx: [-3, 0, -1, 0], h: 72, w: 56, msg: '¡Cono!' },
-    bills: { fx: [0, -7, -2, 0], h: 44, w: 84, msg: 'Facturas' },
-    coffee: { fx: [0, -1, -3, 0], h: 36, w: 90, msg: 'Café derramado' },
-    briefcase: { fx: [0, 0, -4, -2], h: 60, w: 70, msg: 'Más trabajo' },
-    banana: { fx: [-6, 0, -1, 0], h: 26, w: 70, msg: '¡Plátano!' },
-    wetfloor: { fx: [-5, 0, 0, 0], h: 84, w: 56, msg: 'Suelo mojado' },
-    cactus: { fx: [-4, 0, -1, 0], h: 76, w: 56, msg: '¡Pincha!' },
-    pigeon: { fx: [0, 0, -3, 0], h: 50, w: 74, air: 1, msg: 'Paloma' },
-    storm: { fx: [-1, 0, -5, 0], h: 60, w: 90, air: 1, msg: 'Nubarrón' },
-    plane: { fx: [0, 0, -2, 0], h: 40, w: 70, air: 1, msg: 'Avioncito' },
+    puddle: { fx: [-2, 0, -2, 0], h: 22, w: 90, msg: '¡Chof!', cause: 'un resbalón en un charco' },
+    rock: { fx: [-5, 0, -1, 0], h: 52, w: 64, msg: '¡Au!', cause: 'una piedra traicionera' },
+    goose: { fx: [-2, 0, -4, 0], h: 80, w: 80, msg: '¡Un ganso!', cause: 'un ganso con mal carácter' },
+    duck: { fx: [0, 0, -2, 0], h: 44, w: 48, msg: '¡Cuac!', cause: 'un pato de goma' },
+    homework: { fx: [0, 0, -5, 0], h: 84, w: 66, msg: 'Deberes...', cause: 'una montaña de deberes' },
+    skate: { fx: [-4, 0, -1, 0], h: 30, w: 86, msg: '¡Patinazo!', cause: 'un monopatín suelto' },
+    cone: { fx: [-3, 0, -1, 0], h: 72, w: 56, msg: '¡Cono!', cause: 'un cono de obra' },
+    bills: { fx: [0, -7, -2, 0], h: 44, w: 84, msg: 'Facturas', cause: 'las facturas' },
+    coffee: { fx: [0, -1, -3, 0], h: 36, w: 90, msg: 'Café derramado', cause: 'un café derramado' },
+    briefcase: { fx: [0, 0, -4, -2], h: 60, w: 70, msg: 'Más trabajo', cause: 'un maletín en mal sitio' },
+    banana: { fx: [-6, 0, -1, 0], h: 26, w: 70, msg: '¡Plátano!', cause: 'una piel de plátano' },
+    wetfloor: { fx: [-5, 0, 0, 0], h: 84, w: 56, msg: 'Suelo mojado', cause: 'un suelo recién fregado' },
+    cactus: { fx: [-4, 0, -1, 0], h: 76, w: 56, msg: '¡Pincha!', cause: 'un cactus' },
+    pigeon: { fx: [0, 0, -3, 0], h: 50, w: 74, air: 1, msg: 'Paloma', cause: 'una paloma kamikaze' },
+    storm: { fx: [-1, 0, -5, 0], h: 60, w: 90, air: 1, msg: 'Nubarrón', cause: 'un nubarrón' },
+    plane: { fx: [0, 0, -2, 0], h: 40, w: 70, air: 1, msg: 'Avioncito', cause: 'un avión de papel' },
   },
   // Qué aparece en cada etapa (pesos)
   spawn: [
@@ -165,7 +165,7 @@ window.LIFE = {
       { t: 'Lo aceptas y ya', fx: [0, 0, -5, 5] }] },
 
     // ---------- MADUREZ ----------
-    { id: 'cuñado', ages: [45, 48], key: 1, q: 'Tu cuñado te propone invertir en criptopatatas.', o: [
+    { id: 'cunado', ages: [45, 48], key: 1, q: 'Tu cuñado te propone invertir en criptopatatas.', o: [
       { t: 'Meto todos mis ahorros', tag: 'lo metió todo en criptopatatas', chance: { p: 0.45,
         ok: { fx: [0, 40, 10, 0], m: '¡Las criptopatatas se disparan! Eres rico.' },
         ko: { fx: [-5, -40, -10, 0], m: 'Las criptopatatas eran patatas.', cause: 'el disgusto de las criptopatatas' } } },
