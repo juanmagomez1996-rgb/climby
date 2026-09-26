@@ -49,9 +49,9 @@ flutter run            # en un móvil o emulador Android
 flutter test
 ```
 
-El sandbox (probar un canal con vidas infinitas; se repite al terminar y las flechas del marcador pasan
-al anterior o al siguiente) está oculto en el menú por ahora. Para abrirlo directamente en un canal:
-`flutter run --dart-define=PRACTICE=4` (índice desde 0; el último, 60, es el jefe).
+En el menú, **PROBAR CANALES** abre el sandbox: una lista con los 61 canales (60 + jefe) para probar
+cada uno con vidas infinitas; se repite al terminar y las flechas del marcador pasan al anterior o al siguiente.
+También se puede abrir directamente en un canal: `flutter run --dart-define=PRACTICE=4` (índice desde 0).
 
 Para ver todos los canales en orden sin perder vidas (útil para capturas):
 `flutter run --dart-define=TOUR=true` (añade `--dart-define=TOUR_FROM=12` para empezar por el canal 13).

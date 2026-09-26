@@ -2501,8 +2501,8 @@ class CrocDentist extends Channel {
   final upper = <bool>[];
   int bad = 0, picked = -1;
   double subtle = 1;
-  double get base => by(.9);
-  static const ch = 300.0;
+  double get base => by(.98);
+  static const ch = 380.0;
   // dientes repartidos por el borde de la boca abierta (medido en el vídeo del cocodrilo)
   static const upperJaw = [[.27, .435], [.39, .415], [.5, .405], [.61, .415], [.73, .435]];
   static const lowerJaw = [[.31, .835], [.44, .855], [.57, .855], [.70, .835]];
@@ -2526,19 +2526,26 @@ class CrocDentist extends Channel {
   @override
   void update(double dt) {
     if (res != 0 || !tap) return;
+    // el diente más cercano al dedo (están muy juntos: nunca el primero que entre en el radio)
+    var best = -1;
+    var bd = 26.0;
     for (var i = 0; i < teeth.length; i++) {
-      if ((Offset(p.x, p.y) - teeth[i]).distance < 24) {
-        picked = i;
-        if (i == bad) {
-          win();
-          Sfx.play('pop');
-          Sfx.play('bonus');
-        } else {
-          lose('¡ÑAM! Ese estaba sano');
-          Sfx.play('boing');
-          g.fx.shake(12, .3);
-        }
-        return;
+      final d = (Offset(p.x, p.y) - teeth[i]).distance;
+      if (d < bd) {
+        bd = d;
+        best = i;
+      }
+    }
+    if (best >= 0) {
+      picked = best;
+      if (best == bad) {
+        win();
+        Sfx.play('pop');
+        Sfx.play('bonus');
+      } else {
+        lose('¡ÑAM! Ese estaba sano');
+        Sfx.play('boing');
+        g.fx.shake(12, .3);
       }
     }
   }
