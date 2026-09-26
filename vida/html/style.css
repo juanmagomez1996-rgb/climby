@@ -82,3 +82,19 @@ html, body { margin: 0; height: 100%; background: #2b1d14; overflow: hidden; tou
 #btn-pause { position: absolute; right: 14px; top: 16px; width: 54px; height: 54px; font-family: 'Chewy', cursive; font-size: 26px;
   color: var(--ink); background: var(--paper); border: 3px solid var(--ink); border-radius: 50%; box-shadow: 0 4px 0 var(--ink); }
 #loading { background: #2b1d14; }
+
+/* Caminos */
+.menu-row { display: flex; gap: 10px; justify-content: center; }
+.end-path { font-size: 21px; margin: 2px 0 6px; line-height: 1.15; }
+.end-path .new { color: var(--accent); font-family: 'Chewy', cursive; }
+.paths-paper { width: 480px; max-height: 820px; display: flex; flex-direction: column; align-items: stretch; text-align: center; gap: 8px; }
+.note-ink { font-size: 22px; opacity: .8; }
+#paths-list { overflow-y: auto; touch-action: pan-y; max-height: 640px; display: flex; flex-direction: column; gap: 10px; text-align: left; }
+.path { border: 3px solid var(--ink); border-radius: 14px; padding: 8px 12px; background: #fff8ec; }
+.path.locked { opacity: .6; background: #eadcc2; }
+.path-head { display: flex; align-items: center; gap: 10px; font-family: 'Chewy', cursive; font-size: 28px; }
+.path-head img, .path li img { width: 34px; height: 34px; object-fit: contain; }
+.path ul { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.path li { font-size: 22px; display: flex; align-items: center; gap: 8px; opacity: .55; }
+.path li.got { opacity: 1; }
+.path .hint { font-size: 19px; font-style: italic; }

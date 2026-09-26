@@ -10,6 +10,8 @@ SHEETS = {
                 'lollipop', 'ball', 'book', 'trophy', 'flowers', 'cake', 'burger', 'clock'],
  'items_mini': ['hoop', 'basketball', 'car', 'bigcake', 'candle', 'bouquet', 'fish', 'bobber',
                 'butterfly', 'bird', 'leaf', 'petal', 'photo', 'kite', 'rattle', 'boat'],
+ 'items_futbol': ['soccerball', 'goldboot', 'yellowcard', 'redcard', 'defender', 'whistle', 'mic', 'tvcamera',
+                  'beer', 'medal', 'jersey', 'energy', 'flashcam', 'goal', 'keeper', 'cup'],
  'items_obst': ['puddle', 'rock', 'goose', 'homework', 'skate', 'cone', 'bills', 'coffee',
                 'briefcase', 'banana', 'pigeon', 'wetfloor', 'cactus', 'storm', 'plane', 'duck'],
 }

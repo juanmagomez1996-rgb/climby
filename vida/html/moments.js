@@ -165,6 +165,85 @@ window.makeMoments = api => {
         for (let i = 0; i < M.shots; i++) api.item('basketball', 40 + i * 34, SY + 600, 28, { alpha: 0.9 });
       },
     },
+    // Penaltis: desliza desde el balón hacia la portería. El portero se tira a un lado;
+    // las esquinas son casi imparables, pero si te pasas va fuera. single = un único tiro decisivo.
+    penaltis: {
+      dur: 12, hideRunner: 1,
+      start(M) {
+        M.dur = M.single ? 7 : 12; M.shots = M.single ? 1 : 3; M.need = M.single ? 1 : 2; M.miss = 0;
+        M.gx = W / 2; M.gw = 440; M.gh = M.gw * 175 / 256; M.gy = SY + 150;            // portería (arriba-izquierda en gy)
+        M.x0 = M.gx - M.gw * 0.44; M.x1 = M.gx + M.gw * 0.44; M.y0 = M.gy + M.gh * 0.08; M.y1 = M.gy + M.gh * 0.86;
+        M.reset = () => { M.b = { x: W / 2, y: SY + 540, s: 64, fly: 0 }; M.k = { x: M.gx, dx: 0, lift: 0, rot: 0, dive: 0 }; M.wait = 0; };
+        M.reset();
+      },
+      down(M, x, y) { if (!M.b.fly && !M.wait && M.shots > 0 && Math.hypot(x - M.b.x, y - M.b.y) < 110) M.aim = { x, y, cx: x, cy: y }; },
+      move(M, x, y) { if (M.aim) { M.aim.cx = x; M.aim.cy = y; } },
+      up(M) {
+        if (!M.aim) return;
+        const dx = M.aim.cx - M.aim.x, dy = M.aim.cy - M.aim.y; M.aim = null;
+        if (dy > -30) return;
+        const b = M.b, k = 1.9;
+        b.tx = b.x + dx * k; b.ty = Math.max(SY + 60, b.y + dy * k); b.fly = 1; b.ft = 0; b.sx = b.x; b.sy = b.y; M.shots--;
+        api.sfx('jump'); api.shake(3, 0.1);
+        // el portero adivina el lado con un 40 % de acierto; si no, se tira al otro o se queda
+        const side = Math.sign(b.tx - M.gx) || 1, guess = Math.random() < 0.4 ? side : Math.random() < 0.5 ? -side : 0;
+        M.k.dive = guess; M.k.to = M.gx + guess * 115; M.k.lt = guess ? 40 + Math.random() * 60 : 0;
+      },
+      update(M, dt) {
+        const b = M.b, k = M.k;
+        if (!b.fly) { k.x = M.gx + Math.sin(M.t * 2.4) * 40; }
+        else if (b.fly === 1) {
+          b.ft += dt / 0.5; const f = Math.min(1, b.ft);
+          b.x = b.sx + (b.tx - b.sx) * f; b.y = b.sy + (b.ty - b.sy) * f - Math.sin(f * Math.PI) * 40; b.s = 64 - 26 * f; b.rot = (b.rot || 0) + dt * 14;
+          const kf = clamp(b.ft * 1.6, 0, 1); k.x += (k.to - k.x) * kf * 0.25; k.lift = k.lt * Math.sin(kf * Math.PI / 2); k.rot = k.dive * 1.1 * kf;
+          if (f >= 1) {
+            const inside = b.tx > M.x0 && b.tx < M.x1 && b.ty > M.y0 && b.ty < M.y1;
+            // el portero cubre unos 90 px alrededor de sus manos (más si se tira bien)
+            const hx = k.x + k.dive * 60, hy = M.y1 - 90 - k.lift, saved = inside && Math.abs(b.tx - hx) < (k.dive ? 85 : 70) && Math.abs(b.ty - hy) < 95;
+            if (!inside) { b.fly = 3; M.miss++; api.float(b.ty <= M.y0 ? '¡Al larguero… y fuera!' : '¡Fuera!', W / 2, SY + 470, BROWN, 36); api.sfx('bad'); }
+            else if (saved) { b.fly = 2; b.vx = (b.x - k.x) * 4 + rand(-80, 80); b.vy = 380; M.miss++; api.float('¡PARADÓN!', W / 2, SY + 470, RED, 40); api.sfx('hit'); api.shake(6, 0.2); }
+            else { b.fly = 4; M.got++; api.float('¡GOOOL!', W / 2, SY + 470, GREEN, 50); api.sfx('good'); api.shake(8, 0.3); api.burst(b.x, b.y, '#fff', 24, 260); api.confetti(); }
+            M.wait = 1.1;
+          }
+        } else {
+          if (b.fly === 2) { b.vy += 900 * dt; b.x += b.vx * dt; b.y += b.vy * dt; b.rot += dt * 10; }
+          if (b.fly === 3) { b.s = Math.max(10, b.s - dt * 30); }
+          M.wait -= dt;
+          if (M.wait <= 0) {
+            if (M.got >= M.need) return api.end(M, true);
+            if (M.shots <= 0 || M.got + M.shots < M.need) return api.end(M, false);
+            M.reset();
+          }
+        }
+        if (M.t > M.dur && !b.fly) api.end(M, M.got >= M.need);
+      },
+      result(M, ok) {
+        if (M.single) return;   // la carta que lo lanzó decide qué pasa
+        if (ok) win(M.got === 3 ? '¡Tres de tres, crack!' : '¡Ganas la tanda!', M.got === 3 ? [1, 0, 6, 2] : [0, 0, 3, 1]);
+        else lose('El portero se ríe de ti', [0, 0, -2, 0]);
+      },
+      draw(M, t) {
+        const c = api.ctx, b = M.b, k = M.k;
+        // césped a rayas y área
+        for (let i = 0; i < 8; i++) { c.fillStyle = i % 2 ? '#6fa845' : '#7cb552'; c.fillRect(0, SY + i * 81, W, 82); }
+        c.strokeStyle = 'rgba(255,255,255,.85)'; c.lineWidth = 5;
+        c.beginPath(); c.moveTo(0, M.gy + M.gh - 4); c.lineTo(W, M.gy + M.gh - 4); c.stroke();
+        c.beginPath(); c.moveTo(24, M.gy + M.gh - 4); c.lineTo(6, SY + 630); c.moveTo(W - 24, M.gy + M.gh - 4); c.lineTo(W - 6, SY + 630); c.stroke();
+        c.fillStyle = '#fff'; c.beginPath(); c.ellipse(W / 2, SY + 560, 9, 4, 0, 0, TAU); c.fill();
+        const ripple = b.fly === 4 ? Math.sin(t * 40) * 3 * Math.max(0, M.wait - 0.4) : 0;
+        api.item('goal', M.gx, M.gy + M.gh / 2 + ripple, M.gh);
+        const behind = b.fly === 4;   // el balón entra y queda detrás del portero
+        if (behind) api.item('soccerball', b.x, b.y, b.s, { rot: b.rot || 0 });
+        c.save(); c.translate(k.x, M.gy + M.gh - 10 - k.lift); c.rotate(k.rot); api.shadow(0, 8 + k.lift, 40); api.item('keeper', 0, -85, 175); c.restore();
+        if (M.aim) {
+          const dx = (M.aim.cx - M.aim.x) * 1.9, dy = (M.aim.cy - M.aim.y) * 1.9; c.fillStyle = 'rgba(255,248,236,.85)';
+          for (let i = 1; i < 8; i++) { const f = i / 8; c.beginPath(); c.arc(b.x + dx * f, b.y + dy * f - Math.sin(f * Math.PI) * 40, 9 - f * 4, 0, TAU); c.fill(); }
+        }
+        if (!behind) { if (!b.fly) api.shadow(b.x, b.y + b.s * 0.45, b.s * 0.45); api.item('soccerball', b.x, b.y, b.s, { rot: b.rot || 0 }); }
+        for (let i = 0; i < M.shots; i++) api.item('soccerball', 40 + i * 34, SY + 610, 28, { alpha: 0.9 });
+        for (let i = 0; i < M.got; i++) api.item('star', W - 40 - i * 34, SY + 610, 28);
+      },
+    },
     // Atrapar el ramo en la boda: arrastra a Ramón a izquierda y derecha.
     ramo: {
       dur: 6, hideRunner: 1, ownRamon: 1,

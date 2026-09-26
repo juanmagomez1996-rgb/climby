@@ -17,7 +17,7 @@
       <div class="menu-bottom">
         <button id="btn-play" class="btn big">VIVIR</button>
         <div id="menu-best" class="note"></div>
-        <button id="btn-settings" class="btn small">Ajustes</button>
+        <div class="menu-row"><button id="btn-paths" class="btn small">Caminos</button> <button id="btn-settings" class="btn small">Ajustes</button></div>
       </div>
     </div>
 
@@ -36,6 +36,7 @@
         <div class="end-sub">Sales del juego</div>
         <div class="end-name" id="end-name"></div>
         <div class="end-epitaph" id="end-epitaph"></div>
+        <div class="end-path" id="end-path"></div>
         <div class="end-cause" id="end-cause"></div>
         <ul class="end-moments" id="end-moments"></ul>
         <div class="end-stats" id="end-stats"></div>
@@ -57,11 +58,21 @@
       </div>
     </div>
 
+    <div id="paths" class="screen hidden">
+      <div class="paper paths-paper">
+        <div class="end-sub">Caminos de vida</div>
+        <div class="note-ink" id="paths-count"></div>
+        <div id="paths-list"></div>
+        <button id="btn-paths-close" class="btn">Volver</button>
+      </div>
+    </div>
+
     <button id="btn-pause" class="hidden" aria-label="Pausa">II</button>
     <div id="loading" class="screen"><div class="note">Pintando la vida…</div></div>
   </div>
 </div>
 <script src="data.js"></script>
+<script src="paths/futbol.js"></script>
 <script src="meta.js"></script>
 <script src="moments.js"></script>
 <script src="game.js"></script>

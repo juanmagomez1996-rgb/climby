@@ -14,7 +14,7 @@ const Q = new URLSearchParams(location.search), FAST = Math.max(1, +(Q.get('fast
 
 // ---------------- Guardado ----------------
 const SAVE_KEY = 'vida20.v1';
-let save = { best: 0, lives: 0, music: true, sfx: true, vib: true, history: [] };
+let save = { best: 0, lives: 0, music: true, sfx: true, vib: true, history: [], found: [] };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY) || '{}')); } catch (e) {}
 const persist = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) {} };
 
@@ -37,14 +37,26 @@ function loadImg(key, src) {
 }
 const CHARS = Object.keys(META);
 const EXTRA = ['hoop', 'basketball', 'car', 'bigcake', 'candle', 'bouquet', 'fish', 'bobber', 'butterfly', 'bird', 'leaf', 'petal', 'photo', 'kite', 'rattle', 'boat', 'cone', 'trophy'];
-const ITEMS = [...Object.keys(L.pickups), ...Object.keys(L.hazards)];
+const ITEMS = [...Object.keys(L.pickups), ...Object.keys(L.hazards), 'goal', 'keeper'];
+// Caminos de vida: cada vocación (y cada final) sustituye escenario, ropa, objetos y velocidad de algunas etapas
+const PATHS = L.paths || {};
+function pathBgs() {
+  const out = [];
+  for (const p of Object.values(PATHS)) {
+    for (const st of Object.values(p.stages || {})) out.push(st.bg);
+    for (const b of Object.values(p.branches || {})) for (const st of Object.values(b.stages || {})) out.push(st.bg);
+  }
+  return out.filter(Boolean);
+}
+const TOTAL_BRANCHES = 30;
 async function loadAll() {
   const jobs = [];
-  L.stages.forEach(s => jobs.push(loadImg(s.bg, `assets/bg/${s.bg}.webp`)));
+  new Set([...L.stages.map(s => s.bg), ...pathBgs()]).forEach(b => jobs.push(loadImg(b, `assets/bg/${b}.webp`)));
   jobs.push(loadImg('title', 'assets/bg/title.webp'), loadImg('tomb', 'assets/bg/tomb.webp'));
   CHARS.forEach(c => META[c] && jobs.push(loadImg(c, `assets/chars/${c}.webp`)));
   [...new Set([...ITEMS, ...EXTRA])].forEach(i => jobs.push(loadImg(i, `assets/items/${i}.webp`)));
-  L.events.forEach(e => !e.auto && jobs.push(loadImg('ev_' + e.id, `assets/ev/${e.id}.webp`)));
+  L.events.forEach(e => !e.auto && !e.img && jobs.push(loadImg('ev_' + e.id, `assets/ev/${e.id}.webp`)));
+  L.events.filter(e => e.pimg).forEach(e => Object.values(L.partners).filter(k => k !== 'lucia').forEach(k => jobs.push(loadImg(`ev_${e.id}_${k}`, `assets/ev/${e.id}_${k}.webp`))));
   jobs.push(document.fonts.load("30px 'Chewy'"), document.fonts.load("30px 'Patrick Hand'"));
   await Promise.all(jobs.map(j => j.catch ? j.catch(() => {}) : j));
 }
@@ -183,7 +195,7 @@ const tr = s => s.replaceAll('{p}', G.partner || 'tu pareja').replaceAll('{h}', 
 function newLife() {
   G = {
     age: 0, yt: 0, st: L.start.slice(), flags: {}, partner: null, partnerSprite: null, later: [], tags: [], done: new Set(),
-    stage: 0, prevStage: 0, fade: 1, dist: 0, speedMul: 1, spawnT: 1.5, ents: [],
+    stage: 0, bgKey: L.stages[0].bg, prevBg: null, fade: 1, path: null, branch: null, dist: 0, speedMul: 1, spawnT: 1.5, ents: [],
     p: { y: GY, vy: 0, ground: true, jumps: 0, stumble: 0, inv: 0, frame: 0, land: 0 },
     followers: [], hijaAge: 0, perroAge: 0, npcs: [], npcT: 3, amb: [], ambT: 1, seen: [],
     card: null, moment: null, lastEvent: -5, lastMoment: 0, banners: [], stageBanner: 0,
@@ -219,7 +231,7 @@ function die(cause) {
 function syncFollowers() {
   const want = [], a = G.age;
   if (G.flags.pareja) {
-    const base = G.partner === 'Marga' ? 'marga' : 'lucia', k = a < 45 ? base : a < 65 ? base + '_mid' : base + '_old';
+    const base = (L.partners || {})[G.partner] || 'lucia', k = a < 45 ? base : a < 65 ? base + '_mid' : base + '_old';
     want.push({ id: 'pareja', key: META[k] ? k : base, x: 92, h: a < 45 ? 192 : a < 65 ? 190 : 178 });
   }
   if (G.flags.hija) {
@@ -260,7 +272,13 @@ function yearTick() {
   const bday = a % 10 === 0 && a >= 10 && a <= 90;
 
   const sg = stageOf(a);
-  if (sg !== G.stage) { G.prevStage = G.stage; G.stage = sg; G.fade = 0; G.stageBanner = 2.6; SFX.stage(); music('music_' + sg); burst(PX, GY - 100, '#fff', 30, 220, 80); }
+  if (sg !== G.stage) { G.stage = sg; G.stageBanner = 2.6; SFX.stage(); music('music_' + sg); burst(PX, GY - 100, '#fff', 30, 220, 80); }
+  // si la vida no pasó por el punto de giro, el camino elige un final
+  const P = G.path && PATHS[G.path];
+  if (P && !G.branch && a >= 44) {
+    const fb = P.fallback || {}, f = Object.keys(fb).find(k => k !== '_' && G.flags[k]);
+    setBranch(f ? fb[f] : fb._ || Object.keys(P.branches)[0]);
+  }
 
   for (const c of G.later.filter(c => c.at === a)) {
     banner('CONSECUENCIA · ' + a + ' AÑOS', c.t, '#9b59b6'); apply(c.fx, c.cause);
@@ -298,8 +316,8 @@ const condOk = e => (!e.need || e.need.every(f => G.flags[f])) && (!e.not || e.n
 
 // ---------------- Cartas ----------------
 function openCard(e) {
-  G.card = { e, t: 0, dur: 20 }; G.lastEvent = G.age; G.seen.push(e.id); SFX.card(); vib(15);
-  const ci = $('card-img'); ci.hidden = true; ci.onload = () => { ci.hidden = false; }; ci.onerror = () => { ci.hidden = true; }; ci.src = `assets/ev/${e.id}.webp`;
+  G.card = { e, t: 0, dur: 20 }; G.lastEvent = G.age; G.seen.push(cardImg(e)); SFX.card(); vib(15);
+  const ci = $('card-img'); ci.hidden = true; ci.onload = () => { ci.hidden = false; }; ci.onerror = () => { ci.hidden = true; }; ci.src = `assets/ev/${cardImg(e)}.webp`;
   $('card-age').textContent = `A LOS ${G.age} AÑOS`;
   $('card-q').textContent = tr(e.q);
   const box = $('card-opts'); box.innerHTML = '';
@@ -311,6 +329,20 @@ function openCard(e) {
   $('card').classList.remove('hidden');
   $('card').style.animation = 'none'; void $('card').offsetWidth; $('card').style.animation = '';
 }
+function setPath(id) {
+  const P = PATHS[id]; if (!P || G.path) return;
+  G.path = id; G.flags[id] = 1; G.flags.career = 1; found(id);
+  G.stageBanner = 0; G.pathBanner = { head: 'NUEVO CAMINO', name: P.name.toUpperCase(), icon: P.icon, t: 3 };
+  SFX.stage(); burst(PX, GY - 150, '#ffd35a', 30, 300, 150);
+}
+function setBranch(id) {
+  const P = G.path && PATHS[G.path], B = P && P.branches && P.branches[id]; if (!B || G.branch) return;
+  G.branch = id; G.flags[G.path + '_' + id] = 1; found(G.path + '_' + id);
+  G.pathBanner = { head: 'TU FINAL', name: B.name.toUpperCase(), icon: B.icon, t: 3 };
+}
+function found(k) { if (!(save.found || (save.found = [])).includes(k)) { save.found.push(k); persist(); G.newFound = (G.newFound || []).concat(k); } }
+// viñetas en las que sale la pareja: hay una versión por pareja (boda_marga, hijos_vanesa…)
+function cardImg(e) { const pk = (L.partners || {})[G.partner]; return e.img || (e.pimg && pk && pk !== 'lucia' ? `${e.id}_${pk}` : e.id); }
 function hideCard() { $('card').classList.add('hidden'); }
 function outcome(r, silentTag) {
   if (!r) return;
@@ -318,6 +350,8 @@ function outcome(r, silentTag) {
   if (r.flag) G.flags[r.flag] = 1;
   if (r.unflag) G.flags[r.unflag] = 0;
   if (r.partner) G.partner = r.partner;
+  if (r.path) setPath(r.path);
+  if (r.branch) setBranch(r.branch);
   if (r.flag === 'hija') G.hijaAge = G.age;
   if (r.flag === 'perro') G.perroAge = G.age;
   if (r.later) G.later.push({ ...r.later, at: r.later.at != null ? r.later.at : G.age + r.later.in });
@@ -332,7 +366,7 @@ function choose(i, auto) {
   if (o.tag) G.tags.push({ a: G.age, t: tr(o.tag) });
   outcome(o);
   if (o.chance) {
-    const c = o.chance, p = c.p + (c.stat != null ? (G.st[c.stat] - 50) / 250 : 0);
+    const c = o.chance, p = c.p + (c.stat != null ? (G.st[c.stat] - 50) / 250 : 0) + (c.flag && G.flags[c.flag] ? 0.25 : 0);
     const ok = Math.random() < p; outcome(ok ? c.ok : c.ko); ok ? SFX.good() : SFX.bad();
   }
   if (o.risk && Math.random() < o.risk.p) {
@@ -340,7 +374,7 @@ function choose(i, auto) {
     G.p.stumble = 0.7;
   }
   syncFollowers();
-  if (o.game) startMoment(o.game, { title: o.gameTitle, hint: o.gameHint, onEnd: ok => { outcome(ok ? o.win : o.lose); syncFollowers(); } });
+  if (o.game) startMoment(o.game, { title: o.gameTitle, hint: o.gameHint, single: o.single, onEnd: ok => { outcome(ok ? o.win : o.lose); syncFollowers(); } });
 }
 
 // ---------------- Momentos (minijuegos) ----------------
@@ -360,11 +394,12 @@ function startMoment(id, opts = {}) {
   const a = G.age;
   if (!id) {
     const list = L.moments.filter(m => !m.trig && a >= m.ages[0] && a <= m.ages[1] && (!m.need || m.need.every(f => G.flags[f])));
-    if (!list.length) return;
-    id = pick(list).id;
+    const pm = G.path && a >= 13 && a < 45 && PATHS[G.path].moments;
+    if (pm && Math.random() < 0.5) id = pick(pm);
+    else { if (!list.length) return; id = pick(list).id; }
   }
   const m = L.moments.find(m => m.id === id) || {}, d = MOM[id]; if (!d) return;
-  const M = { id, title: opts.title || m.title, hint: opts.hint || m.hint, t: 0, dur: d.dur || 4, objs: [], got: 0, done: 0, onEnd: opts.onEnd };
+  const M = { id, title: opts.title || m.title, hint: opts.hint || m.hint, t: 0, dur: d.dur || 4, objs: [], got: 0, done: 0, onEnd: opts.onEnd, single: opts.single };
   G.lastMoment = a; G.moment = M; d.start(M);
   tone(990, 0.06, 'square', 0.08); tone(1320, 0.1, 'square', 0.08, 0, 0.07); vib(20);
 }
@@ -385,7 +420,12 @@ function updateMoment(dt) {
 }
 
 // ---------------- Runner ----------------
-const curStage = () => L.stages[G.stage];
+function stageInfo(i) {
+  const base = L.stages[i], P = G.path && PATHS[G.path], B = P && G.branch && P.branches[G.branch];
+  return Object.assign({ spawn: L.spawn[i] }, base, P && P.stages && P.stages[i], B && B.stages && B.stages[i]);
+}
+let stCache = null, stCacheKey = '';
+const curStage = () => { const k = G.stage + '|' + G.path + '|' + G.branch; if (k !== stCacheKey) { stCacheKey = k; stCache = stageInfo(G.stage); } return stCache; };
 function curH() { const a = G.age; return a < 4 ? 88 + a * 9 : a < 13 ? 118 + a * 4.2 : a < 20 ? 188 : a < 45 ? 206 : a < 65 ? 200 : 186; }
 function spriteKey() { if (G.age < 4 && META.ramon_baby) return 'ramon_baby'; const s = curStage().sprite; return META[s] ? s : (G.stage <= 1 ? 'ramon0' : 'ramon2'); }
 function jump() {
@@ -398,7 +438,7 @@ function jumpRelease() {
   const P = G.p; if (!P.ground && P.vy < -250) { P.vy *= 0.5; }
 }
 function spawn() {
-  const sp = L.spawn[G.stage], x = W + 80, r = Math.random();
+  const sp = curStage().spawn, x = W + 80, r = Math.random();
   const addHaz = (id, dx = 0) => { const h = L.hazards[id]; G.ents.push({ k: 'haz', id, x: x + dx, y: h.air ? GY - rand(215, 260) : GY, w: h.w, h: h.h, air: h.air, bob: rand(0, 6) }); };
   const addPick = (id, dx, y) => G.ents.push({ k: 'pick', id, x: x + dx, y, s: 50, bob: rand(0, 6) });
   if (r < 0.45) { const id = wpick(sp.haz); addHaz(id); if (!L.hazards[id].air && Math.random() < 0.6) for (let i = -1; i <= 1; i++) addPick(wpick(sp.pick), i * 55, GY - 190 + Math.abs(i) * 30); }
@@ -423,7 +463,7 @@ function updateRunner(dt) {
   if (P.ground && Math.floor(P.frame) % 8 === 0 && Math.random() < 0.3) dust(PX - 12, GY, 1);
   // entidades
   G.spawnT -= dt; if (G.spawnT <= 0 && !G.dead) spawn();
-  for (const e of G.ents) e.x -= speed * dt * (e.air ? 1.25 : 1);
+  for (const e of G.ents) e.x -= speed * dt * (e.air ? 1.25 : e.k === 'haz' && L.hazards[e.id].fast || 1);
   G.ents = G.ents.filter(e => e.x > -120 && !e.gone);
   const top = P.y - h * 0.86, bot = P.y - 6;
   for (const e of G.ents) {
@@ -493,7 +533,9 @@ function fx(dt) {
 }
 function update(dt) {
   for (let i = 0; i < 4; i++) { G.flash[i] = Math.max(0, G.flash[i] - dt * 2); G.shown[i] = lerp(G.shown[i], G.st[i], Math.min(1, dt * 6)); }
+  if (curStage().bg !== G.bgKey) { G.prevBg = G.bgKey; G.bgKey = curStage().bg; G.fade = 0; }
   G.fade = Math.min(1, G.fade + dt / 1.4);
+  if (G.pathBanner && !G.moment && !G.card) { G.pathBanner.t -= dt; if (G.pathBanner.t <= 0) G.pathBanner = null; }
   if (G.stageBanner > 0) G.stageBanner -= dt;
   if (G.banners.length) { G.banners[0].time += dt; if (G.banners[0].time > 3.2) G.banners.shift(); }
   if (G.dead) {
@@ -528,8 +570,8 @@ function draw() {
   if (shakeA) ctx.translate(rand(-shakeA, shakeA), rand(-shakeA, shakeA));
   // escena
   ctx.save(); ctx.beginPath(); ctx.rect(0, SY, W, SH); ctx.clip();
-  if (G.fade < 1) drawBg(L.stages[G.prevStage].bg, 1);
-  drawBg(curStage().bg, G.fade);
+  if (G.fade < 1 && G.prevBg) drawBg(G.prevBg, 1);
+  drawBg(G.bgKey, G.prevBg ? G.fade : 1);
   const P = G.p, h = curH(), t = performance.now() / 1000;
   for (const b of G.amb) {
     const s = b.k === 'kite' ? 70 : b.k === 'bird' ? 34 : 28, flap = b.k === 'bird' || b.k === 'butterfly' ? 0.35 + Math.abs(Math.sin(b.ph * (b.k === 'bird' ? 12 : 9))) * 0.65 : 1;
@@ -541,7 +583,7 @@ function draw() {
     if (e.k === 'haz') {
       if (!e.air) shadow(e.x, GY + 2, e.w * 0.45);
       const wob = e.air ? Math.sin(t * 8 + e.bob) * 6 : 0, hit = e.hitT > 0 ? (e.hitT -= 1 / 60) : 0;
-      item(e.id, e.x, e.air ? e.y + wob : e.y - e.h / 2, e.h * (e.air ? 1 : 1.05), { rot: hit ? Math.sin(t * 40) * 0.2 : 0 });
+      item(e.id, e.x, e.air ? e.y + wob : e.y - e.h / 2, e.h * (e.air ? 1 : 1.05), { rot: hit ? Math.sin(t * 40) * 0.2 : 0, sx: L.hazards[e.id].flip ? -1 : 1 });
     } else {
       const bob = Math.sin(t * 4 + e.bob) * 5;
       if (e.y > GY - 60) shadow(e.x, GY + 2, 18);
@@ -599,6 +641,15 @@ function drawBanners() {
     paperBox(70, y - 55, 400, 110, a);
     text('NUEVA ETAPA', W / 2, y - 22, { size: 22, color: '#e0673c', alpha: a, font: "'Chewy', cursive" });
     text(curStage().name, W / 2, y + 16, { size: 50, alpha: a, font: "'Chewy', cursive" });
+  }
+  if (G.pathBanner && !G.card && !G.moment) {
+    const pb = G.pathBanner, a = clamp(pb.t, 0, 1) * clamp((3 - pb.t) * 3, 0, 1), y = SY + 230, sc = 0.8 + 0.2 * clamp((3 - pb.t) * 4, 0, 1);
+    ctx.save(); ctx.translate(W / 2, y); ctx.scale(sc, sc); ctx.translate(-W / 2, -y);
+    paperBox(50, y - 70, 440, 140, a);
+    item(pb.icon, 105, y, 76, { alpha: a, rot: Math.sin(performance.now() / 300) * 0.1 });
+    text(pb.head, 300, y - 32, { size: 24, color: '#e0673c', alpha: a, font: "'Chewy', cursive" });
+    wrapLines(pb.name, 320, 40, "'Chewy', cursive").forEach((l, i, ls) => text(l, 300, y + 14 + (i - (ls.length - 1) / 2) * 40, { size: 40, alpha: a, font: "'Chewy', cursive" }));
+    ctx.restore();
   }
   const b = G.banners[0]; if (!b || G.card) return;
   const a = clamp(b.time * 4, 0, 1) * clamp((3.2 - b.time) * 3, 0, 1);
@@ -665,13 +716,17 @@ function epitaph() {
   else if (G.flags.perro) low = 'Tornillo sigue esperándole en la puerta.';
   else if (G.partner && G.flags.pareja) low = tr('{p} dice que roncaba, y que lo echa de menos.');
   else low = 'Hizo lo que pudo con lo que le tocó.';
-  return `«Aquí yace Ramón. ${best} ${low}»`;
+  const P = G.path && PATHS[G.path], B = P && G.branch && P.branches[G.branch];
+  return `«Aquí yace Ramón. ${B ? B.epitaph : P ? P.epitaph || best : best} ${low}»`;
 }
 function showEnd() {
   const s = G.st, score = Math.round(G.score + G.age * 2), rec = score > save.best;
   save.best = Math.max(save.best, score); save.lives++;
   save.history = [{ age: G.age, score }, ...(save.history || [])].slice(0, 10); persist();
   $('end-name').textContent = `Ramón (0 – ${G.age})`;
+  const P = G.path && PATHS[G.path], B = P && G.branch && P.branches[G.branch];
+  $('end-path').innerHTML = (P ? `Camino: <b>${P.name}</b>${B ? ' · ' + B.name : ''}` : 'Vivió una vida normal, sin vocación.') +
+    (G.newFound && G.newFound.length ? ` <span class="new">¡Nuevo camino descubierto!</span>` : '') + `<br>Caminos descubiertos: ${foundCount()}/${TOTAL_BRANCHES}`;
   $('end-epitaph').textContent = epitaph();
   $('end-cause').textContent = `Murió a los ${G.age} años, ${G.cause}.`;
   const tags = G.tags.length > 5 ? [0, 1, 2, 3, 4].map(i => G.tags[Math.round(i * (G.tags.length - 1) / 4)]) : G.tags;
@@ -683,8 +738,23 @@ function showEnd() {
 }
 
 // ---------------- Pantallas y entrada ----------------
+function foundCount() { return (save.found || []).filter(k => k.includes('_')).length; }
+function openPaths() {
+  const box = $('paths-list'); box.innerHTML = '';
+  for (const [id, P] of Object.entries(PATHS)) {
+    const got = (save.found || []).includes(id), d = document.createElement('div'); d.className = 'path' + (got ? '' : ' locked');
+    d.innerHTML = `<div class="path-head"><img src="assets/items/${P.icon}.webp" alt=""><b>${got ? P.name : '???'}</b></div>` +
+      '<ul>' + Object.entries(P.branches).map(([bid, B]) => { const g = save.found.includes(id + '_' + bid); return `<li class="${g ? 'got' : ''}">${g ? `<img src="assets/items/${B.icon}.webp" alt="">${B.name}` : '? ? ?'}</li>`; }).join('') + '</ul>' +
+      (got ? '' : `<div class="hint">${P.hint || 'Lo que hagas de niño decide si lo descubres.'}</div>`);
+    box.appendChild(d);
+  }
+  const rest = 10 - Object.keys(PATHS).length;
+  if (rest > 0) { const d = document.createElement('div'); d.className = 'path locked'; d.innerHTML = `<div class="path-head"><b>+${rest} caminos más</b></div><div class="hint">Próximamente</div>`; box.appendChild(d); }
+  $('paths-count').textContent = `${foundCount()} de ${TOTAL_BRANCHES} finales descubiertos`;
+  $('paths').classList.remove('hidden');
+}
 function toMenu() {
-  mode = 'menu'; music(null); ['end', 'settings', 'card', 'loading'].forEach(i => $(i).classList.add('hidden'));
+  mode = 'menu'; music(null); ['end', 'settings', 'card', 'loading', 'paths'].forEach(i => $(i).classList.add('hidden'));
   $('menu').classList.remove('hidden'); $('btn-pause').classList.add('hidden');
   $('menu-best').textContent = save.best ? `Récord: ${save.best} pts · ${save.lives} vidas vividas` : 'Una vida entera en unos minutos.';
 }
@@ -698,13 +768,14 @@ function openSettings() {
   $('settings').classList.remove('hidden');
   if (mode === 'play') paused = true;
 }
+$('btn-paths').onclick = openPaths; $('btn-paths-close').onclick = () => $('paths').classList.add('hidden');
 $('btn-play').onclick = play; $('btn-again').onclick = play; $('btn-menu').onclick = toMenu;
 $('btn-settings').onclick = openSettings; $('btn-pause').onclick = e => { e.stopPropagation(); openSettings(); };
 $('btn-close').onclick = () => { $('settings').classList.add('hidden'); paused = false; last = performance.now(); };
 $('set-music').onchange = e => { save.music = e.target.checked; persist(); setMusic(mode === 'play'); };
 $('set-sfx').onchange = e => { save.sfx = e.target.checked; persist(); };
 $('set-vib').onchange = e => { save.vib = e.target.checked; persist(); };
-$('btn-reset').onclick = () => { save.best = 0; save.lives = 0; save.history = []; persist(); $('btn-reset').textContent = 'Borrado'; };
+$('btn-reset').onclick = () => { save.best = 0; save.lives = 0; save.history = []; save.found = []; persist(); $('btn-reset').textContent = 'Borrado'; };
 $('btn-pause').addEventListener('pointerdown', e => e.stopPropagation());
 
 function toLocal(e) { const r = stage.getBoundingClientRect(); return { x: (e.clientX - r.left) / scale, y: (e.clientY - r.top) / scale }; }
@@ -731,12 +802,17 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) { if 
 
 // Depuración: ?age=40 empieza a esa edad; ?fast=3 acelera el tiempo
 
-window.__vida = { get G() { return G; }, play, jump, choose, startMoment, momentInput, momentTap: (x, y) => momentInput('down', x, y), MOM, PX, GY, L };
+window.__vida = { get G() { return G; }, setPath, setBranch, openPaths, play, jump, choose, startMoment, momentInput, momentTap: (x, y) => momentInput('down', x, y), MOM, PX, GY, L };
 
 loadAll().then(() => {
   toMenu();
   setTimeout(() => L.events.forEach(e => { const i = new Image(); i.src = `assets/ev/${e.id}.webp`; }), 1500);
-  if (Q.get('auto')) { play(); if (Q.get('age')) { G.age = +Q.get('age'); G.stage = G.prevStage = stageOf(G.age); } }
+  if (Q.get('auto')) {
+    play(); if (Q.get('age')) { G.age = +Q.get('age'); G.stage = stageOf(G.age); }
+    if (Q.get('path')) setPath(Q.get('path'));
+    if (Q.get('branch')) setBranch(Q.get('branch'));
+    (Q.get('flags') || '').split(',').filter(Boolean).forEach(f => { G.flags[f] = 1; });
+  }
 });
 requestAnimationFrame(frame);
 })();

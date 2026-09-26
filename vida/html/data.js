@@ -24,7 +24,10 @@ window.LIFE = {
     star: { fx: [0, 0, 3, 0] }, ball: { fx: [1, 0, 3, 0] }, balloon: { fx: [0, 0, 3, 0], fly: 1 },
     heart: { fx: [0, 0, 0, 3] }, letter: { fx: [0, 0, 1, 3] }, flowers: { fx: [0, 0, 1, 4] },
     trophy: { fx: [0, 2, 4, 0] }, book: { fx: [0, 2, 1, 0] }, clock: { fx: [1, 0, 2, 0] },
-    lollipop: { fx: [-2, 0, 4, 0], treat: 1 }, cake: { fx: [-2, 0, 4, 1], treat: 1 }, burger: { fx: [-3, 0, 4, 0], treat: 1 },
+    lollipop: { fx: [-2, 0, 4, 0], treat: 1 },
+    soccerball: { fx: [1, 0, 3, 1] }, goldboot: { fx: [0, 5, 4, 0] }, medal: { fx: [0, 2, 4, 0] }, jersey: { fx: [0, 1, 1, 3] },
+    energy: { fx: [3, 0, 1, 0] }, mic: { fx: [0, 3, 2, 1] }, whistle: { fx: [0, 0, 2, 3] }, cup: { fx: [0, 4, 5, 1] },
+    beer: { fx: [-3, 0, 4, 2], treat: 1 }, cake: { fx: [-2, 0, 4, 1], treat: 1 }, burger: { fx: [-3, 0, 4, 0], treat: 1 },
   },
   // Obstáculos (h: altura aproximada en px del juego; air: vuela a media altura)
   hazards: {
@@ -44,6 +47,11 @@ window.LIFE = {
     pigeon: { fx: [0, 0, -3, 0], h: 50, w: 74, air: 1, msg: 'Paloma', cause: 'una paloma kamikaze' },
     storm: { fx: [-1, 0, -5, 0], h: 60, w: 90, air: 1, msg: 'Nubarrón', cause: 'un nubarrón' },
     plane: { fx: [0, 0, -2, 0], h: 40, w: 70, air: 1, msg: 'Avioncito', cause: 'un avión de papel' },
+    defender: { fx: [-5, 0, -2, 0], h: 70, w: 110, flip: 1, fast: 1.5, msg: '¡Entrada!', cause: 'una entrada a destiempo' },
+    yellowcard: { fx: [0, -2, -3, 0], h: 54, w: 40, air: 1, msg: '¡Amarilla!', cause: 'una tarjeta de más' },
+    redcard: { fx: [-1, -4, -5, 0], h: 54, w: 40, air: 1, msg: '¡Roja!', cause: 'una roja directa' },
+    flashcam: { fx: [0, 0, -3, -1], h: 56, w: 64, air: 1, msg: '¡Paparazzi!', cause: 'los paparazzi' },
+    tvcamera: { fx: [-2, 0, -2, 0], h: 86, w: 80, msg: 'Cámara', cause: 'una cámara de la tele' },
   },
   // Qué aparece en cada etapa (pesos)
   spawn: [
@@ -63,6 +71,7 @@ window.LIFE = {
     { id: 'informe', ages: [22, 62], title: '¡ENTREGA URGENTE!', hint: '¡Toca rápido, rápido!' },
     { id: 'bebe', ages: [32, 38], need: ['hija'], title: '¡DUERME AL BEBÉ!', hint: 'Toca a izquierda o derecha para acunar' },
     { id: 'equilibrio', ages: [13, 99], title: '¡MANTÉN EL EQUILIBRIO!', hint: 'Toca izquierda o derecha' },
+    { id: 'penaltis', trig: 1, ages: [8, 99], title: '¡PENALTI!', hint: 'Desliza desde el balón hacia la portería' },
     { id: 'canasta', ages: [11, 30], title: '¡ENCESTA!', hint: 'Arrastra la pelota hacia atrás y suelta' },
     { id: 'pesca', ages: [60, 99], title: '¡A PESCAR!', hint: 'Toca justo cuando el corcho se hunda' },
     { id: 'recuerdos', ages: [70, 99], title: 'RECUERDOS', hint: 'Encuentra las parejas de tu vida' },
@@ -71,6 +80,10 @@ window.LIFE = {
     { id: 'ramo', trig: 1, ages: [18, 60], title: '¡ATRAPA EL RAMO!', hint: 'Arrastra a Ramón hasta el ramo' },
     { id: 'aparcar', trig: 1, ages: [16, 99], title: '¡EXAMEN DE CONDUCIR!', hint: 'Mantén pulsado para acelerar, suelta para frenar' },
   ],
+
+  // Caminos de vida: cada vocación vive en html/paths/<id>.js y se añade aquí.
+  partners: { 'Lucía': 'lucia', 'Marga': 'marga' },
+  paths: {},
 
   events: [
     // ---------- INFANCIA ----------
@@ -81,7 +94,7 @@ window.LIFE = {
       { t: 'Debajo de la almohada', fx: [0, 2, 4, 0], m: 'El Ratoncito te deja una moneda y una nota con faltas.' },
       { t: 'Lo vendes en el patio', fx: [0, 4, 2, -3], tag: 'vendió un diente en el patio', later: { in: 30, t: 'Tu olfato para los negocios sigue intacto.', fx: [0, 10, 0, 0] } }] },
     { id: 'tardes', ages: [8, 10], key: 1, q: '¿Qué haces por las tardes?', o: [
-      { t: 'Fútbol en el descampado', fx: [10, 0, 5, 5], tag: 'jugó al fútbol en el descampado', risk: { p: 0.25, fx: [-15, 0, -5, 0], t: 'Te rompes la pierna. Vas escayolado a tu cumple.', cause: 'una patada mal dada' } },
+      { t: 'Fútbol en el descampado', fx: [10, 0, 5, 5], tag: 'jugó al fútbol en el descampado', flag: 'futbolin', risk: { p: 0.25, fx: [-15, 0, -5, 0], t: 'Te rompes la pierna. Vas escayolado a tu cumple.', cause: 'una patada mal dada' } },
       { t: 'Clases de piano', fx: [0, -3, 3, 0], tag: 'aprendió piano', later: { at: 50, t: 'Tocas el piano en una boda. Llora todo el mundo.', fx: [0, 0, 12, 10] } },
       { t: 'Videojuegos hasta las tantas', fx: [-5, 0, 10, 0], later: { at: 35, t: 'Sigues siendo imbatible al Blorptris. No sirve de nada.', fx: [0, 0, 5, 0] } }] },
     { id: 'hamster', ages: [7, 10], q: 'Te toca llevarte a casa el hámster de la clase.', o: [
@@ -120,7 +133,7 @@ window.LIFE = {
         win: { fx: [0, 0, 8, 2], m: '¡Aprobado a la primera!', flag: 'carnet', tag: 'aprobó el carné a la primera' },
         lose: { fx: [0, -5, -6, 0], m: 'Suspenso. El examinador pide un café doble.' } },
       { t: 'Paso, voy en bus', fx: [0, 3, 0, 0] }] },
-    { id: 'insti', ages: [18, 19], key: 1, q: 'Se acaba el instituto. ¿Y ahora?', o: [
+    { id: 'insti', not: ['career'], ages: [18, 19], key: 1, q: 'Se acaba el instituto. ¿Y ahora?', o: [
       { t: 'Universidad', fx: [0, -10, 0, 5], tag: 'fue a la universidad', later: { at: 28, t: 'El título por fin sirve para algo.', fx: [0, 25, 5, 0] } },
       { t: 'Aceptas el trabajo de alfombras', fx: [-3, 15, -3, 0], tag: 'aceptó el trabajo de alfombras', later: { at: 45, t: 'Eres el rey de las alfombras del barrio.', fx: [0, 15, 5, 5] } },
       { t: 'Te vas a viajar sin un duro', fx: [0, -15, 15, 5], tag: 'se fue a viajar sin un duro' }] },
@@ -135,7 +148,7 @@ window.LIFE = {
     { id: 'viaje', ages: [23, 40], q: 'Oferta de última hora: viaje a Islandia.', o: [
       { t: 'Vas', fx: [0, -12, 14, 4], tag: 'vio auroras boreales' },
       { t: 'Te quedas', fx: [0, 3, -3, 0] }] },
-    { id: 'boda', ages: [27, 30], key: 1, need: ['pareja'], q: '{p} quiere casarse contigo.', o: [
+    { id: 'boda', pimg: 1, ages: [27, 30], key: 1, need: ['pareja'], q: '{p} quiere casarse contigo.', o: [
       { t: '¡Sí, quiero!', fx: [0, -10, 15, 15], flag: 'casado', tag: 'se casó con {p}', game: 'ramo' },
       { t: 'Todavía no...', fx: [0, 0, -5, -15], chance: { p: 0.5, stat: 3,
         ok: { m: '{p} espera. Pero lo apunta.' },
@@ -148,19 +161,19 @@ window.LIFE = {
     { id: 'piso', ages: [28, 34], q: '¿Compras piso o sigues de alquiler?', o: [
       { t: 'Hipoteca a 30 años', fx: [0, -20, 5, 0], tag: 'se hipotecó 30 años', later: { in: 30, t: 'Terminas de pagar el piso. Lo celebras con una croqueta.', fx: [0, 15, 10, 0] } },
       { t: 'Sigo de alquiler', fx: [0, -5, 0, 0], later: { in: 8, t: 'El casero sube el alquiler. Otra vez.', fx: [0, -10, -4, 0] } }] },
-    { id: 'hijos', ages: [31, 34], key: 1, need: ['pareja'], q: '¿Tener hijos?', o: [
+    { id: 'hijos', pimg: 1, ages: [31, 34], key: 1, need: ['pareja'], q: '¿Tener hijos?', o: [
       { t: 'Sí, una niña: Alba', fx: [-5, -20, 12, 10], flag: 'hija', tag: 'tuvo una hija, Alba', game: 'bebe', gameTitle: '¡DUERME A ALBA!', later: { at: 58, t: 'Alba te llama solo para hablar.', fx: [0, 0, 15, 10] } },
       { t: 'Mejor una planta', fx: [0, 0, 3, 0], tag: 'cuidó de una planta 23 años', flag: 'planta', later: { at: 55, t: 'La planta sigue viva. Es tu mayor logro.', fx: [0, 0, 5, 0] } }] },
     { id: 'plantavecina', ages: [31, 35], not: ['pareja'], q: 'Tu vecina se muda y te deja una planta.', o: [
       { t: 'La cuidas', fx: [0, 0, 4, 2], flag: 'planta', tag: 'adoptó una planta' },
       { t: 'La olvidas en la escalera', fx: [0, 0, -2, -2] }] },
-    { id: 'reunion', ages: [26, 44], q: 'Reunión a las 18:55 que podría haber sido un correo.', o: [
+    { id: 'reunion', not: ['career'], ages: [26, 44], q: 'Reunión a las 18:55 que podría haber sido un correo.', o: [
       { t: 'Participas con entusiasmo', fx: [-3, 5, -5, 0] },
       { t: 'Finges que se te va la conexión', fx: [0, 0, 6, 0], risk: { p: 0.3, fx: [0, -8, -3, 0], t: 'Te pillan. La conexión eras tú.' } }] },
     { id: 'mudanza', ages: [26, 44], q: 'Un amigo te pide ayuda con la mudanza. Un quinto sin ascensor.', o: [
       { t: 'Ayudas', fx: [-6, 0, 0, 12], tag: 'subió un sofá a un quinto sin ascensor' },
       { t: 'Tienes «un compromiso»', fx: [0, 0, 0, -8] }] },
-    { id: 'ascenso', ages: [35, 38], key: 1, q: 'Tu jefa te ofrece un ascenso... a cambio de tus fines de semana.', o: [
+    { id: 'ascenso', not: ['career'], ages: [35, 38], key: 1, q: 'Tu jefa te ofrece un ascenso... a cambio de tus fines de semana.', o: [
       { t: 'Aceptas', fx: [-10, 25, -5, -15], tag: 'trabajó todos los fines de semana', flag: 'curro' },
       { t: 'Rechazas', fx: [0, -5, 5, 5] }] },
     { id: 'funcion', ages: [38, 41], need: ['hija'], q: '{h} tiene función de fin de curso. Hace de árbol.', o: [
@@ -192,7 +205,7 @@ window.LIFE = {
     { id: 'croquetas', ages: [52, 55], key: 1, q: 'El médico dice: menos croquetas.', o: [
       { t: 'Le haces caso', fx: [12, 0, -5, 0] },
       { t: 'Una croqueta más no mata', fx: [-8, 0, 8, 0], tag: 'no renunció a las croquetas', later: { in: 11, t: 'Las croquetas pasan factura.', fx: [-25, 0, 0, 0], cause: 'las croquetas' } }] },
-    { id: 'prejubila', ages: [52, 60], not: ['jubilado'], q: 'Reestructuración en la empresa. Te ofrecen prejubilarte.', o: [
+    { id: 'prejubila', ages: [52, 60], not: ['jubilado', 'career'], q: 'Reestructuración en la empresa. Te ofrecen prejubilarte.', o: [
       { t: 'Aceptas', fx: [3, 10, 4, 0], flag: 'jubilado', tag: 'se prejubiló' },
       { t: 'Te quedas', fx: [-4, 6, -3, 0] }] },
     { id: 'bodahija', ages: [56, 60], need: ['hija'], q: '{h} se casa. Quiere bailar contigo.', o: [
@@ -201,7 +214,7 @@ window.LIFE = {
     { id: 'nieto', ages: [60, 64], need: ['hija'], q: '¡Vas a ser abuelo!', o: [
       { t: 'Te ofreces a cuidarlo', fx: [-3, 0, 12, 12], flag: 'nieto', tag: 'cuidó de su nieto' },
       { t: 'Solo los domingos', fx: [0, 0, 5, 3], flag: 'nieto' }] },
-    { id: 'jubila', ages: [63, 66], key: 1, not: ['jubilado'], q: '¿Te jubilas ya?', o: [
+    { id: 'jubila', ages: [63, 66], key: 1, not: ['jubilado', 'career'], q: '¿Te jubilas ya?', o: [
       { t: 'Sí, ¡a pescar!', fx: [5, -10, 8, 3], flag: 'jubilado', tag: 'se jubiló para ir a pescar', game: 'pesca' },
       { t: 'Sí, a mirar obras', fx: [5, -10, 10, 5], flag: 'jubilado', tag: 'miró obras con pasión' },
       { t: 'Sigo currando', fx: [-10, 15, -5, -5] }] },

@@ -7,7 +7,7 @@ web = ROOT / 'html'; dist = ROOT / 'dist'; dist.mkdir(exist_ok=True)
 html = (web / 'index.html').read_text()
 body = re.search(r'<body>(.*)</body>', html, re.S).group(1)
 body = re.sub(r'<script src="[^"]+"></script>\s*', '', body)
-js = ''.join(f'<script>\n{(web / n).read_text()}\n</script>\n' for n in ['data.js', 'meta.js', 'moments.js', 'game.js'])
+js = ''.join(f'<script>\n{(web / n).read_text()}\n</script>\n' for n in ['data.js', *sorted('paths/' + f.name for f in (web / 'paths').glob('*.js')), 'meta.js', 'moments.js', 'game.js'])
 css = (web / 'style.css').read_text()
 out = f'<title>Una Vida en 20 Minutos</title>\n<meta name="theme-color" content="#2b1d14">\n<style>\n{css}</style>\n{body}\n{js}'
 (dist / 'vida.html').write_text(out)
