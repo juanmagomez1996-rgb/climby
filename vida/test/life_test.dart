@@ -19,7 +19,10 @@ class _Quiet implements LifeListener {
   @override
   void cardOpened(Json event) => cards++;
   @override
-  void momentWanted() => moments++;
+  void momentWanted([String? id, Json? opts, void Function(bool ok)? onEnd]) {
+    moments++;
+    onEnd?.call(true);
+  }
   @override
   void died() => dead = true;
   @override
@@ -79,5 +82,22 @@ void main() {
     life.choose(0);
     expect(life.later.single['at'], 26);
     expect(life.tags.single.text, 'se sentó con el niño raro');
+  });
+
+  test('las decisiones con minijuego aplican el resultado', () {
+    final d = _data(), life = Life(d, _Quiet(), rng: Random(3));
+    life.age = 18;
+    life.card = d.events.firstWhere((e) => e['id'] == 'carnet');
+    life.choose(0);
+    expect(life.flag('carnet'), isTrue);
+    expect(life.tags.any((t) => t.text.contains('carné')), isTrue);
+  });
+
+  test('en los cumpleaños redondos se soplan las velas', () {
+    final d = _data(), q = _Quiet(), life = Life(d, q, rng: Random(5));
+    life.age = 29;
+    life.yearTick();
+    expect(q.moments, 1);
+    expect(life.card, isNull);
   });
 }

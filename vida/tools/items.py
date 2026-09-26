@@ -8,6 +8,8 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 SHEETS = {
  'items_coll': ['apple', 'coin', 'star', 'heart', 'bill', 'balloon', 'letter', 'carrot',
                 'lollipop', 'ball', 'book', 'trophy', 'flowers', 'cake', 'burger', 'clock'],
+ 'items_mini': ['hoop', 'basketball', 'car', 'bigcake', 'candle', 'bouquet', 'fish', 'bobber',
+                'butterfly', 'bird', 'leaf', 'petal', 'photo', 'kite', 'rattle', 'boat'],
  'items_obst': ['puddle', 'rock', 'goose', 'homework', 'skate', 'cone', 'bills', 'coffee',
                 'briefcase', 'banana', 'pigeon', 'wetfloor', 'cactus', 'storm', 'plane', 'duck'],
 }

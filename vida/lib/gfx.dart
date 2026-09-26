@@ -15,9 +15,13 @@ class SpriteMeta {
         cols = j['cols'] as int,
         fw = (j['fw'] as num).toDouble(),
         fh = (j['fh'] as num).toDouble(),
-        foot = (j['foot'] as num).toDouble();
-  final int frames, cols;
+        foot = (j['foot'] as num).toDouble(),
+        ref = (j['ref'] as num?)?.toDouble(),
+        air0 = (j['air0'] as num?)?.toInt() ?? 0,
+        air1 = (j['air1'] as num?)?.toInt() ?? 0;
+  final int frames, cols, air0, air1;
   final double fw, fh, foot;
+  final double? ref;
 }
 
 /// Imágenes del juego y utilidades de dibujo sobre el lienzo lógico de 540×960.
@@ -33,7 +37,7 @@ class Gfx {
     } catch (_) {}
   }
 
-  static Future<void> load(Iterable<String> items, Iterable<String> bgs) async {
+  static Future<void> load(Iterable<String> items, Iterable<String> bgs, {Iterable<String> events = const []}) async {
     final m = jsonDecode(await rootBundle.loadString('assets/data/chars.json')) as Map<String, dynamic>;
     m.forEach((k, v) => meta[k] = SpriteMeta(v as Map<String, dynamic>));
     await Future.wait([
@@ -42,6 +46,7 @@ class Gfx {
       for (final k in bgs) _load(k, 'assets/bg/$k.webp'),
       _load('title', 'assets/bg/title.webp'),
       _load('tomb', 'assets/bg/tomb.webp'),
+      for (final e in events) _load('ev_$e', 'assets/ev/$e.webp'),
     ]);
   }
 
@@ -54,7 +59,7 @@ class Gfx {
     if (im == null || m == null) return false;
     final f = ((frame.floor() % m.frames) + m.frames) % m.frames;
     final src = Rect.fromLTWH((f % m.cols) * m.fw, (f ~/ m.cols) * m.fh, m.fw, m.fh);
-    final s = h / (m.fh * m.foot), w = m.fw * s, hh = m.fh * s;
+    final s = m.ref != null ? h / m.ref! : h / (m.fh * m.foot), w = m.fw * s, hh = m.fh * s;
     c.save();
     c.translate(x, feet);
     if (rot != 0) c.rotate(rot);
@@ -207,6 +212,11 @@ class Fx {
   }
 
   void float(String s, double x, double y, Color col, [double size = 30]) => floats.add(Floater(s, x, y, col, size));
+  void puff(double x, double y) {
+    for (var i = 0; i < 6; i++) {
+      parts.add(Particle(x, y, rnd(-40, 40), rnd(-90, -40), rnd(5, 9), rnd(0.4, 0.7), const Color(0xCCDCDCDC), -30, puff: true));
+    }
+  }
   void shake(double a, double t) {
     shakeA = max(shakeA, a);
     shakeT = max(shakeT, t);

@@ -35,14 +35,16 @@ const IMG = {};
 function loadImg(key, src) {
   return new Promise(res => { const im = new Image(); im.onload = () => { IMG[key] = im; res(); }; im.onerror = () => res(); im.src = src; });
 }
-const CHARS = ['ramon0', 'ramon1', 'ramon2', 'ramon3', 'ramon4', 'lucia', 'lucia_old', 'marga', 'marga_old', 'alba', 'alba_adult', 'dog'];
+const CHARS = Object.keys(META);
+const EXTRA = ['hoop', 'basketball', 'car', 'bigcake', 'candle', 'bouquet', 'fish', 'bobber', 'butterfly', 'bird', 'leaf', 'petal', 'photo', 'kite', 'rattle', 'boat', 'cone', 'trophy'];
 const ITEMS = [...Object.keys(L.pickups), ...Object.keys(L.hazards)];
 async function loadAll() {
   const jobs = [];
   L.stages.forEach(s => jobs.push(loadImg(s.bg, `assets/bg/${s.bg}.webp`)));
   jobs.push(loadImg('title', 'assets/bg/title.webp'), loadImg('tomb', 'assets/bg/tomb.webp'));
   CHARS.forEach(c => META[c] && jobs.push(loadImg(c, `assets/chars/${c}.webp`)));
-  ITEMS.forEach(i => jobs.push(loadImg(i, `assets/items/${i}.webp`)));
+  [...new Set([...ITEMS, ...EXTRA])].forEach(i => jobs.push(loadImg(i, `assets/items/${i}.webp`)));
+  L.events.forEach(e => !e.auto && jobs.push(loadImg('ev_' + e.id, `assets/ev/${e.id}.webp`)));
   jobs.push(document.fonts.load("30px 'Chewy'"), document.fonts.load("30px 'Patrick Hand'"));
   await Promise.all(jobs.map(j => j.catch ? j.catch(() => {}) : j));
 }
@@ -144,7 +146,7 @@ function sprite(key, frame, x, feet, h, o = {}) {
   if (!im || !m) return false;
   const f = ((Math.floor(frame) % m.frames) + m.frames) % m.frames;
   const sx = (f % m.cols) * m.fw, sy = Math.floor(f / m.cols) * m.fh;
-  const s = h / (m.fh * m.foot), w = m.fw * s, hh = m.fh * s;
+  const s = m.ref ? h / m.ref : h / (m.fh * m.foot), w = m.fw * s, hh = m.fh * s;
   ctx.save(); ctx.translate(x, feet);
   if (o.rot) ctx.rotate(o.rot);
   ctx.scale((o.flip ? -1 : 1) * (o.sx || 1), o.sy || 1);
@@ -183,7 +185,7 @@ function newLife() {
     age: 0, yt: 0, st: L.start.slice(), flags: {}, partner: null, partnerSprite: null, later: [], tags: [], done: new Set(),
     stage: 0, prevStage: 0, fade: 1, dist: 0, speedMul: 1, spawnT: 1.5, ents: [],
     p: { y: GY, vy: 0, ground: true, jumps: 0, stumble: 0, inv: 0, frame: 0, land: 0 },
-    followers: [], hijaAge: 0,
+    followers: [], hijaAge: 0, perroAge: 0, npcs: [], npcT: 3, amb: [], ambT: 1, seen: [],
     card: null, moment: null, lastEvent: -5, lastMoment: 0, banners: [], stageBanner: 0,
     score: 0, picked: 0, hits: 0, dead: false, deathT: 0, cause: '', lastHurt: '', flash: [0, 0, 0, 0], shown: [0, 0, 0, 0],
   };
@@ -215,21 +217,20 @@ function die(cause) {
 
 // ---------------- Seguidores (familia) ----------------
 function syncFollowers() {
-  const want = [];
+  const want = [], a = G.age;
   if (G.flags.pareja) {
-    const old = G.age >= 62, base = G.partner === 'Marga' ? 'marga' : 'lucia';
-    let key = old ? base + '_old' : base;
-    if (!META[key]) key = old ? 'lucia_old' : 'lucia';
-    want.push({ id: 'pareja', key, x: 92, h: G.age >= 62 ? 178 : 192 });
+    const base = G.partner === 'Marga' ? 'marga' : 'lucia', k = a < 45 ? base : a < 65 ? base + '_mid' : base + '_old';
+    want.push({ id: 'pareja', key: META[k] ? k : base, x: 92, h: a < 45 ? 192 : a < 65 ? 190 : 178 });
   }
   if (G.flags.hija) {
-    const ha = G.age - G.hijaAge;
-    want.push({ id: 'hija', key: ha < 16 ? 'alba' : 'alba_adult', x: 34, h: ha < 16 ? clamp(70 + ha * 7, 70, 165) : 180 });
+    const ha = a - G.hijaAge;
+    const [k, h] = ha < 11 ? ['alba', clamp(70 + ha * 8, 70, 150)] : ha < 20 ? ['alba_teen', 172] : ha < 40 ? ['alba_adult', 182] : ['alba_mid', 180];
+    want.push({ id: 'hija', key: META[k] ? k : 'alba_adult', x: 34, h });
   }
-  if (G.flags.perro) want.push({ id: 'perro', key: 'dog', x: 262, h: 62 });
+  if (G.flags.perro) { const pa = a - G.perroAge, k = pa < 2 ? 'dog_puppy' : pa < 10 ? 'dog' : 'dog_old'; want.push({ id: 'perro', key: META[k] ? k : 'dog', x: 262, h: pa < 2 ? 48 : 62 }); }
   for (const w of want) {
     const f = G.followers.find(f => f.id === w.id);
-    if (f) { if (f.key !== w.key) { f.key = w.key; burst(f.x, GY - 80, '#fff', 16, 160); } f.tx = w.x; f.h = w.h; }
+    if (f) { if (f.key !== w.key) { f.key = w.key; burst(f.x, GY - 80, '#fff', 16, 160); float('✨', f.x, GY - w.h - 10, '#ffd35a', 30); } f.tx = w.x; f.h = w.h; f.leave = 0; }
     else G.followers.push({ ...w, tx: w.x, x: -60, y: GY, vy: 0, frame: rand(0, 16), enter: 1 });
   }
   for (const f of G.followers) if (!want.find(w => w.id === f.id)) f.leave = 1;
@@ -256,6 +257,7 @@ function yearTick() {
   G.score += (s[2] + s[3] + s[0] * 0.5 + s[1] * 0.3) / 10;
   SFX.tick();
   if (a % 10 === 0 && a <= 90) { SFX.bday(); burst(PX, GY - 200, '#ffd35a', 24, 300, 200); float(`¡${a} AÑOS!`, PX, GY - 250, '#e0673c', 34); }
+  const bday = a % 10 === 0 && a >= 10 && a <= 90;
 
   const sg = stageOf(a);
   if (sg !== G.stage) { G.prevStage = G.stage; G.stage = sg; G.fade = 0; G.stageBanner = 2.6; SFX.stage(); music('music_' + sg); burst(PX, GY - 100, '#fff', 30, 220, 80); }
@@ -279,6 +281,7 @@ function yearTick() {
       if (e.auto.unflag) G.flags[e.auto.unflag] = 0; syncFollowers(); return;
     }
   }
+  if (bday) { startMoment('velas'); return; }
   // decisiones
   const cands = L.events.filter(e => !e.auto && !G.done.has(e.id) && a >= e.ages[0] && a <= e.ages[1] && condOk(e));
   const urgent = cands.filter(e => e.key && (a === e.ages[1] || Math.random() < 0.55));
@@ -295,7 +298,7 @@ const condOk = e => (!e.need || e.need.every(f => G.flags[f])) && (!e.not || e.n
 
 // ---------------- Cartas ----------------
 function openCard(e) {
-  G.card = { e, t: 0, dur: 10 }; G.lastEvent = G.age; SFX.card(); vib(15);
+  G.card = { e, t: 0, dur: 20 }; G.lastEvent = G.age; G.seen.push(e.id); SFX.card(); vib(15);
   const ci = $('card-img'); ci.hidden = true; ci.onload = () => { ci.hidden = false; }; ci.onerror = () => { ci.hidden = true; }; ci.src = `assets/ev/${e.id}.webp`;
   $('card-age').textContent = `A LOS ${G.age} AÑOS`;
   $('card-q').textContent = tr(e.q);
@@ -316,8 +319,10 @@ function outcome(r, silentTag) {
   if (r.unflag) G.flags[r.unflag] = 0;
   if (r.partner) G.partner = r.partner;
   if (r.flag === 'hija') G.hijaAge = G.age;
+  if (r.flag === 'perro') G.perroAge = G.age;
   if (r.later) G.later.push({ ...r.later, at: r.later.at != null ? r.later.at : G.age + r.later.in });
   if (r.m) banner('', r.m, '#3b2416');
+  if (r.tag && r.t == null) G.tags.push({ a: G.age, t: tr(r.tag) });
   if (r.cause && r.fx && r.fx[0] < 0) G.lastHurt = r.cause;
 }
 function choose(i, auto) {
@@ -335,73 +340,62 @@ function choose(i, auto) {
     G.p.stumble = 0.7;
   }
   syncFollowers();
+  if (o.game) startMoment(o.game, { title: o.gameTitle, hint: o.gameHint, onEnd: ok => { outcome(ok ? o.win : o.lose); syncFollowers(); } });
 }
 
 // ---------------- Momentos (minijuegos) ----------------
-function startMoment() {
-  const a = G.age, list = L.moments.filter(m => a >= m.ages[0] && a <= m.ages[1] && (!m.need || m.need.every(f => G.flags[f])));
-  if (!list.length) return;
-  const m = pick(list), M = { id: m.id, title: m.title, hint: m.hint, t: 0, dur: 4, objs: [], got: 0, n: 0, x: 0, v: 0, done: 0, res: 0 };
-  G.lastMoment = a;
-  if (m.id === 'pelota') { M.dur = 3.2; M.objs.push({ x: W + 30, y: SY + 160, vx: -300, vy: -80, r: 34 }); }
-  if (m.id === 'monedas') for (let i = 0; i < 5; i++) M.objs.push({ x: rand(80, W - 80), y: SB + 30, vy: -rand(620, 760), d: i * 0.32, live: 1, r: 34 });
-  if (m.id === 'corazones') for (let i = 0; i < 4; i++) M.objs.push({ x: rand(80, W - 80), y: SB + 30, d: i * 0.45, live: 1, r: 36 });
-  if (m.id === 'ritmo') { M.dur = 4.6; for (let i = 0; i < 4; i++) M.objs.push({ t: 0.7 + i * 0.95, hit: 0 }); }
-  if (m.id === 'informe') { M.dur = 3.4; M.n = 16; }
-  if (m.id === 'equilibrio' || m.id === 'bebe') { M.dur = 3.8; M.x = rand(-0.15, 0.15); M.k = a > 60 ? 1.35 : 1; }
-  G.moment = M; tone(990, 0.06, 'square', 0.08); tone(1320, 0.1, 'square', 0.08, 0, 0.07); vib(20);
+const MOM = window.makeMoments({
+  W, SY, SB, GY, PX, COLS, IMG, get ctx() { return ctx; }, get G() { return G; },
+  apply: (fx, cause) => apply(fx, cause), float, burst, dust, shake, shadow, item, sprite, text, rrect,
+  curH: () => curH(), spriteKey: () => spriteKey(), keyPush: () => (keys.ArrowLeft ? -1 : 0) + (keys.ArrowRight ? 1 : 0),
+  stumble: () => { G.p.stumble = 0.7; },
+  sfx: n => n.startsWith('pick') ? SFX.pick(+n.slice(4)) : n === 'tap' ? tone(700, 0.04, 'square', 0.06) : (SFX[n] || (() => {}))(),
+  engine: v => { if (Math.random() < 0.3) tone(80 + v * 0.4, 0.05, 'sawtooth', 0.03); },
+  puff: (x, y) => { for (let i = 0; i < 6; i++) parts.push({ x, y, vx: rand(-40, 40), vy: rand(-90, -40), r: rand(5, 9), life: rand(0.4, 0.7), col: 'rgba(220,220,220,.8)', g: -30, puff: 1 }); },
+  confetti: () => { for (const c of ['#e2574c', '#e9b43a', '#8cc152', '#5d9cec', '#c79ae0']) burst(W / 2, SY + 120, c, 14, 380, 150); },
+  lived: () => G.seen.slice(), hasEv: id => !!IMG['ev_' + id], allEv: () => L.events.filter(e => IMG['ev_' + e.id]).map(e => e.id),
+  end: (M, ok) => endMoment(ok),
+});
+function startMoment(id, opts = {}) {
+  const a = G.age;
+  if (!id) {
+    const list = L.moments.filter(m => !m.trig && a >= m.ages[0] && a <= m.ages[1] && (!m.need || m.need.every(f => G.flags[f])));
+    if (!list.length) return;
+    id = pick(list).id;
+  }
+  const m = L.moments.find(m => m.id === id) || {}, d = MOM[id]; if (!d) return;
+  const M = { id, title: opts.title || m.title, hint: opts.hint || m.hint, t: 0, dur: d.dur || 4, objs: [], got: 0, done: 0, onEnd: opts.onEnd };
+  G.lastMoment = a; G.moment = M; d.start(M);
+  tone(990, 0.06, 'square', 0.08); tone(1320, 0.1, 'square', 0.08, 0, 0.07); vib(20);
 }
-function momentTap(x, y) {
-  const M = G.moment; if (!M || M.t < 0.35 || M.done) return;
-  const hitObj = r => M.objs.find(o => o.live && M.t >= (o.d || 0) && Math.hypot(x - o.x, y - o.y) < (o.r || 34) + 26);
-  if (M.id === 'pelota') { const o = M.objs[0]; if (!o.got && Math.hypot(x - o.x, y - o.y) < 80) { o.got = 1; burst(o.x, o.y, '#ffd35a', 20); SFX.good(); apply([2, 0, 5, 0]); float('¡La cogiste!', PX, GY - 250, '#6c9a3c'); M.res = 1; } }
-  else if (M.id === 'monedas' || M.id === 'corazones') {
-    const o = hitObj(); if (o) { o.live = 0; M.got++; const coin = M.id === 'monedas'; burst(o.x, o.y, coin ? '#e9b43a' : '#e2574c', 14); SFX.pick(coin ? 1 : 3); apply(coin ? [0, 3, 0, 0] : [0, 0, 1, 3]); }
-  } else if (M.id === 'ritmo') {
-    const b = M.objs.find(o => !o.hit && Math.abs(M.t - o.t) < 0.45);
-    if (b) { const d = Math.abs(M.t - b.t); b.hit = d < 0.13 ? 2 : d < 0.25 ? 1 : -1;
-      if (b.hit > 0) { M.got += b.hit; burst(W / 2, SY + 300, '#e2574c', b.hit * 10); SFX.pick(3); float(b.hit === 2 ? '¡Perfecto!' : '¡Bien!', W / 2, SY + 180, '#e0673c'); }
-      else { SFX.bad(); float('Pisotón', W / 2, SY + 180, '#8c6a4a'); } }
-  } else if (M.id === 'informe') { M.got++; tone(500 + M.got * 30, 0.04, 'square', 0.06); dust(rand(200, 340), SY + 420, 2); if (M.got >= M.n) endMoment(1); }
-  else if (M.id === 'equilibrio' || M.id === 'bebe') M.v += (x < W / 2 ? -1 : 1) * 0.55;
+function momentInput(kind, x, y) {
+  const M = G.moment; if (!M || M.done || M.t < 0.3) return;
+  const d = MOM[M.id]; if (d[kind]) d[kind](M, x, y);
 }
 function endMoment(ok) {
-  const M = G.moment; if (!M || M.done) return; M.done = 1; M.endT = 0.7;
-  if (M.id === 'pelota' && !M.res) { float('Se te escapa', PX, GY - 250, '#8c6a4a'); apply([0, 0, -3, 0]); }
-  if (M.id === 'monedas' || M.id === 'corazones') { if (M.got === M.objs.length) { float('¡Perfecto!', W / 2, SY + 170, '#6c9a3c', 38); SFX.good(); apply(M.id === 'monedas' ? [0, 5, 2, 0] : [0, 0, 3, 3]); } }
-  if (M.id === 'ritmo') { if (M.got >= 6) { float('¡Bailas de maravilla!', W / 2, SY + 170, '#6c9a3c', 34); apply([0, 0, 6, 8]); SFX.good(); } else if (M.got <= 2) { float('Pisas a todo el mundo', W / 2, SY + 170, '#8c6a4a', 30); apply([0, 0, -3, -3]); } }
-  if (M.id === 'informe') { if (ok) { float('¡Entregado a tiempo!', W / 2, SY + 170, '#6c9a3c', 34); apply([0, 10, -2, 0]); SFX.good(); } else { float('Llega tarde. Otra vez.', W / 2, SY + 170, '#8c6a4a', 30); apply([0, -4, -4, 0]); SFX.bad(); } }
-  if (M.id === 'equilibrio' || M.id === 'bebe') {
-    const baby = M.id === 'bebe';
-    if (ok) { float(baby ? '¡Se ha dormido!' : '¡Equilibrio perfecto!', W / 2, SY + 170, '#6c9a3c', 34); apply(baby ? [0, 0, 5, 8] : [6, 0, 2, 0]); SFX.good(); }
-    else { float(baby ? 'Llora aún más fuerte' : '¡Te caes de culo!', W / 2, SY + 170, '#e2574c', 32); apply(baby ? [-2, 0, -4, -2] : [-8, 0, -3, 0], 'una caída tonta'); shake(10, 0.3); SFX.hit(); G.p.stumble = 0.7; }
-  }
+  const M = G.moment; if (!M || M.done) return;
+  M.done = 1; M.endT = 0.9; M.ok = ok;
+  MOM[M.id].result(M, ok);
+  if (M.onEnd) M.onEnd(ok);
 }
 function updateMoment(dt) {
   const M = G.moment; M.t += dt;
   if (M.done) { M.endT -= dt; if (M.endT <= 0) G.moment = null; return; }
-  if (M.id === 'pelota') { const o = M.objs[0]; if (!o.got) { o.x += o.vx * dt; o.vy += 220 * dt; o.y += o.vy * dt; o.rot = (o.rot || 0) - dt * 6; if (o.x < -40 || o.y > SB) endMoment(0); } else { o.x = lerp(o.x, PX + 34, 0.3); o.y = lerp(o.y, GY - curH() * 0.55, 0.3); if (M.t > M.dur) endMoment(1); } }
-  else if (M.id === 'monedas' || M.id === 'corazones') {
-    const coin = M.id === 'monedas';
-    for (const o of M.objs) { if (!o.live || M.t < o.d) continue; if (coin) { o.vy += 900 * dt; o.y += o.vy * dt; if (o.y > SB + 40 && o.vy > 0) o.live = 0; } else { o.y -= 200 * dt; o.x += Math.sin(M.t * 3 + o.d * 5) * 40 * dt; if (o.y < SY - 30) o.live = 0; } }
-    if (M.t > 0.5 && M.objs.every(o => !o.live)) endMoment(1);
-  } else if (M.id === 'ritmo') { for (const b of M.objs) if (!b.hit && M.t - b.t > 0.45) { b.hit = -1; } if (M.t > M.dur) endMoment(1); }
-  else if (M.id === 'informe') { if (M.t > M.dur) endMoment(0); }
-  else if (M.id === 'equilibrio' || M.id === 'bebe') {
-    let push = 0; if (keys.ArrowLeft) push = -1; if (keys.ArrowRight) push = 1;
-    M.v += (M.x * 2.4 * M.k + rand(-2.6, 2.6) * M.k + push * 4) * dt; M.v *= 0.985; M.x += M.v * dt;
-    if (Math.abs(M.x) >= 1) endMoment(0); else if (M.t > M.dur) endMoment(1);
-  }
+  MOM[M.id].update(M, dt);
 }
 
 // ---------------- Runner ----------------
 const curStage = () => L.stages[G.stage];
-function curH() { const a = G.age; return a < 13 ? 118 + a * 4.2 : a < 20 ? 188 : a < 45 ? 206 : a < 65 ? 200 : 186; }
-function spriteKey() { const s = curStage().sprite; return META[s] ? s : (G.stage <= 1 ? 'ramon0' : 'ramon2'); }
+function curH() { const a = G.age; return a < 4 ? 88 + a * 9 : a < 13 ? 118 + a * 4.2 : a < 20 ? 188 : a < 45 ? 206 : a < 65 ? 200 : 186; }
+function spriteKey() { if (G.age < 4 && META.ramon_baby) return 'ramon_baby'; const s = curStage().sprite; return META[s] ? s : (G.stage <= 1 ? 'ramon0' : 'ramon2'); }
 function jump() {
   const P = G.p, st = curStage();
-  if (P.ground) { P.vy = -st.jump; P.ground = false; P.jumps = 1; SFX.jump(); dust(PX, GY, 5); vib(8); }
-  else if (st.dbl && P.jumps < 2) { P.vy = -st.jump * 0.82; P.jumps = 2; SFX.jump2(); burst(PX, P.y, '#fff', 8, 120); }
+  if (P.ground) { P.vy = -st.jump; P.v0 = st.jump; P.airT = 0; P.ground = false; P.jumps = 1; SFX.jump(); dust(PX, GY, 5); vib(8); }
+  else if (st.dbl && P.jumps < 2) { P.vy = -st.jump * 0.82; P.v0 = st.jump * 0.82; P.airT = 0; P.jumps = 2; SFX.jump2(); burst(PX, P.y, '#fff', 8, 120); }
+}
+// Soltar pronto = salto corto; mantener = salto completo
+function jumpRelease() {
+  const P = G.p; if (!P.ground && P.vy < -250) { P.vy *= 0.5; }
 }
 function spawn() {
   const sp = L.spawn[G.stage], x = W + 80, r = Math.random();
@@ -422,7 +416,7 @@ function updateRunner(dt) {
   P.frame += dt * 13 * (speed / 220);
   // física
   if (!P.ground) {
-    P.vy += 2700 * dt; P.y += P.vy * dt;
+    P.vy += 2700 * dt; P.y += P.vy * dt; P.airT = (P.airT || 0) + dt;
     if (P.y >= GY) { P.y = GY; P.vy = 0; P.ground = true; P.jumps = 0; P.land = 0.15; dust(PX, GY, 6); SFX.land(); }
   }
   if (P.land > 0) P.land -= dt; if (P.stumble > 0) P.stumble -= dt; if (P.inv > 0) P.inv -= dt;
@@ -450,6 +444,29 @@ function updateRunner(dt) {
       }
     }
   }
+  // vecinos que pasan por detrás y ambiente de cada etapa
+  G.npcT -= dt;
+  if (G.npcT <= 0) {
+    const opts = [['npc_kid'], ['npc_kid', 'npc_jogger'], ['npc_office', 'npc_jogger'], ['npc_jogger', 'npc_grandma', 'npc_office'], ['npc_grandma', 'npc_jogger']][G.stage].filter(k => META[k]);
+    if (opts.length) { const k = pick(opts); G.npcs.push({ key: k, x: W + 60, h: k === 'npc_kid' ? 104 : 150, sp: k === 'npc_jogger' ? 150 : 55, frame: rand(0, 16) }); }
+    G.npcT = rand(4, 9);
+  }
+  for (const n of G.npcs) { n.x -= (speed + n.sp) * dt; n.frame += dt * (n.sp > 100 ? 16 : 11); }
+  G.npcs = G.npcs.filter(n => n.x > -80);
+  G.ambT -= dt;
+  if (G.ambT <= 0 && G.amb.length < 6) {
+    const kind = [['butterfly'], ['petal', 'kite'], ['bird'], ['leaf'], ['leaf', 'bird']][G.stage], k = pick(kind);
+    G.amb.push({ k, x: W + 30, y: k === 'leaf' || k === 'petal' ? SY + rand(0, 200) : SY + rand(60, 300), ph: rand(0, 6), rot: rand(0, 6) });
+    G.ambT = rand(1.2, 3);
+  }
+  for (const b of G.amb) {
+    b.ph += dt;
+    if (b.k === 'bird') b.x -= (speed * 0.25 + 110) * dt;
+    else if (b.k === 'kite') { b.x -= speed * 0.15 * dt; b.y += Math.sin(b.ph * 1.5) * 20 * dt; }
+    else if (b.k === 'butterfly') { b.x -= (speed * 0.35 + 20) * dt; b.y += Math.sin(b.ph * 3) * 60 * dt; }
+    else { b.x -= (speed * 0.45 + 30) * dt + Math.sin(b.ph * 2) * 30 * dt; b.y += 45 * dt; b.rot += dt * 2; }
+  }
+  G.amb = G.amb.filter(b => b.x > -60 && b.y < GY);
   // seguidores: saltan al pasar un obstáculo
   for (const f of G.followers) {
     f.x = lerp(f.x, f.leave ? -140 : f.tx, dt * 1.5); f.frame += dt * 13 * (speed / 220);
@@ -514,6 +531,11 @@ function draw() {
   if (G.fade < 1) drawBg(L.stages[G.prevStage].bg, 1);
   drawBg(curStage().bg, G.fade);
   const P = G.p, h = curH(), t = performance.now() / 1000;
+  for (const b of G.amb) {
+    const s = b.k === 'kite' ? 70 : b.k === 'bird' ? 34 : 28, flap = b.k === 'bird' || b.k === 'butterfly' ? 0.35 + Math.abs(Math.sin(b.ph * (b.k === 'bird' ? 12 : 9))) * 0.65 : 1;
+    item(b.k, b.x, b.y, s, { sy: flap, rot: b.k === 'leaf' || b.k === 'petal' ? b.rot : b.k === 'kite' ? Math.sin(b.ph) * 0.2 : 0, alpha: 0.95 });
+  }
+  for (const n of G.npcs) { shadow(n.x, GY - 36, 22); sprite(n.key, n.frame, n.x, GY - 38, n.h, { flip: 1, alpha: 0.93 }); }
   // entidades
   for (const e of G.ents) {
     if (e.k === 'haz') {
@@ -546,12 +568,17 @@ function draw() {
 function drawRamon(P, h, t) {
   const key = spriteKey();
   let rot = 0, sx = 1, sy = 1, alpha = 1, y = P.y, frame = P.frame, x = PX;
-  if (!P.ground) { frame = 4; rot = clamp(P.vy / 3000, -0.15, 0.2); sx = 0.95; sy = 1.06; }
+  let jkey = null;
+  if (!P.ground) {
+    const jm = META[key + '_jump'];
+    if (jm) { const T = 2 * (P.v0 || 900) / 2700, p = clamp((P.airT || 0) / T, 0, 1); jkey = key + '_jump'; frame = jm.air0 + p * (jm.air1 - jm.air0 + 0.99); rot = clamp(P.vy / 5000, -0.08, 0.1); }
+    else { frame = 4; rot = clamp(P.vy / 3000, -0.15, 0.2); sx = 0.95; sy = 1.06; }
+  }
   if (P.land > 0) { sx = 1.1; sy = 0.9; }
   if (P.stumble > 0) { rot = Math.sin(P.stumble * 18) * 0.12 + 0.18; }
   if (P.inv > 0 && Math.floor(t * 14) % 2) alpha = 0.55;
-  if (G.card || (G.moment && !['equilibrio', 'bebe'].includes(G.moment.id))) { frame = 0; sy = 1 + Math.sin(t * 3) * 0.012; }
-  if (G.moment && ['equilibrio', 'bebe'].includes(G.moment.id)) { frame = 0; rot = G.moment.x * 0.7; }
+  if (G.card || (G.moment && !MOM[G.moment.id].tilt)) { frame = 0; sy = 1 + Math.sin(t * 3) * 0.012; jkey = null; }
+  if (G.moment && MOM[G.moment.id].tilt) { frame = 0; rot = G.moment.x * 0.7; jkey = null; }
   if (G.dead) {
     const d = G.deathT; frame = 0; alpha = clamp(1 - d / 2.4, 0, 1);
     sprite(key, frame, x, y, h, { alpha: clamp(d / 1.2, 0, 1) * 0.8 * clamp(3 - d, 0, 1), filter: 'brightness(2.2) saturate(0)' , sy: 1 });
@@ -562,7 +589,8 @@ function drawRamon(P, h, t) {
     ctx.restore();
   }
   shadow(x, GY + 2, 32 * (1 - clamp((GY - y) / 400, 0, 0.6)));
-  if (!G.dead) sprite(key, frame, x, y, h, { rot, sx, sy, alpha });
+  if (G.moment && MOM[G.moment.id].ownRamon) return;
+  if (!G.dead) sprite(jkey || key, frame, x, y, h, { rot, sx, sy, alpha });
   else sprite(key, 0, x, y, h, { alpha, rot: clamp(G.deathT, 0, 1) * -0.05 });
 }
 function drawBanners() {
@@ -585,33 +613,12 @@ function drawBanners() {
 function drawMoment(t) {
   const M = G.moment, a = clamp(M.t * 4, 0, 1) * (M.done ? clamp(M.endT / 0.3, 0, 1) : 1);
   ctx.fillStyle = `rgba(43,29,20,${0.25 * a})`; ctx.fillRect(0, SY, W, SH);
-  text(M.title, W / 2, SY + 60, { size: 42, color: '#fff8ec', stroke: '#3b2416', sw: 8, alpha: a, font: "'Chewy', cursive" });
-  if (M.t < 1.6 && !M.done) text(M.hint, W / 2, SY + 104, { size: 26, color: '#fff8ec', stroke: '#3b2416', sw: 6, alpha: a * clamp(1.6 - M.t, 0, 1) });
-  // barra de tiempo
-  if (!M.done) { rrect(120, SY + 128, 300, 12, 6, '#fff8ec', '#3b2416', 2); rrect(120, SY + 128, 300 * clamp(1 - M.t / M.dur, 0, 1), 12, 6, '#e0673c'); }
-  if (M.id === 'pelota') { const o = M.objs[0]; item('ball', o.x, o.y, 64, { rot: o.rot }); }
-  if (M.id === 'monedas' || M.id === 'corazones') for (const o of M.objs) if (o.live && M.t >= o.d) item(M.id === 'monedas' ? 'coin' : 'heart', o.x, o.y, 72, { rot: Math.sin(t * 5 + o.d) * 0.2 });
-  if (M.id === 'ritmo') {
-    const cx = W / 2, cy = SY + 300, next = M.objs.find(b => !b.hit);
-    item('heart', cx, cy, 90 + Math.sin(t * 10) * 4);
-    if (next) { const k = clamp((next.t - M.t) / 0.9, 0, 1), r = 48 + k * 150; ctx.strokeStyle = '#e0673c'; ctx.lineWidth = 8; ctx.globalAlpha = 1 - k * 0.6; ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU); ctx.stroke(); ctx.globalAlpha = 1; }
-    ctx.strokeStyle = 'rgba(255,248,236,.7)'; ctx.lineWidth = 3; ctx.setLineDash([8, 8]); ctx.beginPath(); ctx.arc(cx, cy, 48, 0, TAU); ctx.stroke(); ctx.setLineDash([]);
-    M.objs.forEach((b, i) => item('heart', cx - 75 + i * 50, cy + 130, 32, { alpha: b.hit > 0 ? 1 : b.hit < 0 ? 0.2 : 0.45 }));
-  }
-  if (M.id === 'informe') {
-    const k = M.got / M.n;
-    for (let i = 0; i < Math.min(M.got, M.n); i++) item('bills', W / 2 + Math.sin(i * 7) * 8, SY + 470 - i * 9, 60, { rot: Math.sin(i * 3) * 0.1 });
-    rrect(110, SY + 520, 320, 26, 12, '#fff8ec', '#3b2416', 3); rrect(110, SY + 520, 320 * k, 26, 12, '#e9b43a');
-    text(`${M.got}/${M.n}`, W / 2, SY + 533, { size: 22 });
-  }
-  if (M.id === 'equilibrio' || M.id === 'bebe') {
-    const x0 = 120, x1 = 420, y = SY + 170;
-    rrect(x0, y, x1 - x0, 20, 10, '#fff8ec', '#3b2416', 3);
-    ctx.fillStyle = 'rgba(140,193,82,.6)'; ctx.fillRect(W / 2 - 60, y + 3, 120, 14);
-    ctx.fillStyle = '#e0673c'; ctx.beginPath(); ctx.arc(W / 2 + M.x * 150, y + 10, 14, 0, TAU); ctx.fill(); ctx.stroke();
-    text('◀', 60, SY + 400, { size: 60, color: 'rgba(255,248,236,.6)' }); text('▶', W - 60, SY + 400, { size: 60, color: 'rgba(255,248,236,.6)' });
-    if (M.id === 'bebe') { text('zZz', PX + 60, GY - curH() - 20 + Math.sin(t * 3) * 6, { size: 30, color: '#fff8ec', stroke: '#3b2416', sw: 5 }); }
-  }
+  ctx.save(); ctx.globalAlpha = a; MOM[M.id].draw(M, t); ctx.restore();
+  const lines = wrapLines(M.title, 500, 42, "'Chewy', cursive");
+  lines.forEach((l, i) => text(l, W / 2, SY + 50 + i * 44, { size: 42, color: '#fff8ec', stroke: '#3b2416', sw: 8, alpha: a, font: "'Chewy', cursive" }));
+  const hy = SY + 50 + lines.length * 44;
+  if (M.t < 2 && !M.done && M.hint) text(M.hint, W / 2, hy, { size: 26, color: '#fff8ec', stroke: '#3b2416', sw: 6, alpha: a * clamp(2 - M.t, 0, 1) });
+  if (!M.done) { rrect(120, hy + 24, 300, 12, 6, '#fff8ec', '#3b2416', 2); rrect(120, hy + 24, 300 * clamp(1 - M.t / M.dur, 0, 1), 12, 6, '#e0673c'); }
 }
 function drawHud(t) {
   // barra superior
@@ -705,20 +712,26 @@ stage.addEventListener('pointerdown', e => {
   if (mode !== 'play' || paused || !G || G.dead || G.card) return;
   if (e.target.closest('button')) return;
   const p = toLocal(e);
-  if (G.moment) momentTap(p.x, p.y); else jump();
+  if (G.moment) momentInput('down', p.x, p.y); else jump();
+});
+stage.addEventListener('pointermove', e => { if (mode === 'play' && G && G.moment && e.buttons) { const p = toLocal(e); momentInput('move', p.x, p.y); } });
+addEventListener('pointerup', e => {
+  if (mode !== 'play' || !G) return;
+  const p = toLocal(e);
+  if (G.moment) momentInput('up', p.x, p.y); else jumpRelease();
 });
 addEventListener('keydown', e => {
   keys[e.key] = true;
   if (mode !== 'play' || paused || !G || G.dead) return;
   if (G.card) { const n = +e.key; if (n >= 1 && n <= G.card.e.o.length) choose(n - 1); return; }
-  if (e.key === ' ' || e.key === 'ArrowUp') { e.preventDefault(); if (G.moment) momentTap(W / 2, SY + 300); else jump(); }
+  if (e.key === ' ' || e.key === 'ArrowUp') { e.preventDefault(); if (G.moment) momentInput('down', W / 2, SY + 300); else if (!e.repeat) jump(); }
 });
-addEventListener('keyup', e => { keys[e.key] = false; });
+addEventListener('keyup', e => { keys[e.key] = false; if (G && mode === 'play' && (e.key === ' ' || e.key === 'ArrowUp')) G.moment ? momentInput('up', W / 2, SY + 300) : jumpRelease(); });
 document.addEventListener('visibilitychange', () => { if (document.hidden) { if (AC) AC.suspend(); if (mode === 'play') { paused = true; openSettings(); } } else if (AC) AC.resume(); });
 
 // Depuración: ?age=40 empieza a esa edad; ?fast=3 acelera el tiempo
 
-window.__vida = { get G() { return G; }, play, jump, choose, startMoment, momentTap, PX, GY, L };
+window.__vida = { get G() { return G; }, play, jump, choose, startMoment, momentInput, momentTap: (x, y) => momentInput('down', x, y), MOM, PX, GY, L };
 
 loadAll().then(() => {
   toMenu();

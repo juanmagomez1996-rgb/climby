@@ -7,6 +7,7 @@ import 'package:flutter/widgets.dart' show EdgeInsets;
 import 'audio.dart';
 import 'gfx.dart';
 import 'life.dart';
+import 'moments.dart';
 import 'prefs.dart';
 
 enum Mode { loading, menu, playing, paused, over }
@@ -34,20 +35,17 @@ class Follower {
   bool leave = false;
 }
 
-class Moment {
-  Moment(this.id, this.title, this.hint);
-  final String id, title, hint;
-  double t = 0, dur = 4, endT = 0, x = 0, v = 0, k = 1;
-  int got = 0, n = 0;
-  bool done = false, res = false;
-  final List<MObj> objs = [];
+class Npc {
+  Npc(this.key, this.h, this.sp) : frame = rnd(0, 16);
+  final String key;
+  final double h, sp;
+  double x = kW + 60, frame;
 }
 
-class MObj {
-  MObj({this.x = 0, this.y = 0, this.vx = 0, this.vy = 0, this.d = 0, this.t = 0});
-  double x, y, vx, vy, d, t, rot = 0;
-  bool live = true, got = false;
-  int hit = 0;
+class Amb {
+  Amb(this.k, this.x, this.y) : ph = rnd(0, 6), rot = rnd(0, 6);
+  final String k;
+  double x, y, ph, rot;
 }
 
 class VidaGame extends FlameGame implements LifeListener {
@@ -62,7 +60,9 @@ class VidaGame extends FlameGame implements LifeListener {
   int prevStage = 0;
   final List<Ent> ents = [];
   final List<Follower> followers = [];
-  double py = kGY, pvy = 0, pframe = 0, pland = 0, pstumble = 0, pinv = 0;
+  double py = kGY, pvy = 0, pframe = 0, pland = 0, pstumble = 0, pinv = 0, pv0 = 900, pair = 0, npcT = 3, ambT = 1;
+  final List<Npc> npcs = [];
+  final List<Amb> amb = [];
   bool pground = true, endShown = false;
   int pjumps = 0;
   Moment? moment;
@@ -82,7 +82,10 @@ class VidaGame extends FlameGame implements LifeListener {
   @override
   Future<void> onLoad() async {
     data = await LifeData.load();
-    await Gfx.load([...data.pickups.keys, ...data.hazards.keys], [for (final s in data.stages) s['bg'] as String]);
+    await Gfx.load([
+      ...data.pickups.keys, ...data.hazards.keys,
+      'hoop', 'basketball', 'car', 'bigcake', 'candle', 'bouquet', 'fish', 'bobber', 'butterfly', 'bird', 'leaf', 'petal', 'photo', 'kite', 'rattle', 'boat', 'cone', 'trophy',
+    ], [for (final s in data.stages) s['bg'] as String], events: [for (final e in data.events) if (e['auto'] == null) e['id'] as String]);
     await Audio.load();
     toMenu();
   }
@@ -106,6 +109,10 @@ class VidaGame extends FlameGame implements LifeListener {
     prevStage = 0;
     ents.clear();
     followers.clear();
+    npcs.clear();
+    amb.clear();
+    npcT = 3;
+    ambT = 1;
     py = kGY;
     pvy = 0;
     pground = true;
@@ -178,7 +185,7 @@ class VidaGame extends FlameGame implements LifeListener {
   }
 
   @override
-  void momentWanted() => startMoment();
+  void momentWanted([String? id, Json? opts, void Function(bool ok)? onEnd]) => startMoment(id, opts, onEnd);
 
   @override
   void died() {
@@ -208,24 +215,29 @@ class VidaGame extends FlameGame implements LifeListener {
 
   // ---------------- familia ----------------
   void syncFollowers() {
-    final l = L, want = <(String, String, double, double)>[];
+    final l = L, a = l.age, want = <(String, String, double, double)>[];
+    String pick(String k, String fallback) => Gfx.meta.containsKey(k) ? k : fallback;
     if (l.flag('pareja')) {
-      final old = l.age >= 62, base = l.partner == 'Marga' ? 'marga' : 'lucia';
-      var key = old ? '${base}_old' : base;
-      if (!Gfx.meta.containsKey(key)) key = old ? 'lucia_old' : base;
-      want.add(('pareja', key, 92, old ? 178 : 192));
+      final base = l.partner == 'Marga' ? 'marga' : 'lucia';
+      final k = a < 45 ? base : a < 65 ? '${base}_mid' : '${base}_old';
+      want.add(('pareja', pick(k, base), 92, a < 45 ? 192 : a < 65 ? 190 : 178));
     }
     if (l.flag('hija')) {
-      final ha = (l.age - l.hijaAge).toDouble();
-      want.add(('hija', ha < 16 ? 'alba' : 'alba_adult', 34, ha < 16 ? (70 + ha * 7).clamp(70, 165).toDouble() : 180));
+      final ha = (a - l.hijaAge).toDouble();
+      final (k, h) = ha < 11 ? ('alba', (70 + ha * 8).clamp(70, 150).toDouble()) : ha < 20 ? ('alba_teen', 172.0) : ha < 40 ? ('alba_adult', 182.0) : ('alba_mid', 180.0);
+      want.add(('hija', pick(k, 'alba_adult'), 34, h));
     }
-    if (l.flag('perro')) want.add(('perro', 'dog', 262, 62));
+    if (l.flag('perro')) {
+      final pa = a - l.perroAge, k = pa < 2 ? 'dog_puppy' : pa < 10 ? 'dog' : 'dog_old';
+      want.add(('perro', pick(k, 'dog'), 262, pa < 2 ? 48 : 62));
+    }
     for (final w in want) {
       final f = followers.where((f) => f.id == w.$1).firstOrNull;
       if (f != null) {
         if (f.key != w.$2) {
           f.key = w.$2;
           fx.burst(f.x, kGY - 80, kCream, n: 16, sp: 160);
+          fx.float('✨', f.x, kGY - w.$4 - 10, const Color(0xFFFFD35A), 30);
         }
         f.tx = w.$3;
         f.h = w.$4;
@@ -247,18 +259,35 @@ class VidaGame extends FlameGame implements LifeListener {
     final p = toLogical(screen);
     if (p.dy < kSY) return; // barra superior (botón de pausa)
     if (moment != null) {
-      momentTap(p.dx, p.dy);
+      momentInput('down', p.dx, p.dy);
     } else {
       jump();
     }
   }
 
+  void drag(Offset screen) {
+    if (mode != Mode.playing || moment == null) return;
+    final p = toLogical(screen);
+    momentInput('move', p.dx, p.dy);
+  }
+
+  void release(Offset screen) {
+    if (mode != Mode.playing || life == null) return;
+    final p = toLogical(screen);
+    if (moment != null) {
+      momentInput('up', p.dx, p.dy);
+    } else if (!pground && pvy < -250) {
+      pvy *= 0.5; // soltar pronto = salto corto
+    }
+  }
+
   double curH() {
     final a = L.age;
-    return a < 13 ? 118 + a * 4.2 : a < 20 ? 188 : a < 45 ? 206 : a < 65 ? 200 : 186;
+    return a < 4 ? 88 + a * 9.0 : a < 13 ? 118 + a * 4.2 : a < 20 ? 188 : a < 45 ? 206 : a < 65 ? 200 : 186;
   }
 
   String spriteKey() {
+    if (L.age < 4 && Gfx.meta.containsKey('ramon_baby')) return 'ramon_baby';
     final s = stageData['sprite'] as String;
     return Gfx.meta.containsKey(s) ? s : (L.stage <= 1 ? 'ramon0' : 'ramon2');
   }
@@ -267,12 +296,16 @@ class VidaGame extends FlameGame implements LifeListener {
     final st = stageData, j = (st['jump'] as num).toDouble();
     if (pground) {
       pvy = -j;
+      pv0 = j;
+      pair = 0;
       pground = false;
       pjumps = 1;
       Audio.play('jump');
       fx.dust(kPX, kGY, 5);
     } else if (st['dbl'] == true && pjumps < 2) {
       pvy = -j * 0.82;
+      pv0 = j * 0.82;
+      pair = 0;
       pjumps = 2;
       Audio.play('jump2');
       fx.burst(kPX, py, kCream, n: 8, sp: 120);
@@ -337,6 +370,7 @@ class VidaGame extends FlameGame implements LifeListener {
     if (!pground) {
       pvy += 2700 * dt;
       py += pvy * dt;
+      pair += dt;
       if (py >= kGY) {
         py = kGY;
         pvy = 0;
@@ -394,6 +428,46 @@ class VidaGame extends FlameGame implements LifeListener {
         }
       }
     }
+    npcT -= dt;
+    if (npcT <= 0) {
+      final opts = const [['npc_kid'], ['npc_kid', 'npc_jogger'], ['npc_office', 'npc_jogger'], ['npc_jogger', 'npc_grandma', 'npc_office'], ['npc_grandma', 'npc_jogger']][L.stage]
+          .where((k) => Gfx.meta.containsKey(k)).toList();
+      if (opts.isNotEmpty) {
+        final k = opts[Random().nextInt(opts.length)];
+        npcs.add(Npc(k, k == 'npc_kid' ? 104 : 150, k == 'npc_jogger' ? 150 : 55));
+      }
+      npcT = rnd(4, 9);
+    }
+    for (final n in npcs) {
+      n.x -= (speed + n.sp) * dt;
+      n.frame += dt * (n.sp > 100 ? 16 : 11);
+    }
+    npcs.removeWhere((n) => n.x < -80);
+    ambT -= dt;
+    if (ambT <= 0 && amb.length < 6) {
+      final kinds = const [['butterfly'], ['petal', 'kite'], ['bird'], ['leaf'], ['leaf', 'bird']][L.stage];
+      final k = kinds[Random().nextInt(kinds.length)];
+      amb.add(Amb(k, kW + 30, k == 'leaf' || k == 'petal' ? kSY + rnd(0, 200) : kSY + rnd(60, 300)));
+      ambT = rnd(1.2, 3);
+    }
+    for (final b in amb) {
+      b.ph += dt;
+      switch (b.k) {
+        case 'bird':
+          b.x -= (speed * 0.25 + 110) * dt;
+        case 'kite':
+          b.x -= speed * 0.15 * dt;
+          b.y += sin(b.ph * 1.5) * 20 * dt;
+        case 'butterfly':
+          b.x -= (speed * 0.35 + 20) * dt;
+          b.y += sin(b.ph * 3) * 60 * dt;
+        default:
+          b.x -= (speed * 0.45 + 30) * dt + sin(b.ph * 2) * 30 * dt;
+          b.y += 45 * dt;
+          b.rot += dt * 2;
+      }
+    }
+    amb.removeWhere((b) => b.x < -60 || b.y > kGY);
     for (final f in followers) {
       f.x += ((f.leave ? -140 : f.tx) - f.x) * min(1, dt * 1.5);
       f.frame += dt * 13 * (speed / 220);
@@ -411,93 +485,37 @@ class VidaGame extends FlameGame implements LifeListener {
   }
 
   // ---------------- momentos ----------------
-  void startMoment() {
+  void startMoment([String? id, Json? opts, void Function(bool ok)? onEnd]) {
     final a = L.age;
-    final list = data.moments.where((m) {
-      final ages = m['ages'] as List;
-      return a >= ages[0] && a <= ages[1] && ((m['need'] as List?)?.every((f) => L.flag(f as String)) ?? true);
-    }).toList();
-    if (list.isEmpty) return;
-    final m = list[Random().nextInt(list.length)];
-    final M = Moment(m['id'] as String, m['title'] as String, m['hint'] as String);
-    L.lastMoment = a;
-    switch (M.id) {
-      case 'pelota':
-        M.dur = 3.2;
-        M.objs.add(MObj(x: kW + 30, y: kSY + 160, vx: -300, vy: -80));
-      case 'monedas':
-        for (var i = 0; i < 5; i++) {
-          M.objs.add(MObj(x: rnd(80, kW - 80), y: kSB + 30, vy: -rnd(620, 760), d: i * 0.32));
-        }
-      case 'corazones':
-        for (var i = 0; i < 4; i++) {
-          M.objs.add(MObj(x: rnd(80, kW - 80), y: kSB + 30, d: i * 0.45));
-        }
-      case 'ritmo':
-        M.dur = 4.6;
-        for (var i = 0; i < 4; i++) {
-          M.objs.add(MObj(t: 0.7 + i * 0.95));
-        }
-      case 'informe':
-        M.dur = 3.4;
-        M.n = 16;
-      default: // equilibrio, bebe
-        M.dur = 3.8;
-        M.x = rnd(-0.15, 0.15);
-        M.k = a > 60 ? 1.35 : 1;
+    if (id == null) {
+      final list = data.moments.where((m) {
+        final ages = m['ages'] as List;
+        return m['trig'] == null && a >= ages[0] && a <= ages[1] && ((m['need'] as List?)?.every((f) => L.flag(f as String)) ?? true);
+      }).toList();
+      if (list.isEmpty) return;
+      id = list[Random().nextInt(list.length)]['id'] as String;
     }
+    final def = kMoments[id];
+    if (def == null) return;
+    final m = data.moments.where((m) => m['id'] == id).firstOrNull ?? const {};
+    final M = Moment(id, def, (opts?['title'] ?? m['title'] ?? '') as String, (opts?['hint'] ?? m['hint'] ?? '') as String)..onEnd = onEnd;
+    L.lastMoment = a;
     moment = M;
+    def.start(this, M);
     Audio.play('moment');
     Audio.haptic();
   }
 
-  void momentTap(double x, double y) {
+  void momentInput(String kind, double x, double y) {
     final M = moment;
-    if (M == null || M.t < 0.35 || M.done) return;
-    switch (M.id) {
-      case 'pelota':
-        final o = M.objs[0];
-        if (!o.got && (Offset(x, y) - Offset(o.x, o.y)).distance < 80) {
-          o.got = true;
-          M.res = true;
-          fx.burst(o.x, o.y, const Color(0xFFFFD35A), n: 20);
-          Audio.play('good');
-          L.apply([2, 0, 5, 0]);
-          fx.float('¡La cogiste!', kPX, kGY - 250, const Color(0xFF6C9A3C));
-        }
-      case 'monedas':
-      case 'corazones':
-        final coin = M.id == 'monedas';
-        final o = M.objs.where((o) => o.live && M.t >= o.d && (Offset(x, y) - Offset(o.x, o.y)).distance < 60).firstOrNull;
-        if (o != null) {
-          o.live = false;
-          M.got++;
-          fx.burst(o.x, o.y, coin ? kStatCols[1] : kStatCols[0], n: 14);
-          Audio.play(coin ? 'pick1' : 'pick3');
-          L.apply(coin ? [0, 3, 0, 0] : [0, 0, 1, 3]);
-        }
-      case 'ritmo':
-        final b = M.objs.where((o) => o.hit == 0 && (M.t - o.t).abs() < 0.45).firstOrNull;
-        if (b != null) {
-          final dd = (M.t - b.t).abs();
-          b.hit = dd < 0.13 ? 2 : dd < 0.25 ? 1 : -1;
-          if (b.hit > 0) {
-            M.got += b.hit;
-            fx.burst(kW / 2, kSY + 300, kStatCols[0], n: b.hit * 10);
-            Audio.play('pick3');
-            fx.float(b.hit == 2 ? '¡Perfecto!' : '¡Bien!', kW / 2, kSY + 180, kAccent);
-          } else {
-            Audio.play('bad');
-            fx.float('Pisotón', kW / 2, kSY + 180, const Color(0xFF8C6A4A));
-          }
-        }
-      case 'informe':
-        M.got++;
-        Audio.play('tap', volume: 0.6);
-        fx.dust(rnd(200, 340), kSY + 420, 2);
-        if (M.got >= M.n) endMoment(true);
+    if (M == null || M.done || M.t < 0.3) return;
+    switch (kind) {
+      case 'down':
+        M.def.down(this, M, x, y);
+      case 'move':
+        M.def.move(this, M, x, y);
       default:
-        M.v += (x < kW / 2 ? -1 : 1) * 0.55;
+        M.def.up(this, M, x, y);
     }
   }
 
@@ -505,54 +523,10 @@ class VidaGame extends FlameGame implements LifeListener {
     final M = moment;
     if (M == null || M.done) return;
     M.done = true;
-    M.endT = 0.7;
-    const green = Color(0xFF6C9A3C), brown = Color(0xFF8C6A4A);
-    switch (M.id) {
-      case 'pelota':
-        if (!M.res) {
-          fx.float('Se te escapa', kPX, kGY - 250, brown);
-          L.apply([0, 0, -3, 0]);
-        }
-      case 'monedas':
-      case 'corazones':
-        if (M.got == M.objs.length) {
-          fx.float('¡Perfecto!', kW / 2, kSY + 170, green, 38);
-          Audio.play('good');
-          L.apply(M.id == 'monedas' ? [0, 5, 2, 0] : [0, 0, 3, 3]);
-        }
-      case 'ritmo':
-        if (M.got >= 6) {
-          fx.float('¡Bailas de maravilla!', kW / 2, kSY + 170, green, 34);
-          L.apply([0, 0, 6, 8]);
-          Audio.play('good');
-        } else if (M.got <= 2) {
-          fx.float('Pisas a todo el mundo', kW / 2, kSY + 170, brown, 30);
-          L.apply([0, 0, -3, -3]);
-        }
-      case 'informe':
-        if (ok) {
-          fx.float('¡Entregado a tiempo!', kW / 2, kSY + 170, green, 34);
-          L.apply([0, 10, -2, 0]);
-          Audio.play('good');
-        } else {
-          fx.float('Llega tarde. Otra vez.', kW / 2, kSY + 170, brown, 30);
-          L.apply([0, -4, -4, 0]);
-          Audio.play('bad');
-        }
-      default:
-        final baby = M.id == 'bebe';
-        if (ok) {
-          fx.float(baby ? '¡Se ha dormido!' : '¡Equilibrio perfecto!', kW / 2, kSY + 170, green, 34);
-          L.apply(baby ? [0, 0, 5, 8] : [6, 0, 2, 0]);
-          Audio.play('good');
-        } else {
-          fx.float(baby ? 'Llora aún más fuerte' : '¡Te caes de culo!', kW / 2, kSY + 170, kStatCols[0], 32);
-          L.apply(baby ? [-2, 0, -4, -2] : [-8, 0, -3, 0], cause: 'una caída tonta');
-          fx.shake(10, 0.3);
-          Audio.play('hit');
-          pstumble = 0.7;
-        }
-    }
+    M.endT = 0.9;
+    M.ok = ok;
+    M.def.result(this, M, ok);
+    M.onEnd?.call(ok);
   }
 
   void updateMoment(double dt) {
@@ -563,52 +537,12 @@ class VidaGame extends FlameGame implements LifeListener {
       if (M.endT <= 0) moment = null;
       return;
     }
-    switch (M.id) {
-      case 'pelota':
-        final o = M.objs[0];
-        if (!o.got) {
-          o.x += o.vx * dt;
-          o.vy += 220 * dt;
-          o.y += o.vy * dt;
-          o.rot -= dt * 6;
-          if (o.x < -40 || o.y > kSB) endMoment(false);
-        } else {
-          o.x += (kPX + 34 - o.x) * 0.3;
-          o.y += (kGY - curH() * 0.55 - o.y) * 0.3;
-          if (M.t > M.dur) endMoment(true);
-        }
-      case 'monedas':
-      case 'corazones':
-        final coin = M.id == 'monedas';
-        for (final o in M.objs) {
-          if (!o.live || M.t < o.d) continue;
-          if (coin) {
-            o.vy += 900 * dt;
-            o.y += o.vy * dt;
-            if (o.y > kSB + 40 && o.vy > 0) o.live = false;
-          } else {
-            o.y -= 200 * dt;
-            o.x += sin(M.t * 3 + o.d * 5) * 40 * dt;
-            if (o.y < kSY - 30) o.live = false;
-          }
-        }
-        if (M.t > 0.5 && M.objs.every((o) => !o.live)) endMoment(true);
-      case 'ritmo':
-        for (final b in M.objs) {
-          if (b.hit == 0 && M.t - b.t > 0.45) b.hit = -1;
-        }
-        if (M.t > M.dur) endMoment(true);
-      case 'informe':
-        if (M.t > M.dur) endMoment(false);
-      default:
-        M.v += (M.x * 2.4 * M.k + rnd(-2.6, 2.6) * M.k) * dt;
-        M.v *= 0.985;
-        M.x += M.v * dt;
-        if (M.x.abs() >= 1) {
-          endMoment(false);
-        } else if (M.t > M.dur) {
-          endMoment(true);
-        }
+    M.def.update(this, M, dt);
+  }
+
+  void confetti() {
+    for (final c in const [Color(0xFFE2574C), Color(0xFFE9B43A), Color(0xFF8CC152), Color(0xFF5D9CEC), Color(0xFFC79AE0)]) {
+      fx.burst(kW / 2, kSY + 120, c, n: 14, sp: 380, up: 150);
     }
   }
 
@@ -647,7 +581,7 @@ class VidaGame extends FlameGame implements LifeListener {
     if (l.card != null) {
       cardT += dt;
       onUi?.call();
-      if (cardT > 10) choose(Random().nextInt((l.card!['o'] as List).length), auto: true);
+      if (cardT > 20) choose(Random().nextInt((l.card!['o'] as List).length), auto: true);
       return;
     }
     if (moment != null) {
@@ -701,6 +635,15 @@ class VidaGame extends FlameGame implements LifeListener {
     c.clipRect(const Rect.fromLTWH(0, kSY, kW, kSH));
     if (fade < 1) _drawBg(c, data.stages[prevStage]['bg'] as String, 1);
     _drawBg(c, stageData['bg'] as String, fade);
+    for (final b in amb) {
+      final s = b.k == 'kite' ? 70.0 : b.k == 'bird' ? 34.0 : 28.0;
+      final flap = b.k == 'bird' || b.k == 'butterfly' ? 0.35 + (sin(b.ph * (b.k == 'bird' ? 12 : 9))).abs() * 0.65 : 1.0;
+      Gfx.item(c, b.k, b.x, b.y, s, sy: flap, rot: b.k == 'leaf' || b.k == 'petal' ? b.rot : b.k == 'kite' ? sin(b.ph) * 0.2 : 0, alpha: 0.95);
+    }
+    for (final n in npcs) {
+      Gfx.shadow(c, n.x, kGY - 36, 22);
+      Gfx.sprite(c, n.key, n.frame, n.x, kGY - 38, n.h, sx: -1, alpha: 0.93);
+    }
     for (final e in ents) {
       if (e.haz) {
         if (!e.air) Gfx.shadow(c, e.x, kGY + 2, e.w * 0.45);
@@ -738,12 +681,21 @@ class VidaGame extends FlameGame implements LifeListener {
   void _drawRamon(Canvas c, double t) {
     final key = spriteKey(), h = curH();
     var rot = 0.0, sx = 1.0, sy = 1.0, alpha = 1.0, frame = pframe;
-    final bal = moment != null && (moment!.id == 'equilibrio' || moment!.id == 'bebe');
+    final bal = moment != null && moment!.def.tilt;
+    var drawKey = key;
     if (!pground) {
-      frame = 4;
-      rot = (pvy / 3000).clamp(-0.15, 0.2);
-      sx = 0.95;
-      sy = 1.06;
+      final jm = Gfx.meta['${key}_jump'];
+      if (jm != null) {
+        final p = (pair / (2 * pv0 / 2700)).clamp(0.0, 1.0);
+        drawKey = '${key}_jump';
+        frame = jm.air0 + p * (jm.air1 - jm.air0 + 0.99);
+        rot = (pvy / 5000).clamp(-0.08, 0.1);
+      } else {
+        frame = 4;
+        rot = (pvy / 3000).clamp(-0.15, 0.2);
+        sx = 0.95;
+        sy = 1.06;
+      }
     }
     if (pland > 0) {
       sx = 1.1;
@@ -752,16 +704,19 @@ class VidaGame extends FlameGame implements LifeListener {
     if (pstumble > 0) rot = sin(pstumble * 18) * 0.12 + 0.18;
     if (pinv > 0 && (t * 14).floor() % 2 == 1) alpha = 0.55;
     if (life!.card != null || (moment != null && !bal)) {
+      drawKey = key;
       frame = 0;
       sy = 1 + sin(t * 3) * 0.012;
     }
     if (bal) {
+      drawKey = key;
       frame = 0;
-      rot = moment!.x * 0.7;
+      rot = ((moment!.s['x'] as double?) ?? 0) * 0.7;
     }
     Gfx.shadow(c, kPX, kGY + 2, 32 * (1 - ((kGY - py) / 400).clamp(0, 0.6)));
+    if (moment != null && moment!.def.ownRamon) return;
     if (!life!.dead) {
-      Gfx.sprite(c, key, frame, kPX, py, h, rot: rot, sx: sx, sy: sy, alpha: alpha);
+      Gfx.sprite(c, drawKey, frame, kPX, py, h, rot: rot, sx: sx, sy: sy, alpha: alpha);
       return;
     }
     final d = deathT;
@@ -809,54 +764,18 @@ class VidaGame extends FlameGame implements LifeListener {
     final M = moment!;
     final a = (M.t * 4).clamp(0.0, 1.0) * (M.done ? (M.endT / 0.3).clamp(0.0, 1.0) : 1.0);
     c.drawRect(const Rect.fromLTWH(0, kSY, kW, kSH), Paint()..color = Color.fromRGBO(43, 29, 20, 0.25 * a));
-    Gfx.text(c, M.title, kW / 2, kSY + 60, size: 42, color: kCream, stroke: kInk, sw: 8, alpha: a, font: 'Chewy');
-    if (M.t < 1.6 && !M.done) Gfx.text(c, M.hint, kW / 2, kSY + 104, size: 26, color: kCream, stroke: kInk, sw: 6, alpha: a * (1.6 - M.t).clamp(0, 1));
-    if (!M.done) {
-      Gfx.rrect(c, const Rect.fromLTWH(120, kSY + 128, 300, 12), 6, fill: kCream, stroke: kInk, lw: 2);
-      Gfx.rrect(c, Rect.fromLTWH(120, kSY + 128, 300 * (1 - M.t / M.dur).clamp(0, 1), 12), 6, fill: kAccent);
+    c.saveLayer(const Rect.fromLTWH(0, kSY, kW, kSH), Paint()..color = Color.fromRGBO(0, 0, 0, a));
+    M.def.draw(this, M, c, t);
+    c.restore();
+    final lines = Gfx.wrap(M.title, 500, 42, font: 'Chewy');
+    for (var i = 0; i < lines.length; i++) {
+      Gfx.text(c, lines[i], kW / 2, kSY + 50 + i * 44, size: 42, color: kCream, stroke: kInk, sw: 8, alpha: a, font: 'Chewy');
     }
-    switch (M.id) {
-      case 'pelota':
-        Gfx.item(c, 'ball', M.objs[0].x, M.objs[0].y, 64, rot: M.objs[0].rot);
-      case 'monedas':
-      case 'corazones':
-        for (final o in M.objs) {
-          if (o.live && M.t >= o.d) Gfx.item(c, M.id == 'monedas' ? 'coin' : 'heart', o.x, o.y, 72, rot: sin(t * 5 + o.d) * 0.2);
-        }
-      case 'ritmo':
-        const cx = kW / 2, cy = kSY + 300;
-        Gfx.item(c, 'heart', cx, cy, 90 + sin(t * 10) * 4);
-        final next = M.objs.where((b) => b.hit == 0).firstOrNull;
-        if (next != null) {
-          final k = ((next.t - M.t) / 0.9).clamp(0.0, 1.0);
-          c.drawCircle(const Offset(cx, cy), 48 + k * 150, Paint()
-            ..color = kAccent.withValues(alpha: 1 - k * 0.6)
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 8);
-        }
-        c.drawCircle(const Offset(cx, cy), 48, Paint()
-          ..color = const Color(0xB3FFF8EC)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 3);
-        for (var i = 0; i < M.objs.length; i++) {
-          final b = M.objs[i];
-          Gfx.item(c, 'heart', cx - 75 + i * 50, cy + 130, 32, alpha: b.hit > 0 ? 1 : b.hit < 0 ? 0.2 : 0.45);
-        }
-      case 'informe':
-        for (var i = 0; i < min(M.got, M.n); i++) {
-          Gfx.item(c, 'bills', kW / 2 + sin(i * 7.0) * 8, kSY + 470 - i * 9, 60, rot: sin(i * 3.0) * 0.1);
-        }
-        Gfx.rrect(c, const Rect.fromLTWH(110, kSY + 520, 320, 26), 12, fill: kCream, stroke: kInk);
-        Gfx.rrect(c, Rect.fromLTWH(110, kSY + 520, 320 * M.got / M.n, 26), 12, fill: kStatCols[1]);
-        Gfx.text(c, '${M.got}/${M.n}', kW / 2, kSY + 533, size: 22);
-      default:
-        const y = kSY + 170;
-        Gfx.rrect(c, const Rect.fromLTWH(120, y, 300, 20), 10, fill: kCream, stroke: kInk);
-        c.drawRect(const Rect.fromLTWH(kW / 2 - 60, y + 3, 120, 14), Paint()..color = const Color(0x998CC152));
-        c.drawCircle(Offset(kW / 2 + M.x * 150, y + 10), 14, Paint()..color = kAccent);
-        Gfx.text(c, '◀', 60, kSY + 400, size: 60, color: const Color(0x99FFF8EC));
-        Gfx.text(c, '▶', kW - 60, kSY + 400, size: 60, color: const Color(0x99FFF8EC));
-        if (M.id == 'bebe') Gfx.text(c, 'zZz', kPX + 60, kGY - curH() - 20 + sin(t * 3) * 6, size: 30, color: kCream, stroke: kInk, sw: 5);
+    final hy = kSY + 50 + lines.length * 44;
+    if (M.t < 2 && !M.done && M.hint.isNotEmpty) Gfx.text(c, M.hint, kW / 2, hy, size: 26, color: kCream, stroke: kInk, sw: 6, alpha: a * (2 - M.t).clamp(0, 1));
+    if (!M.done) {
+      Gfx.rrect(c, Rect.fromLTWH(120, hy + 24, 300, 12), 6, fill: kCream, stroke: kInk, lw: 2);
+      Gfx.rrect(c, Rect.fromLTWH(120, hy + 24, 300 * (1 - M.t / M.dur).clamp(0, 1), 12), 6, fill: kAccent);
     }
   }
 

@@ -72,6 +72,8 @@ class _VidaAppState extends State<VidaApp> with WidgetsBindingObserver {
             body: Listener(
               behavior: HitTestBehavior.translucent,
               onPointerDown: (e) => game.tap(e.localPosition),
+              onPointerMove: (e) => game.drag(e.localPosition),
+              onPointerUp: (e) => game.release(e.localPosition),
               child: GameWidget<VidaGame>(
                 game: game,
                 loadingBuilder: (_) => const ColoredBox(

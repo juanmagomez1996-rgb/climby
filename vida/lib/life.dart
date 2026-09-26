@@ -57,7 +57,8 @@ abstract class LifeListener {
   void yearPassed(int age, bool birthday);
   void stageChanged(int stage);
   void cardOpened(Json event);
-  void momentWanted();
+  /// Pide un minijuego: [id] concreto o al azar si es null; [onEnd] recibe si se ganó.
+  void momentWanted([String? id, Json? opts, void Function(bool ok)? onEnd]);
   void died();
   void familyChanged();
 }
@@ -77,7 +78,8 @@ class Life {
   final List<double> st;
   final Map<String, bool> flags = {};
   String? partner;
-  int hijaAge = 0;
+  int hijaAge = 0, perroAge = 0;
+  final List<String> seen = [];
   final List<Json> later = [];
   final List<Tag> tags = [];
   final Set<String> done = {};
@@ -168,6 +170,7 @@ class Life {
       s[i] = s[i].clamp(0, 100);
     }
     score += (s[2] + s[3] + s[0] * 0.5 + s[1] * 0.3) / 10;
+    final bday = a % 10 == 0 && a >= 10 && a <= 90;
     l.yearPassed(a, a % 10 == 0 && a <= 90);
 
     final sg = d.stageOf(a);
@@ -204,6 +207,10 @@ class Life {
         return;
       }
     }
+    if (bday) {
+      l.momentWanted('velas');
+      return;
+    }
     // decisiones
     final cands = d.events.where((e) {
       final ages = e['ages'] as List;
@@ -223,6 +230,7 @@ class Life {
     if (ev != null) {
       done.add(ev['id'] as String);
       card = ev;
+      seen.add(ev['id'] as String);
       lastEvent = a;
       l.cardOpened(ev);
       return;
@@ -237,12 +245,14 @@ class Life {
     if (o['unflag'] != null) flags[o['unflag'] as String] = false;
     if (o['partner'] != null) partner = o['partner'] as String;
     if (o['flag'] == 'hija') hijaAge = age;
+    if (o['flag'] == 'perro') perroAge = age;
     if (o['later'] != null) {
       final lt = Json.of(o['later'] as Json);
       lt['at'] = lt['at'] ?? age + (lt['in'] as num).toInt();
       later.add(lt);
     }
     if (o['m'] != null) banner('', o['m'] as String, 'msg');
+    if (o['tag'] != null && o['t'] == null) tags.add(Tag(age, tr(o['tag'] as String)));
     final fx = fxOf(o['fx']);
     if (o['cause'] != null && fx.isNotEmpty && fx[0] < 0) lastHurt = o['cause'] as String;
   }
@@ -274,6 +284,12 @@ class Life {
       }
     }
     l.familyChanged();
+    if (o['game'] != null) {
+      l.momentWanted(o['game'] as String, {'title': o['gameTitle'], 'hint': o['gameHint']}, (ok) {
+        outcome((ok ? o['win'] : o['lose']) as Json?);
+        l.familyChanged();
+      });
+    }
     return hurt;
   }
 

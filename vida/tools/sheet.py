@@ -14,10 +14,12 @@ ap = argparse.ArgumentParser()
 ap.add_argument('name'); ap.add_argument('--frames', type=int, default=16)
 ap.add_argument('--height', type=int, default=400); ap.add_argument('--cols', type=int, default=8)
 ap.add_argument('--period', type=int, default=0)
+ap.add_argument('--src', default='')      # vídeo de origen si no es vid_<nombre>
+ap.add_argument('--xr', default='')       # franja horizontal 'a,b' (fracciones) para vídeos con dos personajes
 a = ap.parse_args()
 tmp = ROOT / 'raw' / ('fr_' + a.name)
 shutil.rmtree(tmp, ignore_errors=True); tmp.mkdir()
-subprocess.run([imageio_ffmpeg.get_ffmpeg_exe(), '-loglevel', 'error', '-i', str(ROOT / 'raw' / f'vid_{a.name}.mp4'), str(tmp / '%03d.png')], check=True)
+subprocess.run([imageio_ffmpeg.get_ffmpeg_exe(), '-loglevel', 'error', '-i', str(ROOT / 'raw' / f'vid_{a.src or a.name}.mp4'), str(tmp / '%03d.png')], check=True)
 fs = sorted(glob.glob(str(tmp / '*.png')))
 small = [np.asarray(Image.open(f).convert('L').resize((96, 128))).astype(np.float32) for f in fs]
 n = len(fs)
@@ -31,6 +33,9 @@ else:
 print(a.name, 'frames', n, 'period', p, 'diff', round(d[p], 2))
 idx = [round(i * p / a.frames) for i in range(a.frames)]
 ims = [clean(key(Image.open(fs[i]))) for i in idx]
+if a.xr:
+    xa, xb = (float(v) for v in a.xr.split(','))
+    ims = [im.crop((int(xa * im.width), 0, int(xb * im.width), im.height)) for im in ims]
 x0, y0, x1, y1 = bbox(ims)
 pad = 6
 x0, y0 = max(0, x0 - pad), max(0, y0 - pad)

@@ -63,6 +63,13 @@ window.LIFE = {
     { id: 'informe', ages: [22, 62], title: '¡ENTREGA URGENTE!', hint: '¡Toca rápido, rápido!' },
     { id: 'bebe', ages: [32, 38], need: ['hija'], title: '¡DUERME AL BEBÉ!', hint: 'Toca a izquierda o derecha para acunar' },
     { id: 'equilibrio', ages: [13, 99], title: '¡MANTÉN EL EQUILIBRIO!', hint: 'Toca izquierda o derecha' },
+    { id: 'canasta', ages: [11, 30], title: '¡ENCESTA!', hint: 'Arrastra la pelota hacia atrás y suelta' },
+    { id: 'pesca', ages: [60, 99], title: '¡A PESCAR!', hint: 'Toca justo cuando el corcho se hunda' },
+    { id: 'recuerdos', ages: [70, 99], title: 'RECUERDOS', hint: 'Encuentra las parejas de tu vida' },
+    // solo los lanzan los cumpleaños o las decisiones
+    { id: 'velas', trig: 1, ages: [10, 90], title: '¡SOPLA LAS VELAS!', hint: 'Pasa el dedo por las llamas' },
+    { id: 'ramo', trig: 1, ages: [18, 60], title: '¡ATRAPA EL RAMO!', hint: 'Arrastra a Ramón hasta el ramo' },
+    { id: 'aparcar', trig: 1, ages: [16, 99], title: '¡EXAMEN DE CONDUCIR!', hint: 'Mantén pulsado para acelerar, suelta para frenar' },
   ],
 
   events: [
@@ -95,7 +102,7 @@ window.LIFE = {
       { t: 'Sí, azul eléctrico', fx: [0, 0, 8, 2], m: 'Tu madre llora. Tú brillas.' },
       { t: 'Mejor no', fx: [0, 0, -2, 0] }] },
     { id: 'banda', ages: [14, 17], q: 'Tus amigos montan un grupo de música.', o: [
-      { t: 'Tocas la batería', fx: [-2, 0, 10, 8], tag: 'tocó la batería en Los Grapas', later: { in: 25, t: 'Los Grapas se reúnen para un concierto. Sois horribles. Es precioso.', fx: [0, 0, 10, 8] } },
+      { t: 'Tocas la batería', fx: [-2, 0, 10, 8], tag: 'tocó la batería en Los Grapas', game: 'ritmo', gameTitle: '¡A LA BATERÍA!', gameHint: 'Toca cuando el aro cierre', later: { in: 25, t: 'Los Grapas se reúnen para un concierto. Sois horribles. Es precioso.', fx: [0, 0, 10, 8] } },
       { t: 'Llevas las camisetas', fx: [0, 5, 3, 3] }] },
     { id: 'examen', ages: [15, 16], key: 1, q: 'Mañana hay examen. ¿Estudias o te vas de fiesta?', o: [
       { t: 'Estudio', fx: [0, 0, -5, -3], tag: 'estudió la noche del examen', later: { at: 30, t: 'Aquel examen te abrió una puerta. Una pequeña.', fx: [0, 20, 0, 0] } },
@@ -109,9 +116,9 @@ window.LIFE = {
       { t: 'Aceptas', fx: [-2, 8, 3, 3], tag: 'vendió helados un verano entero' },
       { t: 'Verano de siesta', fx: [3, 0, 6, 0] }] },
     { id: 'carnet', ages: [18, 19], q: 'Examen práctico del carnet de conducir.', o: [
-      { t: 'Te presentas', chance: { p: 0.55, stat: 0,
-        ok: { fx: [0, -5, 8, 0], m: '¡Aprobado a la primera!', flag: 'carnet' },
-        ko: { fx: [0, -8, -6, 0], m: 'Te subes a una rotonda. Literalmente.' } } },
+      { t: 'Te presentas', fx: [0, -3, 0, 0], game: 'aparcar',
+        win: { fx: [0, 0, 8, 2], m: '¡Aprobado a la primera!', flag: 'carnet', tag: 'aprobó el carné a la primera' },
+        lose: { fx: [0, -5, -6, 0], m: 'Suspenso. El examinador pide un café doble.' } },
       { t: 'Paso, voy en bus', fx: [0, 3, 0, 0] }] },
     { id: 'insti', ages: [18, 19], key: 1, q: 'Se acaba el instituto. ¿Y ahora?', o: [
       { t: 'Universidad', fx: [0, -10, 0, 5], tag: 'fue a la universidad', later: { at: 28, t: 'El título por fin sirve para algo.', fx: [0, 25, 5, 0] } },
@@ -129,7 +136,7 @@ window.LIFE = {
       { t: 'Vas', fx: [0, -12, 14, 4], tag: 'vio auroras boreales' },
       { t: 'Te quedas', fx: [0, 3, -3, 0] }] },
     { id: 'boda', ages: [27, 30], key: 1, need: ['pareja'], q: '{p} quiere casarse contigo.', o: [
-      { t: '¡Sí, quiero!', fx: [0, -10, 15, 15], flag: 'casado', tag: 'se casó con {p}' },
+      { t: '¡Sí, quiero!', fx: [0, -10, 15, 15], flag: 'casado', tag: 'se casó con {p}', game: 'ramo' },
       { t: 'Todavía no...', fx: [0, 0, -5, -15], chance: { p: 0.5, stat: 3,
         ok: { m: '{p} espera. Pero lo apunta.' },
         ko: { unflag: 'pareja', m: '{p} se va. Se lleva la tostadora.' } } }] },
@@ -142,7 +149,7 @@ window.LIFE = {
       { t: 'Hipoteca a 30 años', fx: [0, -20, 5, 0], tag: 'se hipotecó 30 años', later: { in: 30, t: 'Terminas de pagar el piso. Lo celebras con una croqueta.', fx: [0, 15, 10, 0] } },
       { t: 'Sigo de alquiler', fx: [0, -5, 0, 0], later: { in: 8, t: 'El casero sube el alquiler. Otra vez.', fx: [0, -10, -4, 0] } }] },
     { id: 'hijos', ages: [31, 34], key: 1, need: ['pareja'], q: '¿Tener hijos?', o: [
-      { t: 'Sí, una niña: Alba', fx: [-5, -20, 12, 10], flag: 'hija', tag: 'tuvo una hija, Alba', later: { at: 58, t: 'Alba te llama solo para hablar.', fx: [0, 0, 15, 10] } },
+      { t: 'Sí, una niña: Alba', fx: [-5, -20, 12, 10], flag: 'hija', tag: 'tuvo una hija, Alba', game: 'bebe', gameTitle: '¡DUERME A ALBA!', later: { at: 58, t: 'Alba te llama solo para hablar.', fx: [0, 0, 15, 10] } },
       { t: 'Mejor una planta', fx: [0, 0, 3, 0], tag: 'cuidó de una planta 23 años', flag: 'planta', later: { at: 55, t: 'La planta sigue viva. Es tu mayor logro.', fx: [0, 0, 5, 0] } }] },
     { id: 'plantavecina', ages: [31, 35], not: ['pareja'], q: 'Tu vecina se muda y te deja una planta.', o: [
       { t: 'La cuidas', fx: [0, 0, 4, 2], flag: 'planta', tag: 'adoptó una planta' },
@@ -161,7 +168,7 @@ window.LIFE = {
       { t: 'Tienes reunión', fx: [0, 5, -6, -12], later: { in: 12, t: '{h} te recuerda lo del árbol en tu cumpleaños.', fx: [0, 0, -5, -5] } }] },
     { id: 'crisis', ages: [40, 43], key: 1, q: 'Crisis de los 40.', o: [
       { t: 'Te compras una moto roja', fx: [0, -15, 15, 0], tag: 'se compró una moto roja', risk: { p: 0.3, fx: [-30, 0, -5, 0], t: 'Te la pegas con la moto. Tres meses en el hospital.', cause: 'la moto roja' } },
-      { t: 'Corres una maratón', fx: [15, 0, 5, 0], tag: 'corrió una maratón' },
+      { t: 'Corres una maratón', fx: [8, 0, 2, 0], tag: 'corrió una maratón', game: 'informe', gameTitle: '¡CORRE LA MARATÓN!', gameHint: '¡Toca rápido para correr!' },
       { t: 'Lo aceptas y ya', fx: [0, 0, -5, 5] }] },
 
     // ---------- MADUREZ ----------
@@ -195,6 +202,7 @@ window.LIFE = {
       { t: 'Te ofreces a cuidarlo', fx: [-3, 0, 12, 12], flag: 'nieto', tag: 'cuidó de su nieto' },
       { t: 'Solo los domingos', fx: [0, 0, 5, 3], flag: 'nieto' }] },
     { id: 'jubila', ages: [63, 66], key: 1, not: ['jubilado'], q: '¿Te jubilas ya?', o: [
+      { t: 'Sí, ¡a pescar!', fx: [5, -10, 8, 3], flag: 'jubilado', tag: 'se jubiló para ir a pescar', game: 'pesca' },
       { t: 'Sí, a mirar obras', fx: [5, -10, 10, 5], flag: 'jubilado', tag: 'miró obras con pasión' },
       { t: 'Sigo currando', fx: [-10, 15, -5, -5] }] },
 
