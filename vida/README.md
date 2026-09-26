@@ -13,11 +13,17 @@ los prompts para regenerarlo con coherencia están en [ART.md](ART.md).
 - 5 etapas con su fondo panorámico, su velocidad, su salto (doble salto de los 13 a los 44) y su música.
 - 45 eventos con ilustración propia y ventanas de edad: en cada vida salen unos 25–30 y nunca en el mismo orden.
   Consecuencias diferidas, riesgos, azar que depende de las stats y eventos que solo existen si tienes pareja o hija.
-- 7 minijuegos: atrapar la pelota, tocar corazones, primer baile (ritmo), lluvia de monedas, entrega urgente
-  (pulsar rápido), dormir al bebé y equilibrio.
+- 13 minijuegos (`html/moments.js` y `lib/moments.dart`): pelota, corazones, primer baile/batería (ritmo), monedas,
+  entrega urgente/maratón (pulsar rápido), dormir al bebé, equilibrio, **soplar las velas** en cada cumpleaños redondo,
+  **encestar** (tirachinas), **atrapar el ramo** en la boda, **aparcar** en el examen del carné (mantener pulsado),
+  **pescar** al jubilarse y **recuerdos** (memoria con las ilustraciones de las decisiones que viviste).
+  Algunas decisiones lanzan su minijuego y el resultado cambia lo que pasa (el carné depende de cómo aparques).
+- Controles: tocar para saltar (mantener = salto más alto; doble salto de los 13 a los 44), arrastrar y soltar en los minijuegos.
+- 20 segundos para decidir cada carta.
 - 16 coleccionables y 16 obstáculos distintos según la etapa (ganso, facturas, piel de plátano, paloma…).
-- Familia animada que acompaña a Ramón y salta los obstáculos: Lucía o Marga (jóvenes y mayores), Alba (niña y
-  adulta) y el perro Tornillo.
+- Familia animada que envejece con Ramón y salta los obstáculos: Lucía o Marga (30, 50 y 70 años), Alba (niña,
+  adolescente, adulta y a los 45) y Tornillo (cachorro, adulto y viejo). Ramón empieza gateando de bebé y cada edad
+  tiene su salto animado. Vecinos que pasan por el fondo y ambiente por etapa (mariposas, pétalos, pájaros, hojas).
 - Equilibrado con simulación (`tools/sim.js`): muerte media ≈ 74–77 años; los objetos rinden menos cuanto más
   llena está la barra, y la felicidad y las relaciones vuelven poco a poco a su punto medio si no se cuidan.
 

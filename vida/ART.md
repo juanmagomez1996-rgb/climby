@@ -5,7 +5,7 @@ paleta cálida y nostálgica, grano de papel). Todo se generó con **Higgsfield*
 referencia para mantener la coherencia. El registro de cada trabajo (nombre → job → URL original) está en
 `tools/jobs.tsv`; `tools/pull.py` vuelve a descargar los originales en `raw/` (carpeta ignorada por git).
 
-Coste aproximado hasta ahora: ~275 créditos (Nano Banana 2 ≈ 1,5 por imagen; Kling 3.0 std 3 s sin sonido ≈ 3,75 por clip).
+Coste aproximado hasta ahora: ~380 créditos (Nano Banana 2 ≈ 1,5 por imagen; Kling 3.0 std 3 s sin sonido ≈ 3,75 por clip).
 
 ## Cadena de producción
 
@@ -49,6 +49,25 @@ Referencias subidas a Higgsfield (media_id) que se reutilizan en los prompts:
 - **Marga** — ~30: pelo negro rizado corto, gafas rojas redondas, camiseta de rayas mostaza, falda turquesa, zapatillas blancas.
 - **Alba** (hija) — 6 años: dos coletas, peto naranja, camiseta amarilla. 28 años: melena corta, chaqueta naranja.
 - **Tornillo** (perro) — mestizo pequeño y desgreñado, canela y blanco, una oreja caída y otra de pie, collar rojo.
+
+## Segunda tanda (misma estética y edades)
+
+Para que todos los personajes compartan estilo se pasa **siempre** la lámina de Ramón (`750ae631…`) como segunda
+referencia, además de la del propio personaje, y se pide «same line thickness, same simple rounded face shape».
+
+| Personaje | Edades con animación |
+|---|---|
+| Ramón | bebé (0–3), niño, adolescente, adulto, maduro, anciano + **salto** de cada edad (`*_jump`) |
+| Lucía / Marga | ~30, ~50 y ~70 (`lucia`, `lucia_mid`, `lucia_old`; `marga`, `marga_mid`, `marga_old`) |
+| Alba | niña, adolescente, adulta y ~45 (`alba`, `alba_teen`, `alba_adult`, `alba_mid`) |
+| Tornillo | cachorro, adulto y viejo (`dog_puppy`, `dog`, `dog_old`) |
+| Vecinos del fondo | abuela con carrito, oficinista, niña con globo, corredor (`npc_*`), generados por parejas y separados con `sheet.py --xr` |
+
+- **Saltos**: Kling con el perfil como primer y último fotograma y «crouches, then does one big jump… lands back in exactly the same
+  spot». `tools/jump.py` detecta el despegue y el aterrizaje, alinea los pies (la altura la pone la física) y guarda en el JSON
+  los fotogramas en el aire (`air0`, `air1`) y la altura de referencia (`ref`).
+- **Objetos de minijuegos** (`items_mini`): canasta, balón, coche, tarta grande, vela, ramo, pez, corcho, mariposa, pájaro,
+  hoja, pétalo, marco de foto, cometa, sonajero y barca.
 
 ## Plantillas de prompt
 
