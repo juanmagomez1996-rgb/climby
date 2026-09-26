@@ -298,8 +298,18 @@
   const T_MOTE = tex('mote_sheet.png', true);
   U.uCaus.value = T_CAUS;
   const models = {};
+  // Models ship as base64 GLB inside JSON: the artifact viewer serves .json but not .glb, and its
+  // CSP blocks fetch() of data: URIs, so each file is decoded here and parsed from memory.
+  // Textures then load as blob: images, which the CSP allows (ImageBitmapLoader would fetch them).
+  try { window.createImageBitmap = undefined; } catch (e) {}
   for (const n of ['whale', 'whale_collider', 'acorn', 'goose', 'ytang', 'btang', 'turtle', 'reef', 'armR', 'armL', 'fin']) {
-    gltfLoader.load(ASSET + n + '.json', g => { models[n] = g.scene; }, undefined, e => console.error('No se pudo cargar', n, e));
+    const url = ASSET + n + '.json';
+    manager.itemStart(url);
+    fetch(url).then(r => { if (!r.ok) throw new Error(r.status + ' ' + url); return r.json(); }).then(j => {
+      const bin = atob(j.glb), buf = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+      gltfLoader.parse(buf.buffer, '', g => { models[n] = g.scene; manager.itemEnd(url); }, e => { console.error('No se pudo leer', n, e); manager.itemError(url); manager.itemEnd(url); });
+    }).catch(e => { console.error('No se pudo cargar', n, e); manager.itemError(url); manager.itemEnd(url); });
   }
 
   // ---------------------------------------------------------------- sky, surface, light shafts
