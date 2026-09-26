@@ -3,7 +3,7 @@
 Microjuegos de 4–5 segundos en una tele de otra dimensión, con estética de **plastilina realista** (stop-motion).
 Versión Flutter + Flame del prototipo `prototypes/03-zapping.html`, lista para preparar su publicación en Google Play.
 
-- 30 canales (microjuegos), cada uno con una mecánica distinta, + un jefe cada 10 canales.
+- 60 canales (microjuegos), cada uno con una mecánica distinta, + un jefe cada 10 canales. La lista de los 30 últimos está en docs/canales_31_60.md.
 - 4 vidas; cada 5 canales todo va más rápido.
 - Solo vertical, táctil, sin anuncios, sin permisos y sin recogida de datos.
 
@@ -15,7 +15,7 @@ Todos los gráficos se generaron con **Higgsfield** a partir de una hoja de pers
 |---|---|---|
 | Personajes, objetos, botones, logo, tele (fondo transparente) | GPT Image 2.5 | `assets/images/*.webp` |
 | 13 fondos de canal (dioramas de plastilina) | GPT Image 2.5 | `assets/images/bg_*.webp` |
-| 15 animaciones en bucle (Tito, Glotón, reportero, chef, presentador, Botón, Dormilón, jefe, maestro de kung-fu, funcionario, pastelero, equilibrista, bailarín, vaca alienígena y rival de ping-pong) | MiniMax H3 Max (vídeo con el mismo fotograma inicial y final) → croma y hoja de sprites de 60 fotogramas a 12 fps | `assets/images/anim_*.webp` |
+| 43 animaciones en bucle (las 28 nuevas de los canales 31–60 más Tito, Glotón, reportero, chef, presentador, Botón, Dormilón, jefe, maestro de kung-fu, funcionario, pastelero, equilibrista, bailarín, vaca alienígena y rival de ping-pong) | MiniMax H3 Max (vídeo con el mismo fotograma inicial y final) → croma y hoja de sprites de 60 fotogramas a 12 fps | `assets/images/anim_*.webp` |
 | Icono y gráfico destacado | GPT Image 2.5 | `store/` |
 
 Encima de eso, el código añade animación procedimental: "hervido" de stop-motion a 12 fps (`boil()` en `lib/gfx.dart`), estiramientos y aplastamientos, y partículas de bolitas de plastilina.
@@ -28,6 +28,7 @@ lib/
   main.dart      arranque, orientación, entrada táctil y overlays
   game.dart      bucle de partida (sintonía → juego → resultado), tele, HUD y efectos CRT
   channels.dart  canales 1–12 + el jefe
+  channels3.dart canales 31–60
   channels2.dart canales 13–30 (deslizar, tirachinas, trazar, memoria, contar, apilar,
                  mantener y soltar, encontrar el raro, topos, cortar, equilibrio, pilotar,
                  ritmo, clasificar, girar, frotar, rodear y rebotar)
@@ -50,7 +51,7 @@ flutter test
 
 El sandbox (probar un canal con vidas infinitas; se repite al terminar y las flechas del marcador pasan
 al anterior o al siguiente) está oculto en el menú por ahora. Para abrirlo directamente en un canal:
-`flutter run --dart-define=PRACTICE=4` (índice desde 0; el 30 es el jefe).
+`flutter run --dart-define=PRACTICE=4` (índice desde 0; el último, 60, es el jefe).
 
 Para ver todos los canales en orden sin perder vidas (útil para capturas):
 `flutter run --dart-define=TOUR=true` (añade `--dart-define=TOUR_FROM=12` para empezar por el canal 13).
