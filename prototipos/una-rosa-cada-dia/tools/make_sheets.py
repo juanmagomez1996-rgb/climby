@@ -96,7 +96,15 @@ def pick(spec):
         return raw[a:a + spec.get('n', 14)]
     if kind == 'stop':
         return raw[max(0, e - spec.get('n', 22)):e]
-    return raw[a:e]           # clip, hold, jump
+    if kind == 'leap':   # keep only the leap itself: the stretch around the highest point, plus take-off and landing
+        bots = np.array([(bbox(f[..., 3]) or (0, 0, 0, 0))[3] for f in raw], float)
+        lift = np.percentile(bots, 90) - bots; top = int(lift.argmax()); thr = lift.max() * .3
+        i0 = top; i1 = top
+        while i0 > 0 and lift[i0 - 1] > thr: i0 -= 1
+        while i1 < len(raw) - 1 and lift[i1 + 1] > thr: i1 += 1
+        return raw[max(0, i0 - 7): min(len(raw), i1 + 9)]
+    seg = raw[a:e]           # clip, hold, jump, leap
+    return seg[int(len(seg) * spec.get('from', 0)):]
 
 
 def uncut(seq):
@@ -146,30 +154,42 @@ def process(name, specs):
     for anim, spec, seq, fps in data:
         kind = spec['kind']
         boxes = [bbox(f[..., 3]) for f in seq]
+        sc = scale
+        if 'height' in spec:   # expected silhouette height relative to standing (e.g. arms raised)
+            hs = [b[3] - b[1] for b in boxes if b]
+            sc = F * .8 * spec['height'] / np.median(hs)
         ok = [b for b in boxes if b]
         ubot = max(b[3] for b in ok)
         cs = [body_center(f[..., 3], b) if b else 0 for f, b in zip(seq, boxes)]
-        if kind in ('clip', 'hold', 'jump', 'start', 'stop'):
+        if kind == 'leap':
+            k = 5; cs = np.convolve(np.pad(cs, (k // 2, k // 2), mode='edge'), np.ones(k) / k, mode='valid')
+        elif kind in ('clip', 'hold', 'jump', 'start', 'stop'):
             ref_c = cs[-3:] if kind == 'stop' else cs[:3]
             cs = [float(np.mean(ref_c))] * len(cs)            # fixed anchor keeps the body's own motion
         else:
             k = 7; cs = np.convolve(np.pad(cs, (k // 2, k // 2), mode='wrap' if kind == 'cycle' else 'edge'), np.ones(k) / k, mode='valid')
         row, lifts = [], []
         for f, b, cx in zip(seq, boxes, cs):
-            im = Image.fromarray(f); im = im.resize((int(im.width * scale), int(im.height * scale)), Image.LANCZOS)
-            bottom = ((b[3] if (kind == 'jump' and b) else ubot)) * scale
+            im = Image.fromarray(f); im = im.resize((int(im.width * sc), int(im.height * sc)), Image.LANCZOS)
+            bottom = ((b[3] if (kind in ('jump', 'leap') and b) else ubot)) * sc
             lifts.append(ubot - (b[3] if b else ubot))
             cell = Image.new('RGBA', (F, F), (0, 0, 0, 0))
-            cell.alpha_composite(im, (int(F / 2 - cx * scale), int(F - 3 - bottom)))
+            cell.alpha_composite(im, (int(F / 2 - cx * sc), int(F - 3 - bottom)))
             row.append(cell)
         rows.append(row)
         m = {'row': len(rows) - 1, 'frames': len(row), 'kind': kind, 'fps': round(fps, 2)}
-        if kind == 'jump':
-            L = np.array(lifts, float); top = int(L.argmax()); air = np.where(L > L.max() * .12)[0]
+        if kind in ('jump', 'leap'):
+            L = np.array(lifts, float); top = int(L.argmax()); thr = L.max() * .25
+            i0 = top; i1 = top
+            while i0 > 0 and L[i0 - 1] > thr: i0 -= 1
+            while i1 < len(L) - 1 and L[i1 + 1] > thr: i1 += 1
+            air = np.arange(i0, i1 + 1)
             m['crouch'] = [int(i) for i in range(max(0, air.min() - 6), air.min())]
             m['rise'] = [int(i) for i in air if i <= top]
             m['fall'] = [int(i) for i in air if i > top] or [top]
             m['land'] = [int(i) for i in range(air.max() + 1, min(len(L), air.max() + 9))]
+        if 'split' in spec:   # phases marked by eye when the clip fools the detection
+            for ph, (a0, a1) in spec['split'].items(): m[ph] = list(range(a0, min(a1, len(row))))
         if kind == 'hold':
             m['loopFrom'] = int(len(row) * .62)
         if kind == 'cycle':
@@ -184,7 +204,11 @@ def process(name, specs):
     a = np.asarray(rows[0][0])[..., 3]; b = bbox(a)
     sheet.save(f'{OUT}/{name}.png', optimize=True)
     atlas = {'frameW': F, 'frameH': F, 'anchorX': F / 2, 'anchorY': F - 3, 'bodyH': int(b[3] - b[1]), 'anims': meta}
-    json.dump(atlas, open(f'{OUT}/{name}.json', 'w'), indent=1)
+    poses = {}
+    for (anim, spec, seq, fps), row in zip(data, rows):
+        poses[anim] = [''.join('0123456789abcdef'[min(15, int(v / 16))] for v in np.asarray(cell.getchannel('A').resize((16, 16), Image.BOX)).flatten()) for cell in row]
+    atlas['poses'] = poses
+    json.dump(atlas, open(f'{OUT}/{name}.json', 'w'))
     print(name, sheet.size, atlas['bodyH'])
 
 
@@ -198,12 +222,13 @@ if __name__ == '__main__':
         'run': {'video': 'bro_run_flee.mp4', 'kind': 'cycle', 'lo': 12, 'hi': 28},
         'run_start': {'video': 'bro_run_flee.mp4', 'kind': 'start', 'n': 12},
         'run_stop': {'video': 'bro_run_stop.mp4', 'kind': 'stop', 'n': 22},
-        'turn': {'video': 'bro_turn.mp4', 'kind': 'clip'},
         'jump': {'video': 'bro_jump2.mp4', 'kind': 'jump'},
         'push': {'video': 'bro_push.mp4', 'kind': 'cycle', 'lo': 14, 'hi': 36},
         'pull': {'video': 'bro_pull.mp4', 'kind': 'cycle', 'lo': 14, 'hi': 36},
         'climb': {'video': 'bro_climb.mp4', 'kind': 'clip'},
-        'fall': {'video': 'bro_fall.mp4', 'kind': 'cycle', 'lo': 10, 'hi': 30},
+        'fall': {'video': 'bro_fall3.mp4', 'kind': 'cycle', 'lo': 12, 'hi': 36, 'height': 1.22},
+        'leap': {'video': 'bro_leap.mp4', 'kind': 'leap', 'split': {'crouch': [0, 5], 'rise': [5, 11], 'fall': [11, 15], 'land': [15, 21]}},
+        'land': {'video': 'bro_land.mp4', 'kind': 'clip', 'from': .5},
         'collapse': {'video': 'bro_collapse.mp4', 'kind': 'clip'},
         'kneel': {'video': 'bro_kneel.mp4', 'kind': 'hold'},
         'offer': {'video': 'bro_offer.mp4', 'kind': 'hold'},
