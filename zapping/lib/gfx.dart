@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flame/cache.dart';
 import 'package:flutter/painting.dart';
 
+import 'asset_data.dart';
 import 'font_data.dart';
 
 final rng = math.Random();
@@ -135,16 +136,52 @@ class Gfx {
   static final Map<String, ui.Image> img = {};
   static final List<ui.Image> noise = [];
 
+  static Images? _images;
+  static final Set<String> _pending = {};
+
+  /// Al arrancar solo se abren las imágenes comunes (interfaz, tele, menú). Las de cada canal se
+  /// abren al sintonizarlo y se liberan al cambiar de canal: así el juego cabe en la memoria de
+  /// cualquier móvil (todas juntas ocuparían casi 1 GB).
   static Future<void> load(Images images) async {
-    await Future.wait([
-      for (final n in spriteNames)
-        images.load('$n.webp').then((i) => img[n] = i),
-      for (final n in anims.keys)
-        images.load('anim_$n.webp').then((i) => img['anim_$n'] = i),
-    ]);
+    _images = images;
+    await ensure(kCoreImages);
     for (var k = 0; k < 3; k++) {
       noise.add(await images.load('noise$k.png'));
     }
+  }
+
+  /// Abre (si faltan) las imágenes [keys] ('nombre' o 'anim_nombre').
+  static Future<void> ensure(Iterable<String> keys) => Future.wait([for (final k in keys) _fetch(k)]);
+
+  static Future<void> _fetch(String key) async {
+    if (img.containsKey(key) || _images == null || !kImageSize.containsKey(key)) return;
+    if (!_pending.add(key)) {
+      while (_pending.contains(key)) {
+        await Future<void>.delayed(const Duration(milliseconds: 16));
+      }
+      return;
+    }
+    try {
+      img[key] = await _images!.load('$key.webp');
+    } finally {
+      _pending.remove(key);
+    }
+  }
+
+  /// Libera todo lo que no sea común ni esté en [keep].
+  static void releaseExcept(Set<String> keep) {
+    for (final k in img.keys.toList()) {
+      if (kCoreImages.contains(k) || keep.contains(k) || _pending.contains(k)) continue;
+      img.remove(k);
+      _images?.clear('$k.webp');
+    }
+  }
+
+  /// La imagen si ya está abierta; si no, la pide (y ese frame no se dibuja).
+  static ui.Image? image(String key) {
+    final i = img[key];
+    if (i == null) _fetch(key);
+    return i;
   }
 
   static final Paint _p = Paint()..filterQuality = FilterQuality.medium;
@@ -161,7 +198,8 @@ class Gfx {
       Rect? src,
       Offset? drop,
       Color? tint}) {
-    final im = img[name]!;
+    final im = image(name);
+    if (im == null) return;
     final s = src ?? Rect.fromLTWH(0, 0, im.width.toDouble(), im.height.toDouble());
     if (drop != null) _silhouette(c, im, s, x + drop.dx, y + drop.dy, h, rot, sx, sy, flip, ax, ay);
     _draw(c, im, s, x, y, h, rot, sx, sy, alpha, flip, ax, ay, tint);
@@ -169,7 +207,8 @@ class Gfx {
 
   /// Solo la sombra con la silueta del sprite (cuando el sprite se dibuja dentro de un lienzo girado).
   static void silhouette(Canvas c, String name, double x, double y, double h, {double rot = 0, double ax = .5, double ay = .5}) {
-    final im = img[name]!;
+    final im = image(name);
+    if (im == null) return;
     _silhouette(c, im, Rect.fromLTWH(0, 0, im.width.toDouble(), im.height.toDouble()), x, y, h, rot, 1, 1, false, ax, ay);
   }
 
@@ -213,7 +252,9 @@ class Gfx {
     }
     final src = Rect.fromLTWH((f % a.cols) * a.fw.toDouble(),
         (f ~/ a.cols) * a.fh.toDouble(), a.fw.toDouble(), a.fh.toDouble());
-    _draw(c, img['anim_$name']!, src, x, y, h, rot, sx, sy, alpha, flip, ax, ay, tint);
+    final im = image('anim_$name');
+    if (im == null) return;
+    _draw(c, im, src, x, y, h, rot, sx, sy, alpha, flip, ax, ay, tint);
   }
 
   static final Paint _tp = Paint()..filterQuality = FilterQuality.medium;
@@ -234,7 +275,11 @@ class Gfx {
 
   /// Cubre el rectángulo con la imagen (recorte centrado).
   static void cover(Canvas c, String name, Rect r, {double zoom = 1, Offset pan = Offset.zero}) {
-    final im = img[name]!;
+    final im = image(name);
+    if (im == null) {
+      c.drawRect(r, Paint()..color = const Color(0xFF241A33));
+      return;
+    }
     final iw = im.width.toDouble(), ih = im.height.toDouble();
     final s = math.max(r.width / iw, r.height / ih) * zoom;
     final w = r.width / s, h = r.height / s;
@@ -245,8 +290,8 @@ class Gfx {
   static double aspect(String name) {
     final a = anims[name];
     if (a != null) return a.fw / a.fh;
-    final im = img[name];
-    return im == null ? 1 : im.width / im.height;
+    final sz = kImageSize[name];
+    return sz == null ? 1 : sz.$1 / sz.$2;
   }
 
   // ---------- Texto: fuente de plastilina hecha de sprites ----------
@@ -423,7 +468,8 @@ class Gfx {
 
   /// Dibuja un sprite estirado en [dst] sin deformar las esquinas (9 trozos); [corner] en fracción del alto de la imagen.
   static void nine(Canvas c, String name, Rect dst, {double corner = .3, Paint? paint}) {
-    final im = img[name]!;
+    final im = image(name);
+    if (im == null) return;
     final p = paint ?? _p;
     final iw = im.width.toDouble(), ih = im.height.toDouble();
     final cs = ih * corner;

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zapping_infinito/asset_data.dart';
 import 'package:zapping_infinito/channels.dart';
 import 'package:zapping_infinito/channels2.dart';
 import 'package:zapping_infinito/channels3.dart';
@@ -58,4 +59,15 @@ void balanceTest() {
       expect(run(true), 0, reason: 'con un control razonable debe aguantar');
     });
   }
+
+  test('cada canal tiene su lista de imágenes (si falla: python3 tool/gen_assets.py)', () {
+    final g = ZappingGame();
+    for (final f in [...allChannels, Boss.new]) {
+      final c = f(g);
+      expect(kChannelImages.containsKey(c.name), isTrue, reason: c.name);
+      for (final k in c.images) {
+        expect(kImageSize.containsKey(k), isTrue, reason: '${c.name}: $k');
+      }
+    }
+  });
 }

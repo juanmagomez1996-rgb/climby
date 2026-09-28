@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui';
 
+import 'asset_data.dart';
 import 'boss_data.dart';
 import 'game.dart';
 import 'gfx.dart';
@@ -58,6 +59,9 @@ abstract class Channel {
   void render(Canvas c);
 
   void drawBg(Canvas c) => Gfx.cover(c, bg, ZappingGame.bleed);
+
+  /// Imágenes que usa este canal (se abren al sintonizarlo; ver tool/gen_assets.py).
+  Set<String> get images => {bg, ...?kChannelImages[name]};
 
   /// Convierte una fracción del fondo (imagen 4:5 recortada para cubrir la tele) a coordenadas de pantalla.
   /// Sirve para apoyar personajes justo en el suelo o la mesa que se ve en el decorado.

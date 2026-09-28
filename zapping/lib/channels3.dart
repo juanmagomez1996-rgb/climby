@@ -24,7 +24,8 @@ Offset _clampS(Offset o) => Offset(o.dx.clamp(ZappingGame.screen.left + 10, Zapp
 
 /// Decorado panorámico que se desplaza: se repite en espejo (sin costuras) y cubre la tele.
 void scrollBg(Canvas c, String name, double offset) {
-  final im = Gfx.img[name]!;
+  final im = Gfx.image(name);
+  if (im == null) return;
   final r = ZappingGame.bleed;
   final s = r.height / im.height;
   final w = im.width * s;

@@ -267,9 +267,36 @@ class ZappingGame extends FlameGame {
     }
     c.init(level);
     cur = c;
+    _loadImages(c);
     phase = Phase.tuning;
     phaseT = 0;
     Sfx.play('static', volume: .5);
+  }
+
+  /// ¿Están abiertas las imágenes del canal actual?
+  bool imagesReady = false;
+
+  /// El canal que vendrá después (para precargarlo mientras se juega el actual).
+  Channel? _peekNext() {
+    final n = ch + 1;
+    if (practice != null) return makeChannel(practice!);
+    if (tour) {
+      final i = (n - 1 + tourFrom) % (allChannels.length + 1);
+      return i == allChannels.length ? Boss(this) : allChannels[i](this);
+    }
+    if (n % 10 == 0) return Boss(this);
+    return bag.isEmpty ? null : allChannels[bag.last](this);
+  }
+
+  /// Libera lo que ya no hace falta, abre lo del canal nuevo y precarga el siguiente.
+  void _loadImages(Channel c) {
+    final next = _peekNext();
+    Gfx.releaseExcept({...c.images, ...?next?.images});
+    imagesReady = false;
+    Gfx.ensure(c.images).catchError((_) {}).whenComplete(() {
+      if (cur == c) imagesReady = true;
+      if (next != null) Gfx.ensure(next.images).catchError((_) {});
+    });
   }
 
   void _finish(bool win) {
@@ -326,7 +353,8 @@ class ZappingGame extends FlameGame {
       c.vt += dt;
       switch (phase) {
         case Phase.tuning:
-          if (phaseT > (c.boss ? 1.9 : 1.35)) {
+          // no empieza hasta tener sus imágenes (en móvil con poca cobertura puede tardar un poco más)
+          if (phaseT > (c.boss ? 1.9 : 1.35) && imagesReady) {
             phase = Phase.play;
             phaseT = 0;
             Sfx.play('go');
