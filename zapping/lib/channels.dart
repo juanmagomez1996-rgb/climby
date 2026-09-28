@@ -77,6 +77,17 @@ abstract class Channel {
   }
 
   bool get pointerIn => S.contains(Offset(p.x, p.y));
+
+  /// El pulgar tapa ~1 cm alrededor de donde toca. Las herramientas (bolígrafo, esponja, garras…)
+  /// trabajan este tanto por encima del dedo, y lo que se agarra flota por encima de él.
+  static const double lift = 70;
+
+  /// Punto de trabajo: justo por encima del pulgar.
+  Offset get aimPt => Offset(p.x, p.y - lift);
+
+  /// Movimiento del dedo en este frame (para arrastre relativo: el objeto se mueve lo mismo que el
+  /// dedo, así puedes arrastrarlo desde debajo sin taparlo).
+  Offset get drag => Offset(p.dx, p.dy);
 }
 
 typedef ChannelFactory = Channel Function(ZappingGame g);
@@ -932,8 +943,9 @@ class Glutton extends Channel {
     if (p.pressed && dist(p.x, p.y, hx, hy) < 80) grab = true;
     if (!p.down) grab = false;
     if (grab) {
-      hx = p.x;
-      hy = p.y;
+      // sube suavemente hasta quedar por encima del pulgar
+      hx = lerp(hx, p.x, 1 - math.exp(-dt * 30));
+      hy = lerp(hy, p.y - Channel.lift, 1 - math.exp(-dt * 18));
     }
     hx = hx.clamp(sl + 30, sr - 30);
     hy = hy.clamp(st + 30, sb - 30);

@@ -18,6 +18,10 @@ final List<ChannelFactory> extraChannels = [
   CrocDentist.new, HotelLift.new, ToyTrain.new, MirrorRobot.new, MarketScale.new,
 ];
 
+/// Mantiene un punto dentro de la pantalla de la tele.
+Offset _clampS(Offset o) => Offset(o.dx.clamp(ZappingGame.screen.left + 10, ZappingGame.screen.right - 10),
+    o.dy.clamp(ZappingGame.screen.top + 10, ZappingGame.screen.bottom - 10));
+
 /// Decorado panorámico que se desplaza: se repite en espejo (sin costuras) y cubre la tele.
 void scrollBg(Canvas c, String name, double offset) {
   final im = Gfx.img[name]!;
@@ -101,7 +105,8 @@ class Inspector extends Channel {
   @override
   void update(double dt) {
     if (res != 0) return;
-    if (p.down && pointerIn) lens = Offset.lerp(lens, Offset(p.x, p.y - 10), 1 - math.exp(-dt * 16))!;
+    // arrastre relativo: la lupa se mueve lo mismo que el dedo (puedes arrastrarla desde abajo)
+    if (p.down) lens = _clampS(lens + drag);
     // el ladrón se escabulle de un sitio a otro
     if ((sneak -= dt) <= 0) {
       sneak = rnd(1.2, 2.2);
@@ -1147,7 +1152,7 @@ class DivaSpot extends Channel {
 
   @override
   void update(double dt) {
-    if (p.down && pointerIn) spot = Offset.lerp(spot, Offset(p.x, p.y), 1 - math.exp(-dt * 14))!;
+    if (p.down) spot = _clampS(spot + drag);
     if (res != 0) return;
     if ((next -= dt) <= 0 || (to - diva).distance < 4) {
       next = rnd(.7, 1.6);
@@ -1594,8 +1599,9 @@ class FireJelly extends Channel {
 
   @override
   void update(double dt) {
-    spraying = p.down && pointerIn && res == 0;
-    if (spraying) aim = Offset(p.x, p.y);
+    spraying = p.down && res == 0;
+    // arrastre relativo: el chorro apunta donde está la diana, no debajo del pulgar
+    if (spraying) aim = _clampS(aim + drag * 1.3);
     if (res != 0) return;
     for (final f in flames) {
       if (f[2] <= 0) continue;
@@ -1640,6 +1646,18 @@ class FireJelly extends Channel {
         final o = Offset.lerp(a, b2, u)!;
         Gfx.clayBall(c, o.dx, o.dy, 5 + u * 3, const Color(0xFF7FC8FF));
       }
+    }
+    // diana de puntería: se ve siempre, lejos del pulgar
+    if (res == 0) {
+      final ring = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 4
+        ..color = const Color(0xDD7FC8FF);
+      c.drawCircle(aim, 22, ring);
+      for (final d in const [Offset(1, 0), Offset(-1, 0), Offset(0, 1), Offset(0, -1)]) {
+        c.drawLine(aim + d * 14, aim + d * 30, ring);
+      }
+      if (!spraying && t < 2.5) Gfx.text(c, 'ARRASTRA PARA APUNTAR', cx, st + 80, 17, color: Pal.gold);
     }
     Gfx.anim(c, 'gummy', vt, bx(.2), foot(.95), 150, ay: 1);
   }
@@ -2118,7 +2136,7 @@ class MonsterBar extends Channel {
     }
     if (grab >= 0 && p.down) {
       glasses[grab][1] = p.x;
-      glasses[grab][2] = p.y + 30;
+      glasses[grab][2] = p.y - 14; // su base queda por encima del pulgar
     }
     if (grab >= 0 && !p.down) {
       final gl = glasses[grab];
@@ -2519,7 +2537,8 @@ class ItchyBear extends Channel {
   void update(double dt) {
     if (res != 0) return;
     if (p.down && pointerIn) {
-      final d = (Offset(p.x, p.y) - spot).distance;
+      // las garras rascan por encima del pulgar, para ver dónde estás
+      final d = (aimPt - spot).distance;
       warm = clamp01(1 - d / 170);
       if (d < 26) {
         hold += dt;
@@ -2544,7 +2563,10 @@ class ItchyBear extends Channel {
     Gfx.shadow(c, cx, base - 4, 240, alpha: .45);
     Gfx.anim(c, 'bear', vt, cx, base, bh, ay: 1, fps: 12 + warm * 10, rot: res == 1 ? math.sin(since * 16) * .03 : 0);
     if (p.down && pointerIn && res == 0) {
-      final f = Offset(p.x, p.y);
+      final f = aimPt;
+      c.drawLine(Offset(p.x, p.y), f, Paint()
+        ..strokeWidth = 3
+        ..color = const Color(0x55FFFFFF));
       // uñas rascando y termómetro de frío/caliente
       for (var k = 0; k < 3; k++) {
         c.drawLine(f.translate(-10 + k * 10.0, -10 + math.sin(vt * 30) * 4), f.translate(-6 + k * 10.0, 12 + math.sin(vt * 30) * 4),
@@ -3169,7 +3191,7 @@ class MarketScale extends Channel {
         if ((Offset(p.x, p.y) - pos[k]).distance < 44) grab = k;
       }
     }
-    if (grab >= 0 && p.down) pos[grab] = Offset(p.x, p.y);
+    if (grab >= 0 && p.down) pos[grab] = Offset(p.x, p.y - Channel.lift * .8);
     if (grab >= 0 && !p.down) {
       final pan = panAt(1);
       onPan[grab] = (pos[grab] - pan).distance < 80;
