@@ -36,18 +36,6 @@ int play(Channel Function(ZappingGame) make, void Function(Channel c, Pointer p,
 
 String lastWhy = '';
 
-/// Arrastre relativo del bot: mueve el dedo un paso hacia llevar [obj] a [target].
-void nudge(Pointer p, Offset obj, Offset target, {double gain = 1, double step = 14}) {
-  var d = (target - obj) / gain;
-  if (d.distance > step) d = d / d.distance * step;
-  p
-    ..down = true
-    ..x = 270
-    ..y = 520
-    ..dx = d.dx
-    ..dy = d.dy;
-}
-
 void touch(Pointer p, double x, double y) {
   p
     ..down = true
@@ -59,7 +47,8 @@ void main() {
   test('31 inspector: la lupa sobre el ladrón gana', () {
     expect(play(Inspector.new, (c, p, f) {
       final i = c as Inspector;
-      nudge(p, i.lens, i.thiefBody);
+      final th = i.thiefBody;
+      touch(p, th.dx, th.dy + 10);
     }), 1);
     expect(play(Inspector.new, (c, p, f) {}), isNot(1));
   });
@@ -190,8 +179,8 @@ void main() {
 
   test('41 diva: el foco sobre ella gana; sin foco no', () {
     expect(play(DivaSpot.new, (c, p, f) {
-      final k = c as DivaSpot;
-      nudge(p, k.spot, k.diva.translate(0, -80), step: 22);
+      final d = (c as DivaSpot).diva;
+      touch(p, d.dx, d.dy - 80);
     }), 1);
     expect(play(DivaSpot.new, (c, p, f) {}), 0);
   });
@@ -249,7 +238,7 @@ void main() {
     expect(play(FireJelly.new, (c, p, f) {
       final k = c as FireJelly;
       final alive = k.flames.where((q) => q[2] > 0);
-      if (alive.isNotEmpty) nudge(p, k.aim, Offset(alive.first[0], alive.first[1]), gain: 1.3);
+      if (alive.isNotEmpty) touch(p, alive.first[0], alive.first[1]);
     }), 1);
   });
 
@@ -372,7 +361,7 @@ void main() {
   test('54 oso: rascar en el punto exacto gana', () {
     expect(play(ItchyBear.new, (c, p, f) {
       final b = c as ItchyBear;
-      touch(p, b.spot.dx, b.spot.dy + Channel.lift);
+      touch(p, b.spot.dx, b.spot.dy);
     }), 1);
     expect(play(ItchyBear.new, (c, p, f) => touch(p, c.sl + 10, c.st + 10)), 0);
   });

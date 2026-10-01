@@ -309,8 +309,7 @@ class Signature extends Channel {
   @override
   void update(double dt) {
     if (res != 0) return;
-    // el bolígrafo escribe por encima del pulgar: así ves la línea que sigues
-    final f = aimPt;
+    final f = Offset(p.x, p.y);
     if (p.pressed && (f - pts[k]).distance < 34) drawing = true;
     if (!p.down) {
       drawing = false;
@@ -368,7 +367,7 @@ class Signature extends Channel {
       Gfx.text(c, 'APROBADO', cx, by(.3), 40,
           color: const Color(0xFFD02030), rot: -.2, scale: 1 + math.max(0.0, .2 - since) * 3);
     }
-    final pen = drawing ? aimPt : pts[k];
+    final pen = drawing ? Offset(p.x, p.y) : pts[k];
     Gfx.sprite(c, 'pen', pen.dx, pen.dy, 110, ax: .04, ay: .96, drop: drawing ? const Offset(12, 16) : const Offset(6, 8));
   }
 }
@@ -1516,10 +1515,10 @@ class WashMonster extends Channel {
     final moved = math.sqrt(p.dx * p.dx + p.dy * p.dy);
     if (moved < 1) return;
     for (final m in mud) {
-      if (m.dirt > 0 && (m.o - aimPt).distance < m.r + 26) {
+      if (m.dirt > 0 && (m.o - Offset(p.x, p.y)).distance < m.r + 26) {
         m.dirt = math.max(0, m.dirt - moved * .012);
         if (rng.nextDouble() < .3) {
-          g.fx.blobs.add(Blob(aimPt.dx + rnd(-20, 20), aimPt.dy + rnd(-10, 10), rnd(-60, 60), rnd(-200, -80), rnd(3, 7), .5,
+          g.fx.blobs.add(Blob(p.x + rnd(-20, 20), p.y + rnd(-10, 10), rnd(-60, 60), rnd(-200, -80), rnd(3, 7), .5,
               const Color(0xFFF4FBFF)));
         }
         Sfx.play('shake', volume: .3, minGapMs: 110);
@@ -1540,13 +1539,7 @@ class WashMonster extends Channel {
     }
     // capa delantera: la espuma y el frente de la bañera (recortados siguiendo las burbujas) tapan a Blubu
     Gfx.cover(c, 'tub_front', ZappingGame.bleed);
-    if (p.down && res == 0) {
-      // la esponja frota por encima del pulgar; una línea fina la une al dedo
-      c.drawLine(Offset(p.x, p.y), aimPt, Paint()
-        ..strokeWidth = 3
-        ..color = const Color(0x55FFFFFF));
-      Gfx.sprite(c, 'sponge', aimPt.dx, aimPt.dy, 62, rot: math.sin(vt * 20) * .15);
-    }
+    if (p.down && res == 0) Gfx.sprite(c, 'sponge', p.x, p.y, 62, rot: math.sin(vt * 20) * .15);
   }
 }
 
