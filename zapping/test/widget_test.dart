@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zapping_infinito/asset_data.dart';
 import 'package:zapping_infinito/channels.dart';
@@ -68,6 +70,23 @@ void balanceTest() {
       for (final k in c.images) {
         expect(kImageSize.containsKey(k), isTrue, reason: '${c.name}: $k');
       }
+    }
+  });
+
+  test('partida infinita: ningún canal se repite hasta haber pasado por la mitad de los demás', () {
+    final g = ZappingGame();
+    final seen = <int>[];
+    for (var k = 0; k < allChannels.length * 6; k++) {
+      seen.add(g.nextIndex());
+    }
+    final win = allChannels.length ~/ 2;
+    for (var k = 0; k < seen.length; k++) {
+      final back = seen.sublist(math.max(0, k - win), k);
+      expect(back.contains(seen[k]), isFalse, reason: 'canal ${seen[k]} repetido en la tirada $k');
+    }
+    // y en cada vuelta salen todos
+    for (var r = 0; r < 6; r++) {
+      expect(seen.sublist(r * allChannels.length, (r + 1) * allChannels.length).toSet().length, allChannels.length);
     }
   });
 }

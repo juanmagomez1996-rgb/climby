@@ -175,6 +175,7 @@ class ZappingGame extends FlameGame {
     score = 0;
     lastIdx = -1;
     bag.clear();
+    recent.clear();
     fx.clear();
     mode = Mode.playing;
     _nextChannel();
@@ -253,17 +254,9 @@ class ZappingGame extends FlameGame {
     } else if (ch % 10 == 0) {
       c = Boss(this);
     } else {
-      if (bag.isEmpty) {
-        bag.addAll(List.generate(allChannels.length, (i) => i)..shuffle(rng));
-      }
-      var i = bag.removeLast();
-      if (i == lastIdx && bag.isNotEmpty) {
-        final j = bag.removeLast();
-        bag.insert(0, i);
-        i = j;
-      }
-      lastIdx = i;
-      c = allChannels[i](this);
+      // Orden aleatorio sin repetir: salen todos los canales antes de repetir ninguno, y al
+      // empezar otra vuelta los primeros nunca son de los últimos que acabas de ver.
+      c = allChannels[nextIndex()](this);
     }
     c.init(level);
     cur = c;
@@ -271,6 +264,27 @@ class ZappingGame extends FlameGame {
     phase = Phase.tuning;
     phaseT = 0;
     Sfx.play('static', volume: .5);
+  }
+
+  /// Canales vistos hace poco (para no repetirlos al empezar otra vuelta).
+  final List<int> recent = [];
+
+  /// Índice del siguiente canal normal (no jefe) de la partida.
+  int nextIndex() {
+    if (bag.isEmpty) bag.addAll(_newBag());
+    final i = bag.removeLast();
+    recent.add(i);
+    if (recent.length > allChannels.length ~/ 2) recent.removeAt(0);
+    lastIdx = i;
+    return i;
+  }
+
+  /// Una vuelta nueva con todos los canales barajados. Se saca del final, así que los vistos
+  /// hace poco se colocan al principio de la lista (salen los últimos de esta vuelta).
+  List<int> _newBag() {
+    final fresh = [for (var i = 0; i < allChannels.length; i++) if (!recent.contains(i)) i]..shuffle(rng);
+    final old = [for (final i in recent) if (i < allChannels.length) i]..shuffle(rng);
+    return [...old, ...fresh];
   }
 
   /// ¿Están abiertas las imágenes del canal actual?

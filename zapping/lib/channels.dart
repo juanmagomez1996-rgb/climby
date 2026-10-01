@@ -301,9 +301,14 @@ class Gazpacho extends Channel {
   @override
   void init(int l) {
     px = cx;
-    rate = .36 / (1 + l * .25);
-    vy = 300 + l * 50;
+    // al principio llueven pocos y despacio; con el nivel llueven más y más rápido
+    // (la velocidad general del juego ya sube con el nivel: aquí solo un poco más)
+    rate = .62 / (1 + l * .08);
+    vy = 250 + l * 15;
+    aimed = math.min(.12 + l * .02, .2);
   }
+
+  double aimed = .12;
 
   @override
   void update(double dt) {
@@ -313,13 +318,21 @@ class Gazpacho extends Channel {
     px = px.clamp(sl + 40, sr - 40);
     if ((cd -= dt) <= 0) {
       cd = rate;
-      tom.add(_Tomato(rnd(sl + 28, sr - 28), st - 20, rnd(18, 25)));
-      if (rng.nextDouble() < .4) tom.add(_Tomato(px + rnd(-20, 20), st - 60, 22));
+      // nunca muros: cada tomate nuevo cae lejos de los que aún van por arriba,
+      // así siempre queda un hueco por el que esquivar
+      bool clear(double x) => tom.every((o) => o.y > st + 220 || (o.x - x).abs() > 95);
+      var x = rnd(sl + 28, sr - 28);
+      for (var k = 0; k < 12 && !clear(x); k++) {
+        x = rnd(sl + 28, sr - 28);
+      }
+      // de vez en cuando uno va a por ti (su sombra en el suelo te avisa)
+      if (rng.nextDouble() < aimed) x = (px + rnd(-30, 30)).clamp(sl + 28, sr - 28);
+      tom.add(_Tomato(x, st - 20, rnd(17, 22)));
     }
     for (final o in tom) {
       o.y += vy * dt;
       o.rot += o.vr * dt;
-      if (res == 0 && dist(o.x, o.y, px, py) < o.r + 30) {
+      if (res == 0 && dist(o.x, o.y, px, py) < o.r + 16) {
         lose('¡Tomatazo!');
         g.fx.burst(o.x, o.y, Pal.tomato, 26);
         g.fx.shake(8);

@@ -454,6 +454,36 @@ void main() {
     }), 1);
   });
 
+  test('3 tomates: al principio esquivar es fácil y luego se complica (nivel 0 y 3)', () {
+    for (final l in [0, 3]) {
+      var ok = 0;
+      for (var s = 0; s < 20; s++) {
+        final r = play(Gazpacho.new, (c, p, f) {
+          final k = c as Gazpacho;
+          // se aparta del tomate más peligroso que viene encima (con algo de retraso humano)
+          // busca la posición más cercana sin tomates que vayan a caer encima pronto
+          bool safe(double x) => k.tom.every((o) => !(o.y > k.py - 300 && o.y < k.py + 10 && (o.x - x).abs() < 62));
+          var target = k.px;
+          if (!safe(k.px)) {
+            for (var d = 20.0; d < 400; d += 20) {
+              if (safe(k.px - d) && k.px - d > c.sl + 40) {
+                target = k.px - d;
+                break;
+              }
+              if (safe(k.px + d) && k.px + d < c.sr - 40) {
+                target = k.px + d;
+                break;
+              }
+            }
+          }
+          touch(p, target, c.cy);
+        }, level: l);
+        if (r == 1) ok++;
+      }
+      expect(ok, greaterThanOrEqualTo(l == 0 ? 15 : 7), reason: 'nivel $l: $ok/20');
+    }
+  });
+
   test('todos los extra se inicializan en todos los niveles', () {
     final g = ZappingGame();
     for (final f in extraChannels) {
