@@ -1,8 +1,12 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'dart:typed_data';
+
 import 'package:flame/cache.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/painting.dart';
+import 'package:flutter/services.dart' show rootBundle;
 
 import 'asset_data.dart';
 import 'font_data.dart';
@@ -174,10 +178,67 @@ class Gfx {
       return;
     }
     try {
-      img[key] = await _images!.load('$key.webp');
+      if (kIsWeb) {
+        // en la web: desde la copia descargada (o se descarga ahora, con prioridad)
+        _urgent++;
+        final b = await _bytesOf(key).whenComplete(() => _urgent--);
+        img[key] = b != null ? await _decode(b) : await _images!.load('$key.webp');
+      } else {
+        img[key] = await _images!.load('$key.webp');
+      }
     } finally {
       _pending.remove(key);
     }
+  }
+
+  // ---------- Descarga completa (solo web) ----------
+  // En el móvil las imágenes van dentro de la app y se leen del disco al instante. En la web
+  // vendrían de internet canal a canal, así que al abrir el juego se descargan todas una vez
+  // (comprimidas, ~57 MB) y se guardan en memoria: luego los canales se abren sin esperar y,
+  // aunque se vaya la conexión, el juego sigue funcionando.
+  static final Map<String, Future<Uint8List?>> _dl = {};
+  static final Set<String> _have = {};
+  static int _urgent = 0, downloadTotal = 0;
+  static bool get downloading => kIsWeb && downloadTotal > 0 && _have.length < downloadTotal;
+  static double get downloadProgress => downloadTotal == 0 ? 1 : math.min(1, _have.length / downloadTotal);
+
+  static Future<Uint8List?> _bytesOf(String key) => _dl[key] ??= rootBundle
+      .load('assets/images/$key.webp')
+      .then<Uint8List?>((d) {
+        _have.add(key);
+        return d.buffer.asUint8List(d.offsetInBytes, d.lengthInBytes);
+      }, onError: (Object _) {
+        _dl.remove(key);
+        return null;
+      });
+
+  static Future<ui.Image> _decode(Uint8List b) async {
+    final codec = await ui.instantiateImageCodec(b);
+    return (await codec.getNextFrame()).image;
+  }
+
+  /// Descarga todas las imágenes de los canales (primero [first]); 4 a la vez y cediendo el
+  /// paso cuando un canal que se va a jugar ya necesita las suyas.
+  static Future<void> downloadAll({Iterable<String> first = const []}) async {
+    if (!kIsWeb || downloadTotal > 0) return;
+    final keys = <String>{...first.where(kImageSize.containsKey), ...kImageSize.keys}.toList();
+    downloadTotal = keys.length;
+    var i = 0;
+    Future<void> worker() async {
+      while (i < keys.length) {
+        while (_urgent > 0) {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        }
+        if (i >= keys.length) return;
+        final k = keys[i++];
+        if (await _bytesOf(k) == null) {
+          await Future<void>.delayed(const Duration(milliseconds: 500));
+          await _bytesOf(k); // un reintento
+        }
+      }
+    }
+
+    await Future.wait([for (var w = 0; w < 4; w++) worker()]);
   }
 
   /// Libera todo lo que no sea común ni esté en [keep].

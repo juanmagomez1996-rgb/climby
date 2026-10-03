@@ -88,6 +88,7 @@ class ZappingGame extends FlameGame {
     mode = Mode.menu;
     overlays.add('menu');
     _prepareRun();
+    Gfx.downloadAll(first: [for (var j = 1; j <= 3 && j <= bag.length; j++) ...allChannels[bag[bag.length - j]](this).images]);
     if (practiceFrom >= 0) startPractice(practiceFrom);
   }
 
@@ -474,7 +475,15 @@ class ZappingGame extends FlameGame {
   }
 
   void _topBar(Canvas c) {
-    if (mode == Mode.menu) return;
+    if (mode == Mode.menu) {
+      // en la web, la primera vez: descarga de todos los canales para jugar sin esperas ni conexión
+      if (Gfx.downloading) {
+        final f = Gfx.downloadProgress;
+        Gfx.text(c, 'DESCARGANDO CANALES ${(f * 100).round()} %', W / 2, 22, 18, color: Pal.dim);
+        Gfx.clayBar(c, Rect.fromLTWH(W / 2 - 110, 38, 220, 10), f, Pal.gold);
+      }
+      return;
+    }
     final live = mode == Mode.playing || mode == Mode.paused;
     final on = (time * 2).floor().isEven;
     Gfx.clayBall(c, 40, 24, 8, live && on ? Pal.pink : const Color(0xFF6A5A7A));
@@ -593,7 +602,12 @@ class ZappingGame extends FlameGame {
         Gfx.clayBar(c, bar, f, f < .3 ? Pal.pink : Pal.gold);
       } else {
         final loading = phase == Phase.tuning && !imagesReady && phaseT > 1.0;
-        Gfx.text(c, loading ? 'CARGANDO CANAL… ${(loadProgress * 100).round()} %' : (phase == Phase.tuning ? 'SINTONIZANDO…' : (ok ? 'SEÑAL OK' : 'SIN SEÑAL')),
+        final label = loading
+            ? 'CARGANDO CANAL… ${(loadProgress * 100).round()} %'
+            : (Gfx.downloading
+                ? 'DESCARGANDO CANALES ${(Gfx.downloadProgress * 100).round()} %'
+                : (phase == Phase.tuning ? 'SINTONIZANDO…' : (ok ? 'SEÑAL OK' : 'SIN SEÑAL')));
+        Gfx.text(c, label,
             bar.center.dx, bar.center.dy, 18, color: Pal.dim);
       }
     }
