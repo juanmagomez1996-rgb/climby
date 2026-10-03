@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flame/game.dart';
 import 'package:flutter/widgets.dart';
 
+import 'asset_data.dart';
 import 'channels.dart';
 import 'channels2.dart';
 import 'gfx.dart';
@@ -86,6 +87,7 @@ class ZappingGame extends FlameGame {
     await Sfx.load();
     mode = Mode.menu;
     overlays.add('menu');
+    _prepareRun();
     if (practiceFrom >= 0) startPractice(practiceFrom);
   }
 
@@ -174,8 +176,8 @@ class ZappingGame extends FlameGame {
     ch = 0;
     score = 0;
     lastIdx = -1;
-    bag.clear();
-    recent.clear();
+    if (!prepared) _prepareRun();
+    prepared = false;
     fx.clear();
     mode = Mode.playing;
     _nextChannel();
@@ -233,6 +235,7 @@ class ZappingGame extends FlameGame {
     cur = null;
     mode = Mode.menu;
     overlays.add('menu');
+    _prepareRun();
     if (practiceFrom >= 0) startPractice(practiceFrom);
   }
 
@@ -290,28 +293,51 @@ class ZappingGame extends FlameGame {
   /// ¿Están abiertas las imágenes del canal actual?
   bool imagesReady = false;
 
-  /// El canal que vendrá después (para precargarlo mientras se juega el actual).
-  Channel? _peekNext() {
-    final n = ch + 1;
-    if (practice != null) return makeChannel(practice!);
-    if (tour) {
-      final i = (n - 1 + tourFrom) % (allChannels.length + 1);
-      return i == allChannels.length ? Boss(this) : allChannels[i](this);
+  /// Los [k] canales que vendrán después (para precargarlos mientras se juega el actual).
+  List<Channel> _peekAhead(int k) {
+    final out = <Channel>[];
+    var bi = bag.length - 1;
+    for (var j = 1; j <= k; j++) {
+      final n = ch + j;
+      if (practice != null) {
+        if (j == 1) out.add(makeChannel(practice!));
+      } else if (tour) {
+        final i = (n - 1 + tourFrom) % (allChannels.length + 1);
+        out.add(i == allChannels.length ? Boss(this) : allChannels[i](this));
+      } else if (n % 10 == 0) {
+        out.add(Boss(this));
+      } else if (bi >= 0) {
+        out.add(allChannels[bag[bi--]](this));
+      }
     }
-    if (n % 10 == 0) return Boss(this);
-    return bag.isEmpty ? null : allChannels[bag.last](this);
+    return out;
   }
 
-  /// Libera lo que ya no hace falta, abre lo del canal nuevo y precarga el siguiente.
+  /// Libera lo que ya no hace falta, abre lo del canal nuevo y precarga los dos siguientes
+  /// (uno detrás de otro, para no quitarle velocidad de descarga al que se va a jugar ya).
   void _loadImages(Channel c) {
-    final next = _peekNext();
-    Gfx.releaseExcept({...c.images, ...?next?.images});
+    final ahead = _peekAhead(2);
+    Gfx.releaseExcept({...c.images, for (final a in ahead) ...a.images});
     imagesReady = false;
-    Gfx.ensure(c.images).catchError((_) {}).whenComplete(() {
+    Gfx.ensure(c.images).catchError((_) {}).whenComplete(() async {
       if (cur == c) imagesReady = true;
-      if (next != null) Gfx.ensure(next.images).catchError((_) {});
+      for (final a in ahead) {
+        await Gfx.ensure(a.images).catchError((_) {});
+      }
     });
   }
+
+  /// Fracción de las imágenes del canal actual que ya están abiertas.
+  double get loadProgress {
+    final c = cur;
+    if (c == null) return 1;
+    final need = c.images.where(kImageSize.containsKey).toList();
+    return need.isEmpty ? 1 : need.where(Gfx.img.containsKey).length / need.length;
+  }
+
+  /// Si la red va muy lenta no se queda colgado: tras unos segundos empieza igualmente
+  /// (lo que falte aparece en cuanto llega).
+  static const maxWait = 5.0;
 
   void _finish(bool win) {
     phase = Phase.result;
@@ -348,6 +374,19 @@ class ZappingGame extends FlameGame {
     mode = Mode.over;
     Sfx.play('gameover');
     overlays.add('over');
+    _prepareRun();
+  }
+
+  /// La partida siguiente ya barajada (y su primer canal abriéndose) desde el menú o la
+  /// pantalla final: al pulsar ENCENDER el primer canal empieza sin esperar a descargarlo.
+  bool prepared = false;
+  void _prepareRun() {
+    recent.clear();
+    bag
+      ..clear()
+      ..addAll(_newBag());
+    prepared = true;
+    if (practice == null) Gfx.ensure(allChannels[bag.last](this).images).catchError((_) {});
   }
 
   @override
@@ -368,7 +407,8 @@ class ZappingGame extends FlameGame {
       switch (phase) {
         case Phase.tuning:
           // no empieza hasta tener sus imágenes (en móvil con poca cobertura puede tardar un poco más)
-          if (phaseT > (c.boss ? 1.9 : 1.35) && imagesReady) {
+          final minT = c.boss ? 1.9 : 1.35;
+          if (phaseT > minT && (imagesReady || phaseT > minT + maxWait)) {
             phase = Phase.play;
             phaseT = 0;
             Sfx.play('go');
@@ -552,7 +592,8 @@ class ZappingGame extends FlameGame {
         final f = 1 - ch.t / ch.dur;
         Gfx.clayBar(c, bar, f, f < .3 ? Pal.pink : Pal.gold);
       } else {
-        Gfx.text(c, phase == Phase.tuning ? 'SINTONIZANDO…' : (ok ? 'SEÑAL OK' : 'SIN SEÑAL'),
+        final loading = phase == Phase.tuning && !imagesReady && phaseT > 1.0;
+        Gfx.text(c, loading ? 'CARGANDO CANAL… ${(loadProgress * 100).round()} %' : (phase == Phase.tuning ? 'SINTONIZANDO…' : (ok ? 'SEÑAL OK' : 'SIN SEÑAL')),
             bar.center.dx, bar.center.dy, 18, color: Pal.dim);
       }
     }
