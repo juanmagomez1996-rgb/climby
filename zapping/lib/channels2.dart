@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'channels.dart';
 import 'channels3.dart';
+import 'channels5.dart';
 import 'game.dart';
 import 'gfx.dart';
 import 'sfx.dart';
@@ -15,6 +16,7 @@ final List<ChannelFactory> allChannels = [
   Balance.new, UfoParking.new, Disco.new, Doorman.new, Vault.new,
   WashMonster.new, Lasso.new, PingPong.new,
   ...extraChannels,
+  ...newChannels,
 ];
 
 // Canales 13–30. Cada uno usa una mecánica distinta (deslizar, apuntar, trazar, memoria…).

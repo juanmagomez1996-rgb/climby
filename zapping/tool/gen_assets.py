@@ -24,7 +24,7 @@ def refs(code):
     return out
 
 channels = {}
-for f in ['lib/channels.dart', 'lib/channels2.dart', 'lib/channels3.dart']:
+for f in ['lib/channels.dart', 'lib/channels2.dart', 'lib/channels3.dart', 'lib/channels4.dart', 'lib/channels5.dart']:
     code = open(os.path.join(root, f)).read()
     parts = re.split(r"\n(?=class \w+ extends Channel \{)", code)
     for part in parts[1:]:

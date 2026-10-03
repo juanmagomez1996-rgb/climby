@@ -5,12 +5,13 @@ import 'package:zapping_infinito/asset_data.dart';
 import 'package:zapping_infinito/channels.dart';
 import 'package:zapping_infinito/channels2.dart';
 import 'package:zapping_infinito/channels3.dart';
+import 'package:zapping_infinito/channels5.dart';
 import 'package:zapping_infinito/game.dart';
 
 void main() {
   balanceTest();
   test('hay 30 canales base más los extra y la pantalla cabe dentro de la tele', () {
-    expect(allChannels.length, 30 + extraChannels.length);
+    expect(allChannels.length, 30 + extraChannels.length + newChannels.length);
     expect(ZappingGame.tvRect.contains(ZappingGame.screen.topLeft), isTrue);
     expect(ZappingGame.tvRect.contains(ZappingGame.screen.bottomRight), isTrue);
   });

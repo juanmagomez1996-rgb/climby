@@ -90,6 +90,18 @@ const anims = <String, AnimInfo>{
   'bellhop': AnimInfo(266, 300),
   'robot': AnimInfo(287, 300),
   'walrus': AnimInfo(300, 298),
+  // canales 61–85
+  'plumber': AnimInfo(300, 294),
+  'hen': AnimInfo(244, 300),
+  'runcat': AnimInfo(300, 239),
+  'owl': AnimInfo(219, 300),
+  'raccoon': AnimInfo(202, 300),
+  'sloth': AnimInfo(247, 300),
+  'parrot': AnimInfo(269, 300),
+  'pig': AnimInfo(276, 300),
+  'cyclist': AnimInfo(124, 300),
+  'yeti': AnimInfo(194, 300),
+  'hedgehog': AnimInfo(233, 300),
 };
 
 const spriteNames = [
