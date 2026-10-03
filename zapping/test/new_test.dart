@@ -88,8 +88,9 @@ void main() {
           }, level: l);
       expect(ok, greaterThanOrEqualTo(6), reason: 'nivel $l: $lastWhy');
     }
-    // ir recto sin mirar acaba saltando la alarma
-    expect(play(MuseumLasers.new, (c, p, f) => touch(p, c.cx, c.st)), isNot(1));
+    // ir recto sin mirar casi siempre hace saltar la alarma (a veces hay suerte y están apagados)
+    final lucky = wins(MuseumLasers.new, () => (c, p, f) => touch(p, c.cx, c.st), n: 20);
+    expect(lucky, lessThanOrEqualTo(6), reason: 'recto sin mirar: $lucky/20');
   });
 
   test('66 tarzán: soltarse cuando se llega a la otra liana', () {

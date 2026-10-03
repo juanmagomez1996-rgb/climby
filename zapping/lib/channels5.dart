@@ -1221,6 +1221,7 @@ class PenguinSlide extends Channel {
     }
     if (res != 1) {
       final f = cellC(fish);
+      targetMark(c, f, vt, r: 28);
       Gfx.sprite(c, 'fish', f.dx, f.dy + math.sin(vt * 8) * 2, 40, rot: math.sin(vt * 6) * .2, drop: const Offset(2, 4));
     }
     Gfx.shadow(c, at.dx, at.dy + 26, 54, alpha: .35);
@@ -1331,6 +1332,16 @@ class SumoMochi extends Channel {
   @override
   void render(Canvas c) {
     drawBg(c);
+    // borde del ring: quien lo cruza, pierde
+    final edge = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 5
+      ..strokeCap = StrokeCap.round
+      ..color = Color.fromRGBO(230, 40, 50, .55 + math.sin(vt * 5) * .2);
+    for (var k = 0; k < 36; k++) {
+      final a0 = k / 36 * tau;
+      c.drawArc(Rect.fromCircle(center: ring, radius: R), a0, tau / 72, false, edge);
+    }
     for (final (o, v, col, isMe) in [(foe, fv, const Color(0xFF9BE7B0), false), (me, mv, const Color(0xFFFFA8C8), true)]) {
       final sp = v.distance;
       final st0 = 1 + clamp01(sp / 900) * .12 + bump * .08;

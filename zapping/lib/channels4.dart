@@ -29,6 +29,25 @@ void clayBox(Canvas c, Rect r, Color col, {double radius = 10, double shadow = 5
   c.drawRRect(rr, Paint()..shader = Gradient.linear(r.topLeft, r.bottomRight, [light, col, dark], [0, .45, 1]));
 }
 
+/// Marca de destino: aro dorado que late y, si hay [label], una flecha que rebota con el texto.
+void targetMark(Canvas c, Offset o, double t, {String? label, double r = 30}) {
+  final k = (t * 1.4) % 1;
+  c.drawCircle(o, r * (1 + k * .6), Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 2 + 5 * (1 - k)
+    ..color = Color.fromRGBO(255, 205, 70, (1 - k) * .95));
+  if (label == null) return;
+  final y = o.dy - r - 16 + math.sin(t * 6) * 5;
+  final tri = Path()
+    ..moveTo(o.dx - 12, y - 12)
+    ..lineTo(o.dx + 12, y - 12)
+    ..lineTo(o.dx, y + 4)
+    ..close();
+  c.drawPath(tri.shift(const Offset(2, 3)), Paint()..color = const Color(0x66000000));
+  c.drawPath(tri, Paint()..color = Pal.gold);
+  Gfx.text(c, label, o.dx, y - 30, 20, color: Pal.gold);
+}
+
 /// Dedo de demostración (el mismo de los tutoriales).
 void fingerAt(Canvas c, Offset o, {double alpha = 1}) =>
     Gfx.sprite(c, 'finger', o.dx + 16, o.dy + 10, 50, rot: -.3, alpha: alpha);
@@ -217,6 +236,7 @@ class HamsterMaze extends Channel {
       c.drawCircle(Offset(math.cos(a) * d, math.sin(a) * d), 2.2, Paint()..color = const Color(0x33A0703A));
     }
     Gfx.sprite(c, 'hole', hole.dx, hole.dy, 30);
+    if (res == 0) targetMark(c, hole, vt, r: 22);
     for (final w in walls) {
       clayBox(c, w, const Color(0xFF6FB7E0), radius: 7, shadow: 3);
     }
@@ -411,6 +431,11 @@ class Plumber extends Channel {
         }
       }
     }
+    if (res == 0) {
+      Gfx.clayBall(c, sl + 14, inY, 9, const Color(0xFF4FB6F2));
+      Gfx.text(c, 'AGUA', sl + 34, inY - 26, 16, color: const Color(0xFF8FD3FF));
+      targetMark(c, Offset(sr - 36, outY), vt, label: 'FLOR', r: 18);
+    }
     Gfx.anim(c, 'plumber', vt, bx(.12), sb - 2, 92, ay: 1);
     if (res == 0 && t < 1.8) {
       final r = cell(4);
@@ -500,14 +525,38 @@ class EggBounce extends Channel {
   (Offset, Offset)? botLine() {
     final e = egg;
     if (e == null || e.bounced) return null;
+    return botLineFrom(e);
+  }
+
+  /// Dónde está (o aparecerá) el huevo que viene.
+  EggSim get nextEgg {
+    final e = egg;
+    return e != null && !e.bounced ? EggSim(e.e, e.v) : EggSim(Offset(dropX, shelfY + 8), Offset.zero);
+  }
+
+  /// Trayectoria que seguiría el huevo con la cama elástica a-b (puntos y si acaba en la cesta).
+  (List<Offset>, int) predict(Offset a, Offset b) {
+    final s = nextEgg;
+    final pts = <Offset>[];
+    var r = 0;
+    for (var i = 0; i < 300 && r == 0; i++) {
+      r = stepSim(s, a, b, 1 / 60);
+      if (i % 3 == 0) pts.add(s.e);
+    }
+    pts.add(s.e);
+    return (pts, r);
+  }
+
+  (Offset, Offset)? _demo;
+  (Offset, Offset)? botLineFrom(EggSim e) {
     for (var y = floorY - 70; y > floorY - 230; y -= 15) {
       for (var a = -1.0; a <= 1.0; a += .02) {
         final mid = Offset(e.e.dx, y);
         final d = Offset(math.cos(a), math.sin(a)) * 60;
         final s = EggSim(e.e, e.v);
         var r = 0;
-        for (var i = 0; i < 600 && r == 0; i++) {
-          r = stepSim(s, mid - d, mid + d, 1 / 120);
+        for (var i = 0; i < 300 && r == 0; i++) {
+          r = stepSim(s, mid - d, mid + d, 1 / 60);
         }
         if (r == 1) return (mid - d, mid + d);
       }
@@ -599,10 +648,25 @@ class EggBounce extends Channel {
         clayLine(c, [a, mid + Offset(0, sag), b], Color.fromRGBO(226, 61, 84, fade), 11);
       }
     }
+    // cesta: el destino, bien marcado
+    if (res == 0) targetMark(c, Offset(basketX, mouthY), vt, label: 'CESTA', r: 36);
     if (p.down && res == 0) {
       var d = Offset(p.x - p.sx, p.y - p.sy);
       if (d.distance > maxLen) d = d / d.distance * maxLen;
-      clayLine(c, [Offset(p.sx, p.sy), Offset(p.sx, p.sy) + d], const Color(0x88E23D54), 9);
+      final a0 = Offset(p.sx, p.sy), b0 = a0 + d;
+      clayLine(c, [a0, b0], const Color(0x88E23D54), 9);
+      // mientras dibujas ves por dónde iría el huevo
+      if (d.distance > 40) _path(c, predict(a0, b0));
+    } else if (res == 0 && t < 2.6 && ta == null) {
+      // demostración con un trazo que de verdad lo manda a la cesta
+      final dl = _demo ??= botLineFrom(nextEgg);
+      if (dl != null) {
+        final k = clamp01((vt * .9) % 1.3);
+        final cur = Offset.lerp(dl.$1, dl.$2, k)!;
+        clayLine(c, [dl.$1, cur], const Color(0x99E23D54), 9);
+        if (k >= 1) _path(c, predict(dl.$1, dl.$2));
+        fingerAt(c, cur);
+      }
     }
     final eg = egg;
     if (eg != null) {
@@ -613,12 +677,14 @@ class EggBounce extends Channel {
       Gfx.sprite(c, 'egg_broken', brokeAtPos.dx, brokeAtPos.dy, 34, ay: .8);
     }
     Gfx.text(c, '$caught/$need', sr - 30, shelfY + 46, 26, color: Pal.gold);
-    if (res == 0 && t < 2.2) {
-      final k = (vt * .8) % 1;
-      final a0 = Offset(cx - 70, floorY - 110), b0 = Offset(cx + 60, floorY - 140);
-      clayLine(c, [a0, Offset.lerp(a0, b0, k)!], const Color(0x99E23D54), 9);
-      fingerAt(c, Offset.lerp(a0, b0, k)!);
+  }
+
+  void _path(Canvas c, (List<Offset>, int) pr) {
+    final (pts, r) = pr;
+    for (var i = 0; i < pts.length; i++) {
+      c.drawCircle(pts[i], 4, Paint()..color = Color.fromRGBO(255, 255, 255, .85 - i / pts.length * .5));
     }
+    if (pts.isNotEmpty) Gfx.mark(c, r == 1, pts.last.dx, pts.last.dy - 10, 30);
   }
 }
 
@@ -703,8 +769,8 @@ class CeilingCat extends Channel {
       vy = 0;
     }
     for (final s in spikes) {
-      if ((s.x - catX).abs() < 38) {
-        final hit = s.top ? y < ceilY + 34 : y > floorY - 34;
+      if ((s.x - catX).abs() < 46) {
+        final hit = s.top ? y < ceilY + 40 : y > floorY - 40;
         if (hit) {
           g.fx.shake(10);
           Sfx.play('lose');
@@ -723,10 +789,16 @@ class CeilingCat extends Channel {
     scrollBg(c, bg, scroll);
     for (final s in spikes) {
       if (s.x < sl - 80 || s.x > sr + 80) continue;
+      final y0 = s.top ? ceilY : floorY;
+      final pulse = .65 + math.sin(vt * 8 + s.x * .05) * .2;
+      c.drawOval(Rect.fromCenter(center: Offset(s.x, y0 + (s.top ? 18 : -18)), width: 120, height: 56), Paint()
+        ..color = Color.fromRGBO(255, 30, 40, pulse)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 14));
+      const tint = Color(0xFF8C8C9C);
       if (s.top) {
-        Gfx.sprite(c, 'spikes', s.x, ceilY - 2, 40, ay: 1, sy: -1);
+        Gfx.sprite(c, 'spikes', s.x, ceilY - 2, 54, ay: 1, sy: -1, sx: .62, tint: tint, drop: const Offset(3, 4));
       } else {
-        Gfx.sprite(c, 'spikes', s.x, floorY + 2, 40, ay: 1);
+        Gfx.sprite(c, 'spikes', s.x, floorY + 2, 54, ay: 1, sx: .62, tint: tint, drop: const Offset(3, 4));
       }
     }
     final mid = (floorY + ceilY) / 2;
@@ -767,42 +839,44 @@ class MuseumLasers extends Channel {
   final lasers = <Laser>[];
   Offset thief = Offset.zero; // pies
   bool caught = false;
-  static const gapW = 104.0, step = 230.0;
+  static const gapW = 124.0, step = 300.0;
+  // franja del cuerpo que activa la alarma (desde los pies hacia arriba)
+  static const hitLo = 20.0, hitHi = 44.0;
   Offset get gem => Offset(cx, by(.345));
 
   @override
   void init(int l) {
     thief = Offset(cx, sb - 14);
-    final ys = l >= 3 ? [312.0, 374.0, 436.0, 498.0] : [330.0, 400.0, 470.0];
+    final ys = l >= 3 ? [300.0, 368.0, 436.0, 504.0] : [305.0, 395.0, 485.0];
     for (var i = 0; i < ys.length; i++) {
-      final kind = l == 0 ? 0 : (i.isOdd ? 1 : rng.nextInt(2));
-      lasers.add(Laser(ys[i], kind, rnd(0, 3), rnd(1.5, 2.1) / (1 + l * .08), rnd(1.3, 1.8) * (1 + l * .06)));
+      final kind = l < 2 ? 0 : (i.isOdd ? 1 : rng.nextInt(2));
+      lasers.add(Laser(ys[i], kind, rnd(0, 3), rnd(1.7, 2.2) / (1 + l * .06), rnd(.9, 1.2) * (1 + l * .05)));
     }
   }
 
-  bool on(Laser z) => z.kind == 1 || ((t + z.phase) % z.period) < z.period * .55;
-  double gapX(Laser z, [double dt = 0]) => cx + math.sin((t + dt) * z.speed + z.phase) * 120;
+  bool on(Laser z) => z.kind == 1 || ((t + z.phase) % z.period) < z.period * .5;
+  /// Apagado pero a punto de encenderse (parpadea para avisar).
+  bool warn(Laser z) => z.kind == 0 && !on(z) && z.period - (t + z.phase) % z.period < .35;
+  double gapX(Laser z, [double dt = 0]) => cx + math.sin((t + dt) * z.speed + z.phase) * 110;
   bool hits(Laser z, Offset feet) {
     if (!on(z)) return false;
-    if (feet.dy - 52 > z.y || feet.dy - 10 < z.y) return false;
+    if (feet.dy - hitHi > z.y || feet.dy - hitLo < z.y) return false;
     return z.kind == 0 || (feet.dx - gapX(z)).abs() > gapW / 2 - 16;
   }
 
   double offLeft(Laser z) {
     final ph = (t + z.phase) % z.period;
-    return ph < z.period * .55 ? 0 : z.period - ph;
+    return ph < z.period * .5 ? 0 : z.period - ph;
   }
 
   /// Bot: espera debajo del siguiente láser y cruza cuando está apagado (o por el hueco).
   Offset botTarget() {
     for (final z in lasers.reversed) {
-      if (thief.dy - 10 <= z.y) continue; // ya lo ha pasado
-      final wait = Offset(z.kind == 1 ? gapX(z, .15) : thief.dx, z.y + 60);
-      final ok = z.kind == 0 ? offLeft(z) > .42 : (thief.dx - gapX(z)).abs() < 14 && (thief.dx - gapX(z, .3)).abs() < 22;
-      if (thief.dy > z.y + 56 && !ok) return wait;
-      if (thief.dy > z.y + 56 || ok || thief.dy < z.y + 56) {
-        return Offset(z.kind == 1 ? gapX(z, .1) : thief.dx, z.y - 14);
-      }
+      if (thief.dy - hitLo <= z.y) continue; // ya lo ha pasado
+      final wait = Offset(z.kind == 1 ? gapX(z, .15) : thief.dx, z.y + hitHi + 14);
+      final ok = z.kind == 0 ? offLeft(z) > .3 : (thief.dx - gapX(z)).abs() < 18 && (thief.dx - gapX(z, .25)).abs() < 30;
+      if (thief.dy > z.y + hitHi + 8 && !ok) return wait;
+      return Offset(z.kind == 1 ? gapX(z, .1) : thief.dx, z.y + hitLo - 16);
     }
     return gem + const Offset(0, 40);
   }
@@ -855,12 +929,13 @@ class MuseumLasers extends Channel {
         ..color = Color.fromRGBO(140, 220, 255, .25 + glint * .2)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 14));
       Gfx.sprite(c, 'diamond', gem.dx, gem.dy, 44, rot: math.sin(vt * 2) * .05);
+      if (res == 0) targetMark(c, gem, vt, label: t < 3 ? '¡AQUÍ!' : null, r: 28);
     }
     for (final z in lasers) {
       clayBox(c, Rect.fromCenter(center: Offset(sl + 8, z.y), width: 18, height: 26), const Color(0xFF555566), radius: 5, shadow: 3);
       clayBox(c, Rect.fromCenter(center: Offset(sr - 8, z.y), width: 18, height: 26), const Color(0xFF555566), radius: 5, shadow: 3);
       if (!on(z)) {
-        _beam(c, sl + 16, sr - 16, z.y, .12);
+        _beam(c, sl + 16, sr - 16, z.y, warn(z) && (vt * 14).floor().isEven ? .55 : .12);
         continue;
       }
       final flick = .85 + math.sin(vt * 40 + z.y) * .15;
@@ -1019,7 +1094,7 @@ class Tarzan extends Channel {
       _vine(c, i);
     }
     // plátano en la última liana
-    Gfx.text(c, 'META', ax[2], st + 40, 18, color: Pal.gold);
+    if (res == 0) targetMark(c, hand(2), vt, label: 'META', r: 26);
     Offset at;
     double rot;
     if (flying) {
@@ -1086,7 +1161,7 @@ class BlindTimer extends Channel {
   void render(Canvas c) {
     drawBg(c);
     Gfx.anim(c, 'owl', vt, bx(.84), foot(.93), 120, ay: 1);
-    final o = Offset(cx - 20, cy + 6);
+    final o = Offset(cx - 20, cy + 30);
     const h = 270.0;
     Gfx.sprite(c, 'stopwatch', o.dx, o.dy, h, drop: const Offset(8, 12));
     final face = o + const Offset(0, h * .1);
@@ -1100,14 +1175,17 @@ class BlindTimer extends Channel {
       ..color = hidden ? const Color(0x33E0302A) : Pal.tomato);
     Gfx.clayBall(c, face.dx, face.dy, 8, Pal.tomato);
     final txt = hidden ? '?,??' : num2(e, fixed: true);
-    Gfx.text(c, txt, face.dx, face.dy + 42, 34,
+    Gfx.text(c, txt, face.dx, face.dy + 44, 44,
         color: stopped >= 0 ? (res == 1 ? Pal.lime : Pal.pink) : const Color(0xFF3A2A4A), outline: false);
     if (hidden && res == 0) {
       Gfx.text(c, '¡CUENTA!', face.dx, face.dy - 40, 20, color: const Color(0xFF6A3FA0), outline: false, alpha: .7);
     }
-    if (stopped >= 0) {
-      Gfx.text(c, 'OBJETIVO ${num2(target, fixed: true)} s', cx, st + 34, 22, color: Pal.gold);
-    }
+    // el objetivo, siempre a la vista en una placa
+    final card = Rect.fromCenter(center: Offset(cx, st + 40), width: 300, height: 62);
+    const ink = Color(0xFF2A1F3A);
+    Gfx.clayPanel(c, card, ink.withValues(alpha: .92), radius: 16);
+    Gfx.textIn(c, stopped >= 0 ? 'OBJETIVO: ${num2(target, fixed: true)} s' : 'PARA EN ${num2(target)} SEGUNDOS',
+        Gfx.panelSafe(card, ink), 28, color: Pal.gold);
   }
 }
 
